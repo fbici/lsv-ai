@@ -1,0 +1,24 @@
+# ── Secrets : JAMAIS versionnés ────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ── Dépendances / builds ───────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+.cache/
+dist/
+.tmp/
+
+# ── Éditeurs / OS ──────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# ── Fichiers locaux de configuration (s'ils existent) ──────────────────────
+admin/config.local.js
+shared/config.local.js

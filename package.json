@@ -1,0 +1,15 @@
+{
+  "name": "lsv-ai",
+  "version": "3.1.0",
+  "private": true,
+  "description": "LSV.ai — Studio Viral : application créative (Images, Vidéos, Chat IA, Motion) + Analytics + back-office admin sécurisé.",
+  "scripts": {
+    "test": "node tests/nonreg.test.js && node tests/admin.test.js",
+    "test:nonreg": "node tests/nonreg.test.js",
+    "test:admin": "node tests/admin.test.js",
+    "serve": "npx --yes serve . -l 4173"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
+}

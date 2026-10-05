@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>LSV.ai — Back-office Admin</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="./admin.css">
+</head>
+<body>
+
+<!-- ═══════════ CONNEXION ═══════════ -->
+<div class="auth-screen" id="auth-screen">
+    <div class="auth-card">
+        <div class="auth-brand">
+            <span class="auth-logo">LSV<span class="auth-logo-dot">.ai</span></span>
+            <span class="auth-badge">ADMIN</span>
+        </div>
+        <h1 class="auth-title">Back-office</h1>
+        <p class="auth-sub">Accès réservé à l'administrateur. Les identifiants sont vérifiés côté serveur (Supabase Auth) — aucun mot de passe n'est stocké dans le navigateur.</p>
+
+        <form id="login-form" autocomplete="on">
+            <label class="field">
+                <span class="field-label">E-mail</span>
+                <input type="email" id="login-email" name="email" autocomplete="username" required placeholder="admin@exemple.com">
+            </label>
+            <label class="field">
+                <span class="field-label">Mot de passe</span>
+                <input type="password" id="login-password" name="password" autocomplete="current-password" required placeholder="••••••••">
+            </label>
+            <div class="auth-error hidden" id="login-error"></div>
+            <button type="submit" class="btn btn-primary btn-block" id="login-btn">
+                <span class="ms">lock</span> Se connecter
+            </button>
+        </form>
+
+        <div class="auth-foot">
+            <div class="auth-status" id="auth-status">Vérification de la configuration…</div>
+            <a class="auth-back" href="../index.html"><span class="ms">arrow_back</span> Retour à LSV.ai</a>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ APPLICATION ═══════════ -->
+<div class="app hidden" id="admin-app">
+
+    <aside class="sidebar" id="sidebar">
+        <div class="brand">
+            <span class="brand-logo">LSV<span class="brand-dot">.ai</span></span>
+            <span class="brand-badge">ADMIN</span>
+        </div>
+
+        <nav class="nav">
+            <div class="nav-section">Monitoring</div>
+            <button class="nav-item active" data-page="overview"><span class="ms">space_dashboard</span> Vue d'ensemble</button>
+            <button class="nav-item" data-page="activity"><span class="ms">timeline</span> Activité</button>
+            <button class="nav-item" data-page="errors"><span class="ms">error</span> Erreurs</button>
+
+            <div class="nav-section">Fonctionnalités</div>
+            <button class="nav-item" data-page="images"><span class="ms">image</span> Images</button>
+            <button class="nav-item" data-page="videos"><span class="ms">movie</span> Vidéos</button>
+            <button class="nav-item" data-page="chat"><span class="ms">forum</span> Chat IA</button>
+            <button class="nav-item" data-page="motion"><span class="ms">animation</span> Motion</button>
+
+            <div class="nav-section">Système</div>
+            <button class="nav-item" data-page="settings"><span class="ms">settings</span> Paramètres</button>
+        </nav>
+
+        <div class="sidebar-foot">
+            <div class="admin-chip">
+                <span class="ms">account_circle</span>
+                <span class="admin-chip-email" id="admin-email">—</span>
+            </div>
+            <button class="btn btn-ghost btn-sm btn-block" id="logout-btn"><span class="ms">logout</span> Déconnexion</button>
+        </div>
+    </aside>
+
+    <main class="main">
+        <header class="topbar">
+            <div class="topbar-left">
+                <button class="icon-btn" id="sidebar-toggle" aria-label="Menu"><span class="ms">menu</span></button>
+                <div>
+                    <h1 class="page-title" id="page-title">Vue d'ensemble</h1>
+                    <p class="page-sub" id="page-sub">Vue globale de l'usage de LSV.ai</p>
+                </div>
+            </div>
+            <div class="topbar-right">
+                <div class="range-picker" id="range-picker">
+                    <button class="range-btn active" data-range="today">Aujourd'hui</button>
+                    <button class="range-btn" data-range="7d">7 jours</button>
+                    <button class="range-btn" data-range="30d">30 jours</button>
+                    <button class="range-btn" data-range="all">Tout</button>
+                </div>
+                <button class="icon-btn" id="refresh-btn" title="Rafraîchir"><span class="ms">refresh</span></button>
+                <span class="last-sync" id="last-sync"></span>
+            </div>
+        </header>
+
+        <div class="content" id="content">
+
+            <!-- VUE D'ENSEMBLE -->
+            <section class="page active" id="page-overview">
+                <div class="kpi-grid" id="kpi-grid"></div>
+
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="ms">insights</span> Activité quotidienne</div>
+                        </div>
+                        <div class="chart" id="chart-activity"></div>
+                        <div class="legend" id="chart-activity-legend"></div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="ms">donut_small</span> Utilisation par fonctionnalité</div>
+                        </div>
+                        <div id="usage-bars"></div>
+                    </div>
+                </div>
+
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="ms">history</span> Activité récente</div>
+                            <button class="btn btn-ghost btn-sm" data-goto="activity">Tout voir</button>
+                        </div>
+                        <div class="feed" id="overview-feed"></div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="ms">group</span> Visiteurs</div>
+                        </div>
+                        <div id="visitor-stats"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- IMAGES -->
+            <section class="page" id="page-images">
+                <div class="kpi-grid" id="kpi-images"></div>
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-header"><div class="card-title"><span class="ms">image</span> Génération d'images</div></div>
+                        <div class="chart" id="chart-images"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header"><div class="card-title"><span class="ms">palette</span> Répartition</div></div>
+                        <div id="images-breakdown"></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><div class="card-title"><span class="ms">table_chart</span> Détail (modèle · résolution · ratio · style)</div></div>
+                    <div class="table-wrap" id="images-table"></div>
+                </div>
+            </section>
+
+            <!-- VIDÉOS -->
+            <section class="page" id="page-videos">
+                <div class="kpi-grid" id="kpi-videos"></div>
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-header"><div class="card-title"><span class="ms">movie</span> Génération de vidéos</div></div>
+                        <div class="chart" id="chart-videos"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header"><div class="card-title"><span class="ms">palette</span> Répartition</div></div>
+                        <div id="videos-breakdown"></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><div class="card-title"><span class="ms">table_chart</span> Détail (modèle · mode · durée · segments)</div></div>
+                    <div class="table-wrap" id="videos-table"></div>
+                </div>
+            </section>
+
+            <!-- CHAT -->
+            <section class="page" id="page-chat">
+                <div class="kpi-grid" id="kpi-chat"></div>
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-header"><div class="card-title"><span class="ms">forum</span> Messages envoyés</div></div>
+                        <div class="chart" id="chart-chat"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header"><div class="card-title"><span class="ms">bolt</span> Résumé</div></div>
+                        <div id="chat-summary"></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><div class="card-title"><span class="ms">history</span> Derniers échanges</div></div>
+                    <div class="feed" id="chat-feed"></div>
+                </div>
+            </section>
+
+            <!-- MOTION -->
+            <section class="page" id="page-motion">
+                <div class="kpi-grid" id="kpi-motion"></div>
+                <div class="card">
+                    <div class="card-header"><div class="card-title"><span class="ms">animation</span> Motion Control</div></div>
+                    <div class="info-block" id="motion-info">
+                        Motion Control n'est pas encore implémenté dans LSV.ai (onglet en préparation).
+                        Le module compte déjà les ouvertures de l'onglet et les générations dès qu'elles seront activées.
+                    </div>
+                    <div class="chart" id="chart-motion"></div>
+                </div>
+            </section>
+
+            <!-- ACTIVITÉ -->
+            <section class="page" id="page-activity">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="ms">timeline</span> Activité récente</div>
+                        <div class="filters" id="activity-filters">
+                            <button class="chip active" data-filter="all">Tout</button>
+                            <button class="chip" data-filter="image">Images</button>
+                            <button class="chip" data-filter="video">Vidéos</button>
+                            <button class="chip" data-filter="chat">Chat</button>
+                            <button class="chip" data-filter="error">Erreurs</button>
+                        </div>
+                    </div>
+                    <div class="feed" id="activity-feed"></div>
+                    <button class="btn btn-ghost btn-block" id="activity-more">Charger plus</button>
+                </div>
+            </section>
+
+            <!-- ERREURS -->
+            <section class="page" id="page-errors">
+                <div class="kpi-grid" id="kpi-errors"></div>
+                <div class="card">
+                    <div class="card-header"><div class="card-title"><span class="ms">bug_report</span> Erreurs agrégées</div></div>
+                    <div class="table-wrap" id="errors-table"></div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><div class="card-title"><span class="ms">show_chart</span> Erreurs par jour</div></div>
+                    <div class="chart" id="chart-errors"></div>
+                </div>
+            </section>
+
+            <!-- PARAMÈTRES -->
+            <section class="page" id="page-settings">
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-header"><div class="card-title"><span class="ms">cable</span> Connexion</div></div>
+                        <div class="kv" id="settings-connection"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header"><div class="card-title"><span class="ms">account_circle</span> Session</div></div>
+                        <div class="kv" id="settings-session"></div>
+                        <button class="btn btn-ghost btn-block" id="settings-logout" style="margin-top:1rem"><span class="ms">logout</span> Se déconnecter</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><div class="card-title"><span class="ms">sync</span> Actualisation</div></div>
+                    <label class="field">
+                        <span class="field-label">Rafraîchissement automatique</span>
+                        <select id="autorefresh-select">
+                            <option value="0">Désactivé</option>
+                            <option value="30">Toutes les 30 secondes</option>
+                            <option value="60" selected>Toutes les minutes</option>
+                            <option value="300">Toutes les 5 minutes</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="card">
+                    <div class="card-header"><div class="card-title"><span class="ms">shield</span> Sécurité</div></div>
+                    <div class="info-block">
+                        Les statistiques sont stockées dans Supabase avec Row Level Security :
+                        <strong>insert anonyme uniquement</strong>, <strong>lecture réservée aux comptes authentifiés</strong>.
+                        Aucun identifiant, mot de passe ou secret n'est présent dans ce dépôt.
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+</div>
+
+<div class="toast" id="toast"><span class="ms" id="toast-icon">info</span><span id="toast-text"></span></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="../shared/config.js"></script>
+<script src="./admin.js"></script>
+</body>
+</html>
