@@ -151,9 +151,67 @@ async function load(html) {
     const schema = fs.readFileSync(path.join(PROJECT, 'supabase/schema.sql'), 'utf8');
     check('lecture analytics réservée aux comptes authentifiés',
         /create policy "authenticated_select_events"[\s\S]{0,160}to authenticated/.test(schema));
+    check('lecture réservée à la liste blanche (is_admin)',
+        /using \(public\.is_admin\(\)\)/.test(schema) && /public\.admin_emails/.test(schema));
     check('grant select jamais accordé à anon',
         /grant select on public\.analytics_events to authenticated/.test(schema) &&
         !/grant select on public\.analytics_events to anon/.test(schema));
+
+    console.log('\n=== 7. COMPTES UTILISATEURS (Supabase Auth) ===');
+    check('section Compte présente', !!doc.getElementById('account-section'));
+    check('formulaire fermé par défaut', doc.getElementById('account-form').classList.contains('hidden'));
+    check('aucun compte connecté par défaut', doc.getElementById('account-user').classList.contains('hidden'));
+    check('index.html permet l inscription (Auth REST)', /auth\/v1\/signup|AccountService/.test(source));
+    check('index.html sans mot de passe en dur', !/password\s*[:=]\s*['"][^'"]+['"]/i.test(source));
+    check('index.html sans service_role', !/service_role/i.test(source));
+    check('admin.js permet la création de compte', /auth\.signUp/.test(adminJs));
+    check('aucun lien statique vers le back-office', !doc.getElementById('account-admin').hasAttribute('href'));
+
+    // Échec de connexion → message utilisateur générique (§11)
+    wb.fetch = function (url) {
+        const u = String(url);
+        if (u.includes('/rest/v1/analytics_events')) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
+        if (u.includes('/auth/v1/token')) {
+            return Promise.resolve({
+                ok: false, status: 401,
+                json: async () => ({ error_description: 'Invalid login credentials sk-SECRETAGNES' }),
+                text: async () => ''
+            });
+        }
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    doc.getElementById('account-open').click();
+    doc.getElementById('account-email').value = 'visiteur@lsv.ai';
+    doc.getElementById('account-password').value = 'secret-de-test';
+    doc.getElementById('account-submit').click();
+    await new Promise(r => setTimeout(r, 300));
+    const accMsg = doc.getElementById('account-status-text').textContent;
+    check('connexion refusée → message générique', /Identifiants incorrects/i.test(accMsg), accMsg);
+    check('aucun détail technique dans le message', !/sk-|HTTP|401|apihub|agnes/i.test(accMsg), accMsg);
+    check('toujours déconnecté', doc.getElementById('account-user').classList.contains('hidden'));
+
+    // Connexion réussie → compte affiché, back-office masqué hors liste blanche
+    wb.fetch = function (url) {
+        const u = String(url);
+        if (u.includes('/rest/v1/analytics_events')) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
+        if (u.includes('/auth/v1/token')) {
+            return Promise.resolve({
+                ok: true, status: 200,
+                json: async () => ({ access_token: 'jwt-de-test', refresh_token: 'rfr-de-test', expires_in: 3600, user: { email: 'visiteur@lsv.ai' } }),
+                text: async () => ''
+            });
+        }
+        if (u.includes('/rest/v1/rpc/is_admin')) return Promise.resolve({ ok: true, status: 200, json: async () => false, text: async () => '' });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    doc.getElementById('account-submit').click();
+    await new Promise(r => setTimeout(r, 400));
+    check('compte affiché après connexion', !doc.getElementById('account-user').classList.contains('hidden'));
+    check('e-mail affiché', /visiteur@lsv\.ai/.test(doc.getElementById('account-mail').textContent), doc.getElementById('account-mail').textContent);
+    check('back-office masqué hors liste blanche', doc.getElementById('account-admin').classList.contains('hidden'));
+    check('session conservée sur l appareil', !!wb.localStorage.getItem('lsv4_account'));
+    check('aucun mot de passe en clair stocké', !/password|motdepasse|secret-de-test/i.test(wb.localStorage.getItem('lsv4_account') || ''));
+    check('aucune erreur console (comptes)', errors.length === 0, errors.join('|'));
 
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');

@@ -1697,8 +1697,39 @@ input:focus, textarea:focus, select:focus {
     margin-top: 0.6rem;
 }
 .rp-status.ok { color: var(--green); border-color: var(--green); background: var(--green-light); }
+.rp-status.err { color: var(--red); border-color: var(--red); background: var(--red-light); }
 .rp-status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-4); }
 .rp-status.ok .dot { background: var(--green); }
+.rp-status.err .dot { background: var(--red); }
+
+.account-mail {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--ink-2);
+    padding: 0.5rem 0.7rem;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-bottom: 0.6rem;
+}
+.account-switch {
+    display: inline-block;
+    margin-top: 0.55rem;
+    margin-right: 0.6rem;
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--ink-3);
+    font-family: var(--font);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.account-switch:hover { color: var(--accent); }
+.rp-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .rp-project-card {
     padding: 0.8rem 0.9rem;
@@ -3005,6 +3036,34 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
             </div>
         </div>
 
+        <div class="rp-section" id="account-section">
+            <div class="rp-title"><span class="ms">account_circle</span> Compte</div>
+
+            <div id="account-guest">
+                <button type="button" class="rp-btn" id="account-open">Se connecter / S'inscrire</button>
+
+                <div id="account-form" class="hidden">
+                    <input type="email" class="rp-api-input" id="account-email" placeholder="e-mail" autocomplete="username">
+                    <input type="password" class="rp-api-input" id="account-password" placeholder="mot de passe" autocomplete="current-password">
+                    <button type="button" class="rp-btn" id="account-submit">Se connecter</button>
+                    <div>
+                        <button type="button" class="account-switch" id="account-mode">Créer un compte</button>
+                        <button type="button" class="account-switch" id="account-cancel">Annuler</button>
+                    </div>
+                </div>
+
+                <div class="rp-status hidden" id="account-status">
+                    <span class="dot"></span><span id="account-status-text"></span>
+                </div>
+            </div>
+
+            <div id="account-user" class="hidden">
+                <div class="account-mail" id="account-mail">—</div>
+                <button type="button" class="rp-btn hidden" id="account-admin">Ouvrir le back-office</button>
+                <button type="button" class="account-switch" id="account-logout">Se déconnecter</button>
+            </div>
+        </div>
+
         <div class="rp-section">
             <div class="rp-title"><span class="ms">folder</span> Projet actif</div>
             <div id="rp-project-content">
@@ -3646,6 +3705,261 @@ const Gateway = {
         return Object.assign({}, options, {
             headers: Object.assign({}, Gateway.headers(), options.headers || {})
         });
+    }
+};
+
+/* ── Comptes LSV.ai (Supabase Auth) ───────────────────────────────────────
+   Inscription / connexion / déconnexion via les endpoints REST publics du
+   projet Supabase : le mot de passe ne va nulle part ailleurs. Seule une
+   session courte (jeton d'accès + rafraîchissement) est gardée sur
+   l'appareil. Aucun mot de passe ni clé secrète en dur dans ce fichier. */
+const AccountService = {
+    KEY: 'lsv4_account',
+    _s: null,
+
+    _configured() {
+        const c = window.LSV_CONFIG || {};
+        const url = String(c.SUPABASE_URL || '');
+        const key = String(c.SUPABASE_ANON_KEY || '');
+        return !!(url && key &&
+            url.indexOf('supabase.co') !== -1 &&
+            url.indexOf('YOUR_PROJECT_REF') === -1 &&
+            key.indexOf('YOUR_SUPABASE_ANON_KEY') === -1);
+    },
+    _base() {
+        return String((window.LSV_CONFIG && window.LSV_CONFIG.SUPABASE_URL) || '').replace(/\/+$/, '');
+    },
+    _headers(token) {
+        const h = { 'Content-Type': 'application/json' };
+        const anon = (window.LSV_CONFIG && window.LSV_CONFIG.SUPABASE_ANON_KEY) || '';
+        if (anon) h.apikey = anon;
+        if (token) h.Authorization = 'Bearer ' + token;
+        return h;
+    },
+
+    session() {
+        if (this._s !== null) return this._s;
+        try {
+            const raw = localStorage.getItem(this.KEY);
+            this._s = raw ? JSON.parse(raw) : null;
+        } catch (e) { this._s = null; }
+        return this._s;
+    },
+    _save(s) {
+        this._s = s;
+        try {
+            if (s) localStorage.setItem(this.KEY, JSON.stringify(s));
+            else localStorage.removeItem(this.KEY);
+        } catch (e) {}
+    },
+    email() {
+        const s = this.session();
+        return (s && s.email) || '';
+    },
+    signedIn() {
+        const s = this.session();
+        return !!(s && s.access_token);
+    },
+
+    async _post(path, body, token) {
+        const res = await fetch(this._base() + '/auth/v1' + path, {
+            method: 'POST',
+            headers: this._headers(token),
+            body: JSON.stringify(body || {})
+        });
+        let data = null;
+        try { data = await res.json(); } catch (e) {}
+        if (!res.ok) {
+            const msg = (data && (data.error_description || data.msg || data.error_code || data.message)) ||
+                (data && data.error && data.error_description) || ('HTTP ' + res.status);
+            throw new Error(String(msg));
+        }
+        return data || {};
+    },
+    _keep(data, fallbackEmail) {
+        this._save({
+            access_token: data.access_token,
+            refresh_token: data.refresh_token,
+            expires_at: Math.floor(Date.now() / 1000) + (Number(data.expires_in) || 3600),
+            email: (data.user && data.user.email) || fallbackEmail || ''
+        });
+    },
+
+    async signUp(email, password) {
+        if (!this._configured()) throw new Error('configuration absente');
+        const data = await this._post('/signup', { email: email, password: password });
+        if (data.access_token && data.refresh_token) {
+            this._keep(data, email);
+            return { confirmed: true };
+        }
+        return { confirmed: false };
+    },
+    async signIn(email, password) {
+        if (!this._configured()) throw new Error('configuration absente');
+        const data = await this._post('/token?grant_type=password', { email: email, password: password });
+        this._keep(data, email);
+        return true;
+    },
+    async signOut() {
+        const s = this.session();
+        this._save(null);
+        if (s && s.access_token) {
+            try {
+                await fetch(this._base() + '/auth/v1/logout', {
+                    method: 'POST',
+                    headers: this._headers(s.access_token)
+                });
+            } catch (e) {}
+        }
+        return true;
+    },
+    async token() {
+        const s = this.session();
+        if (!s || !s.access_token) return null;
+        const now = Math.floor(Date.now() / 1000);
+        if (!s.expires_at || s.expires_at - now > 60) return s.access_token;
+        if (!s.refresh_token) { this._save(null); return null; }
+        try {
+            const data = await this._post('/token?grant_type=refresh_token', { refresh_token: s.refresh_token });
+            this._keep(data, s.email);
+            return this._s && this._s.access_token;
+        } catch (e) {
+            this._save(null);
+            return null;
+        }
+    },
+    /* Liste blanche : vrai si l'e-mail est admis dans le back-office. */
+    async isAdmin() {
+        const t = await this.token();
+        if (!t) return false;
+        try {
+            const res = await fetch(this._base() + '/rest/v1/rpc/is_admin', {
+                method: 'POST',
+                headers: this._headers(t),
+                body: '{}'
+            });
+            if (!res.ok) return false;
+            return (await res.json()) === true;
+        } catch (e) { return false; }
+    },
+
+    friendly(message) {
+        const m = String(message || '').toLowerCase();
+        if (m.indexOf('configuration') !== -1) return 'Compte indisponible : configuration absente.';
+        if (m.indexOf('invalid login') !== -1) return 'Identifiants incorrects.';
+        if (m.indexOf('already registered') !== -1 || m.indexOf('user already') !== -1) return 'Compte déjà existant : connecte-toi.';
+        if (m.indexOf('password should be at least') !== -1 || m.indexOf('password is too short') !== -1) return 'Mot de passe : 6 caractères minimum.';
+        if (m.indexOf('email not confirmed') !== -1) return 'E-mail non confirmé : clique sur le lien reçu.';
+        if (m.indexOf('signup') !== -1 && m.indexOf('disabled') !== -1) return 'Inscriptions fermées pour le moment.';
+        if (m.indexOf('rate limit') !== -1 || m.indexOf('too many') !== -1) return 'Trop de tentatives, réessaie plus tard.';
+        if (m.indexOf('fetch') !== -1 || m.indexOf('network') !== -1 || m.indexOf('http') !== -1) return 'Connexion réseau impossible.';
+        return 'Opération impossible pour le moment.';
+    }
+};
+
+const AccountView = {
+    mode: 'login',
+    busy: false,
+
+    $(id) { return document.getElementById(id); },
+
+    init() {
+        if (!this.$('account-section')) return;
+        this.$('account-open').addEventListener('click', () => this.open());
+        this.$('account-cancel').addEventListener('click', () => this.close());
+        this.$('account-mode').addEventListener('click', () => this.setMode(this.mode === 'login' ? 'signup' : 'login'));
+        this.$('account-submit').addEventListener('click', () => this.submit());
+        ['account-email', 'account-password'].forEach(id => {
+            this.$(id).addEventListener('keydown', e => { if (e.key === 'Enter') this.submit(); });
+        });
+        this.$('account-logout').addEventListener('click', () => this.logout());
+        this.$('account-admin').addEventListener('click', () => { window.location.href = 'admin/index.html'; });
+        this.refresh();
+    },
+
+    status(msg, kind) {
+        const el = this.$('account-status');
+        if (!el) return;
+        el.className = 'rp-status' + (kind === 'ok' ? ' ok' : kind === 'err' ? ' err' : '');
+        this.$('account-status-text').textContent = msg || '';
+    },
+    open() {
+        this.$('account-form').classList.remove('hidden');
+        this.$('account-email').focus();
+    },
+    close() {
+        this.$('account-form').classList.add('hidden');
+        this.status('');
+        this.$('account-status').classList.add('hidden');
+    },
+    setMode(mode) {
+        this.mode = mode === 'signup' ? 'signup' : 'login';
+        const signup = this.mode === 'signup';
+        this.$('account-submit').textContent = signup ? 'Créer le compte' : 'Se connecter';
+        this.$('account-mode').textContent = signup ? 'J\u2019ai déjà un compte' : 'Créer un compte';
+        this.$('account-password').setAttribute('autocomplete', signup ? 'new-password' : 'current-password');
+        this.$('account-password').setAttribute('placeholder', signup ? '6 caractères minimum' : 'mot de passe');
+    },
+    renderGuest() {
+        this.$('account-user').classList.add('hidden');
+        this.$('account-guest').classList.remove('hidden');
+        this.$('account-form').classList.add('hidden');
+    },
+    async refresh() {
+        try {
+            if (!AccountService.signedIn()) { this.renderGuest(); return; }
+            const t = await AccountService.token();
+            if (!t) { this.renderGuest(); return; }
+            this.$('account-guest').classList.add('hidden');
+            this.$('account-user').classList.remove('hidden');
+            this.$('account-mail').textContent = AccountService.email() || 'Compte LSV.ai';
+            const admin = await AccountService.isAdmin();
+            this.$('account-admin').classList.toggle('hidden', !admin);
+        } catch (e) {
+            this.renderGuest();
+        }
+    },
+    async submit() {
+        if (this.busy) return;
+        const email = this.$('account-email').value.trim();
+        const password = this.$('account-password').value;
+        if (!email || !password) { this.status('E-mail et mot de passe requis.', 'err'); return; }
+        this.busy = true;
+        const btn = this.$('account-submit');
+        const label = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Vérification…';
+        try {
+            if (this.mode === 'signup') {
+                const r = await AccountService.signUp(email, password);
+                if (r.confirmed) {
+                    LSVAnalytics.track('account_created', {});
+                    this.status('Compte créé : tu es connecté·e.', 'ok');
+                    this.$('account-password').value = '';
+                    await this.refresh();
+                } else {
+                    this.setMode('login');
+                    this.status('Compte créé : confirme ton e-mail puis connecte-toi.', 'ok');
+                }
+            } else {
+                await AccountService.signIn(email, password);
+                LSVAnalytics.track('account_signed_in', {});
+                this.$('account-password').value = '';
+                this.status('Connexion réussie.', 'ok');
+                await this.refresh();
+            }
+        } catch (e) {
+            this.status(AccountService.friendly(e && e.message), 'err');
+        } finally {
+            this.busy = false;
+            btn.disabled = false;
+            btn.textContent = label;
+        }
+    },
+    async logout() {
+        try { await AccountService.signOut(); } catch (e) {}
+        this.renderGuest();
+        this.status('Déconnecté.', 'ok');
     }
 };
 
@@ -5840,6 +6154,7 @@ function init() {
     HistoryView.refresh();
     AdvancedView.refresh();
     RightPanel.refresh();
+    AccountView.init();
 
     // Restaurer les résultats depuis la bibliothèque
     restoreResultsFromLibrary();
@@ -5872,6 +6187,7 @@ window.LSV = {
         debug: DebugService,
         timing: TimingService,
         wakelock: WakeLockService,
+        account: AccountService,
         agnes: AgnesProvider,
         image: ImageService,
         video: VideoService,

@@ -7,8 +7,9 @@
 --   • INSERT anonyme  : autorisé (le public peut envoyer des événements),
 --                       mais STRICTEMENT limité à la table analytics_events
 --                       et à une liste blanche d'événements.
---   • SELECT          : réservé aux comptes authentifiés (Supabase Auth).
---                       Aucune donnée n'est lisible sans compte admin.
+--   • SELECT          : réservé aux comptes authentifiés (Supabase Auth)
+--                       dont l'e-mail figure dans la liste blanche
+--                       public.admin_emails (table invisible côté client).
 --   • Aucun UPDATE / DELETE anon : le public ne peut ni modifier ni purger.
 --   • Le "service_role" key n'est jamais utilisé par le front.
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -31,7 +32,9 @@ create table if not exists public.analytics_events (
                     'project_created',
                     'generation_error',
                     'enhancer_used',
-                    'batch_completed'
+                    'batch_completed',
+                    'account_created',
+                    'account_signed_in'
                 )),
     props       jsonb not null default '{}'::jsonb,
     -- aucune donnée volumineuse : refuse les payloads > 4 Ko
@@ -48,6 +51,31 @@ create index if not exists analytics_events_visitor_idx
 -- ── Row Level Security ─────────────────────────────────────────────────────
 alter table public.analytics_events enable row level security;
 
+-- ── Liste blanche des comptes administrateurs ──────────────────────────────
+create table if not exists public.admin_emails (
+    email       text primary key,
+    created_at  timestamptz not null default now()
+);
+alter table public.admin_emails enable row level security;
+-- Supabase accorde tous les droits aux rôles client par défaut : on retire tout
+-- (aucune policy ne s'applique non plus : la table n'est lisible par personne).
+revoke all on public.admin_emails from anon, authenticated;
+
+-- Fonction appelée par le back-office (bouton "suis-je admin ?") et par la
+-- policy de lecture ci-dessous. SECURITY DEFINER : elle lit admin_emails en
+-- tant que propriétaire de la table, ce que la RLS interdirait sinon.
+create or replace function public.is_admin() returns boolean
+    language sql stable security definer
+    set search_path = public
+    as $$
+        select exists (
+            select 1 from public.admin_emails a
+            where a.email = lower(coalesce(auth.jwt() ->> 'email', ''))
+        );
+    $$;
+revoke execute on function public.is_admin() from public, anon;
+grant execute on function public.is_admin() to authenticated;
+
 drop policy if exists "anon_insert_events" on public.analytics_events;
 create policy "anon_insert_events"
     on public.analytics_events
@@ -60,7 +88,7 @@ create policy "authenticated_select_events"
     on public.analytics_events
     for select
     to authenticated
-    using (true);
+    using (public.is_admin());
 
 -- Pas de policy UPDATE/DELETE pour anon : lecture/écriture interdites hors insert.
 
@@ -69,18 +97,13 @@ grant usage on schema public to anon, authenticated;
 grant insert on public.analytics_events to anon, authenticated;
 grant select on public.analytics_events to authenticated;
 
--- ── OPTIONNEL : restreindre la lecture à une liste blanche d'emails admin ──
--- 1) créer la table :
--- create table if not exists public.admin_emails (email text primary key, created_at timestamptz default now());
--- alter table public.admin_emails enable row level security;
--- grant select on public.admin_emails to authenticated;
--- 2) ajouter ton email :
--- insert into public.admin_emails (email) values ('toi@exemple.com') on conflict do nothing;
--- 3) remplacer la policy "authenticated_select_events" par :
--- drop policy if exists "authenticated_select_events" on public.analytics_events;
--- create policy "authenticated_select_events" on public.analytics_events
---     for select to authenticated
---     using ((auth.jwt() ->> 'email') in (select email from public.admin_emails));
+-- ── LISTE BLANCHE : ajoute (ou retire) les e-mails administrateurs ─────────
+-- insert into public.admin_emails (email) values ('toi@exemple.com')
+--     on conflict (email) do nothing;
+-- delete from public.admin_emails where email = 'ancien@exemple.com';
+--
+-- Sans cette ligne, AUCUN compte (tien compris) ne voit les statistiques :
+-- le back-office affiche "Compte non autorisé".
 
 -- ── Données de test (optionnel) ────────────────────────────────────────────
 -- insert into public.analytics_events (visitor_id, session_id, event, props) values

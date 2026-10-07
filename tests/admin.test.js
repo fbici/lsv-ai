@@ -18,6 +18,10 @@ const EVENTS = [
 
 const GOOD_EMAIL = 'admin@test.com';
 const GOOD_PASSWORD = 'password-de-test';
+const OTHER_EMAIL = 'user@test.com'; // compte réel mais hors liste blanche
+const NEW_EMAIL = 'nouveau@test.com'; // créé par le scénario d'inscription
+const CONFIRM_EMAIL = 'confirme@test.com'; // inscription nécessitant une confirmation
+const WHITELIST = [GOOD_EMAIL, NEW_EMAIL];
 
 let rlsEnabled = true; // simule la RLS Supabase : pas de session = pas de données
 
@@ -57,6 +61,12 @@ function makeFakeSupabase() {
         from(table) {
             if (table !== 'analytics_events') return builder([]);
             return builder(EVENTS);
+        },
+        rpc(name) {
+            if (name !== 'is_admin') return Promise.resolve({ data: null, error: { message: 'unknown function' } });
+            const s = api._session;
+            const email = s && s.user && s.user.email;
+            return Promise.resolve({ data: !!(email && ['admin@test.com', 'nouveau@test.com'].indexOf(email) !== -1), error: null });
         }
     };
     return { createClient: () => api, _api: api };
@@ -110,7 +120,8 @@ async function login(dom, email, password) {
                 order() { return b; }, limit() { return b; },
                 then(resolve) {
                     const session = api._session;
-                    if (window.__rlsEnabled && (!session || session.user.email !== window.__GOOD_EMAIL)) {
+                    const listed = session && (window.__WHITELIST || []).indexOf(session.user.email) !== -1;
+                    if (window.__rlsEnabled && !listed) {
                         resolve({ data: null, error: { message: 'permission denied for table analytics_events' } });
                     } else resolve({ data: rowsForRequest, error: null });
                 }
@@ -122,7 +133,9 @@ async function login(dom, email, password) {
             auth: {
                 getSession() { return Promise.resolve({ data: { session: api._session }, error: null }); },
                 signInWithPassword(creds) {
-                    if (creds.email === window.__GOOD_EMAIL && creds.password === window.__GOOD_PASSWORD) {
+                    const ok = creds.password === window.__GOOD_PASSWORD &&
+                        (creds.email === window.__GOOD_EMAIL || creds.email === window.__USER_EMAIL);
+                    if (ok) {
                         const session = { user: { id: 'uid-1', email: creds.email }, expires_at: Math.floor(Date.now() / 1000) + 3600 };
                         api._session = session;
                         api._listeners.forEach(cb => cb('SIGNED_IN', session));
@@ -130,10 +143,26 @@ async function login(dom, email, password) {
                     }
                     return Promise.resolve({ data: { user: null, session: null }, error: { message: 'Invalid login credentials' } });
                 },
+                signUp(creds) {
+                    if (creds.email === window.__CONFIRM_EMAIL) {
+                        return Promise.resolve({ data: { user: { id: 'uid-2', email: creds.email }, session: null }, error: null });
+                    }
+                    const session = { user: { id: 'uid-2', email: creds.email }, expires_at: Math.floor(Date.now() / 1000) + 3600 };
+                    api._session = session;
+                    api._listeners.forEach(cb => cb('SIGNED_IN', session));
+                    return Promise.resolve({ data: { user: session.user, session }, error: null });
+                },
                 signOut() { api._session = null; api._listeners.forEach(cb => cb('SIGNED_OUT', null)); return Promise.resolve({ error: null }); },
                 onAuthStateChange(cb) { api._listeners.push(cb); return { data: { subscription: {} } }; }
             },
-            from() { return builder(window.__EVENTS); }
+            from() { return builder(window.__EVENTS); },
+            rpc(name) {
+                if (name !== 'is_admin') return Promise.resolve({ data: null, error: { message: 'unknown function' } });
+                const s = api._session;
+                const email = s && s.user && s.user.email;
+                const wl = window.__WHITELIST || [];
+                return Promise.resolve({ data: !!(email && wl.indexOf(email) !== -1), error: null });
+            }
         };
         return { createClient: () => api, _api: api };
     };
@@ -146,7 +175,9 @@ async function login(dom, email, password) {
             .replace(/<link[^>]*fonts\.(googleapis|gstatic)[^>]*>/g, '')
             .replace(/<script src="https:\/\/cdn\.jsdelivr\.net[^"]*"><\/script>/,
                 '<script>window.__rlsEnabled=true;window.__GOOD_EMAIL="' + GOOD_EMAIL + '";window.__GOOD_PASSWORD="' + GOOD_PASSWORD +
-                '";window.__EVENTS=' + JSON.stringify(EVENTS) + ';window.supabase=(' + fake.toString() + ')();</script>')
+                '";window.__USER_EMAIL="' + OTHER_EMAIL + '";window.__CONFIRM_EMAIL="' + CONFIRM_EMAIL +
+                '";window.__WHITELIST=' + JSON.stringify(WHITELIST) +
+                ';window.__EVENTS=' + JSON.stringify(EVENTS) + ';window.supabase=(' + fake.toString() + ')();</script>')
             .replace('<script src="../shared/config.js"></script>', '<script>window.LSV_CONFIG=' + JSON.stringify(config) + ';</script>')
             .replace('<script src="./admin.js"></script>', '<script>' + fs.readFileSync(path.join(PROJECT, 'admin/admin.js'), 'utf8') + '</script>');
     }
@@ -237,7 +268,50 @@ async function login(dom, email, password) {
     check('déconnexion → login', !w.document.getElementById('auth-screen').classList.contains('hidden'));
     check('données effacées après logout', w.document.getElementById('kpi-grid').innerHTML.indexOf('kpi-value') === -1 || w.document.getElementById('admin-app').classList.contains('hidden'));
 
-    console.log('\n=== I. SANITÉ ===');
+    console.log('\n=== I. INSCRIPTION DEPUIS L ÉCRAN CONNEXION ===');
+    t = await load(inject(src, CONFIG_OK));
+    let wi = t.dom.window;
+    wi.document.getElementById('signup-toggle').dispatchEvent(new wi.Event('click', { bubbles: true }));
+    await sleep(80);
+    check('titre = Créer un compte', wi.document.getElementById('auth-title').textContent === 'Créer un compte');
+    check('indice d inscription visible', !wi.document.getElementById('signup-hint').classList.contains('hidden'));
+    check('bouton = Créer le compte', /Créer le compte/.test(wi.document.getElementById('login-btn').textContent));
+    check('libellé inversé (j ai déjà un compte)', /déjà un compte/.test(wi.document.getElementById('signup-toggle').textContent));
+    check('autocomplete = new-password', wi.document.getElementById('login-password').getAttribute('autocomplete') === 'new-password');
+    check('login form masqué avant inscription', wi.document.getElementById('admin-app').classList.contains('hidden'));
+
+    wi.document.getElementById('login-email').value = NEW_EMAIL;
+    wi.document.getElementById('login-password').value = 'mot-de-passe-test';
+    wi.document.getElementById('login-form').dispatchEvent(new wi.Event('submit', { bubbles: true, cancelable: true }));
+    await sleep(500);
+    check('inscription → dashboard (liste blanche)', !wi.document.getElementById('admin-app').classList.contains('hidden'));
+    check('e-mail du nouveau compte affiché', wi.document.getElementById('admin-email').textContent === NEW_EMAIL, wi.document.getElementById('admin-email').textContent);
+
+    const t2 = await load(inject(src, CONFIG_OK));
+    const wc = t2.dom.window;
+    wc.document.getElementById('signup-toggle').dispatchEvent(new wc.Event('click', { bubbles: true }));
+    await sleep(60);
+    wc.document.getElementById('login-email').value = CONFIRM_EMAIL;
+    wc.document.getElementById('login-password').value = 'mot-de-passe-test';
+    wc.document.getElementById('login-form').dispatchEvent(new wc.Event('submit', { bubbles: true, cancelable: true }));
+    await sleep(450);
+    check('confirmation e-mail demandée', /confirme ton e-mail/i.test(wc.document.getElementById('auth-status').textContent), wc.document.getElementById('auth-status').textContent);
+    check('dashboard fermé en attente de confirmation', wc.document.getElementById('admin-app').classList.contains('hidden'));
+    check('retour au mode connexion', /Créer un compte/.test(wc.document.getElementById('signup-toggle').textContent));
+    check('aucune erreur console (inscription)', t2.errors.length === 0, t2.errors.join('|'));
+
+    console.log('\n=== J. COMPTE HORS LISTE BLANCHE ===');
+    t = await load(inject(src, CONFIG_OK));
+    const wo = t.dom.window;
+    await login(t, OTHER_EMAIL, GOOD_PASSWORD);
+    await sleep(450);
+    check('dashboard masqué (non listé)', wo.document.getElementById('admin-app').classList.contains('hidden'));
+    check('message non autorisé', /non autorisé/i.test(wo.document.getElementById('login-error').textContent), wo.document.getElementById('login-error').textContent);
+    check('écran de connexion visible', !wo.document.getElementById('auth-screen').classList.contains('hidden'));
+    check('aucune donnée affichée (hors liste)', wo.document.getElementById('kpi-grid').innerHTML.trim() === '');
+    check('aucune erreur console (hors liste)', t.errors.length === 0, t.errors.join('|'));
+
+    console.log('\n=== K. SANITÉ ===');
     check('aucune erreur console globale', t.errors.length === 0, t.errors.join('|'));
     const finalHtml = fs.readFileSync(path.join(PROJECT, 'admin/index.html'), 'utf8') + fs.readFileSync(path.join(PROJECT, 'admin/admin.js'), 'utf8');
     check('aucun mot de passe codé en dur', !/ADMIN_PASSWORD|password\s*===\s*['"][^'"]+['"]/.test(finalHtml));

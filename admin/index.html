@@ -22,7 +22,7 @@
             <span class="auth-logo">LSV<span class="auth-logo-dot">.ai</span></span>
             <span class="auth-badge">ADMIN</span>
         </div>
-        <h1 class="auth-title">Back-office</h1>
+        <h1 class="auth-title" id="auth-title">Back-office</h1>
         <p class="auth-sub">Accès réservé à l'administrateur. Les identifiants sont vérifiés côté serveur (Supabase Auth) — aucun mot de passe n'est stocké dans le navigateur.</p>
 
         <form id="login-form" autocomplete="on">
@@ -38,6 +38,11 @@
             <button type="submit" class="btn btn-primary btn-block" id="login-btn">
                 <span class="ms">lock</span> Se connecter
             </button>
+            <button type="button" class="auth-switch" id="signup-toggle">Créer un compte</button>
+            <div class="auth-hint hidden" id="signup-hint">
+                Choisis un e-mail et un mot de passe (6 caractères minimum).
+                L'accès aux statistiques reste réservé aux e-mails de la liste blanche.
+            </div>
         </form>
 
         <div class="auth-foot">

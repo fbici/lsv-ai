@@ -153,6 +153,16 @@ html, body {
     padding: 0.6rem 0.75rem; border-radius: var(--radius-sm);
     font-size: 0.82rem; font-weight: 500; margin-bottom: 0.9rem;
 }
+.auth-switch {
+    display: block; width: 100%; margin-top: 0.7rem; padding: 0.5rem;
+    background: none; border: 1px dashed var(--border); border-radius: var(--radius-sm);
+    color: var(--ink-2); font-size: 0.8rem; font-weight: 600;
+    font-family: inherit; cursor: pointer;
+}
+.auth-switch:hover { color: var(--accent); border-color: var(--accent); }
+.auth-hint {
+    font-size: 0.76rem; color: var(--ink-3); line-height: 1.5; margin-top: 0.7rem;
+}
 .auth-foot { margin-top: 1.3rem; display: flex; flex-direction: column; gap: 0.7rem; }
 .auth-status { font-size: 0.76rem; color: var(--ink-3); }
 .auth-status.warn { color: var(--amber); }

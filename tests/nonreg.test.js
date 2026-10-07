@@ -76,6 +76,12 @@ function normalizePublic(doc) {
     const drop = sel => { const el = doc.querySelector(sel); if (el) el.remove(); };
     drop('#api-mini');
     drop('#debug');
+    // Blocs AJOUTÉS par la mission « comptes » : comparés par leurs propres
+    // tests (public.test), donc retirés ici pour ne pas fausser l'égalité
+    // structurelle avec l'original.
+    drop('#account-section');
+    const w = doc.defaultView;
+    if (w && w.LSV && w.LSV.services && w.LSV.services.account) delete w.LSV.services.account;
     const keyInput = doc.getElementById('api-input');
     if (keyInput && keyInput.closest('.rp-section')) keyInput.closest('.rp-section').remove();
     doc.querySelectorAll('.rp-section.bottom').forEach(s => { if (/agnes/i.test(s.innerHTML)) s.remove(); });

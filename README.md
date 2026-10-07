@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.2
+# LSV.ai — Studio Viral v3.3
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
 
@@ -14,8 +14,9 @@ Navigateur LSV.ai  →  LSV API Gateway (Supabase Edge)  →  Fournisseur de gé
 Extensions en place autour de l'application (non refaite) :
 
 - **LSV API Gateway** — proxy sécurisé + quotas configurables ;
+- **Comptes utilisateurs** — inscription/connexion dans l'app (Supabase Auth) ;
 - **Analytics** anonymes et non bloquants ;
-- **Back-office admin** (`/admin`) avec authentification réelle ;
+- **Back-office admin** (`/admin`) avec authentification réelle **et liste blanche** ;
 - **Architecture GitHub-ready** (front statique + service serverless).
 
 ```text
@@ -23,6 +24,7 @@ LSV.ai
 │
 ├── Application créative existante (design et workflows inchangés)
 │   Images · Vidéos · Chat IA · Motion · Projects · Library
+│   + section « Compte » (inscription / connexion / déconnexion)
 │
 ├── LSV API Gateway     → supabase/functions/lsv-gateway
 │   Clé fournisseur côté serveur · rate limit · quotas · erreurs sanitizées
@@ -30,8 +32,8 @@ LSV.ai
 ├── Analytics           → analytics/analytics.js
 │
 └── Back-office Admin   → /admin
-    Connexion · Dashboard · Visiteurs · Images · Vidéos · Chat
-    Motion · Activité · Erreurs · Paramètres
+    Connexion · Inscription · Liste blanche · Dashboard · Visiteurs
+    Images · Vidéos · Chat · Motion · Activité · Erreurs · Paramètres
 ```
 
 ---
@@ -96,7 +98,7 @@ lsv-ai/
 
 ---
 
-## 2. Changements de cette version + LSV API Gateway
+## 2. Changements de cette version : Gateway + comptes
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -193,6 +195,20 @@ renvoie `429` avec un message générique :
 Les limites **Agnes** restent celles du compte fournisseur ; les limites **LSV**
 ne protègent que notre passerelle.
 
+### 2.6 Comptes utilisateurs + liste blanche admin (nouveau)
+
+| Ajout | Détail |
+|---|---|
+| **Section « Compte »** | panneau de droite : `Se connecter / S'inscrire`, formulaire e-mail + mot de passe, `Se déconnecter` |
+| **Inscription** | Supabase Auth (`/auth/v1/signup`) — le mot de passe n'est envoyé qu'à Supabase |
+| **Session** | jeton d'accès + rafraîchissement stockés sur l'appareil (`localStorage.lsv4_account`), jamais le mot de passe |
+| **Liste blanche admin** | table `admin_emails` + fonction SQL `is_admin()` : seul un e-mail listé voit les statistiques |
+| **Bouton back-office** | affiché dans l'app **uniquement** si l'e-mail connecté est dans la liste blanche |
+| **Événements** | `account_created`, `account_signed_in` (sans e-mail, sans donnée personnelle) |
+
+Un compte créé **n'ouvre rien par lui-même** : sans figure dans `admin_emails`,
+le back-office affiche « Compte non autorisé » et le tableau de bord reste vide.
+
 ---
 
 ## 3. Installation locale
@@ -229,22 +245,47 @@ npm run serve      # http://localhost:4173
 
 1. Dashboard → **SQL Editor** → **New query**.
 2. Coller le contenu de `supabase/schema.sql` → **Run**.
+   *(Base déjà créée ? exécuter `supabase/upgrade-admin-whitelist.sql`.)*
+3. **Ajouter son e-mail administrateur** (décommenter la dernière ligne du
+   script, ou SQL direct) :
+
+```sql
+insert into public.admin_emails (email) values ('toi@exemple.com')
+    on conflict (email) do nothing;
+```
 
 Ce script crée :
 
 - la table `analytics_events` (insert anonyme autorisé, **lecture réservée aux
-  comptes authentifiés**, pas de UPDATE/DELETE anon) ;
+  comptes authentifiés et listés**, pas de UPDATE/DELETE anon) ;
+- la table `admin_emails` (liste blanche, **invisible côté client** : RLS sans
+   policy + droits révoqués sur `anon` et `authenticated`) ;
+- la fonction SQL `is_admin()` (légitimée par le JWT de session) ;
 - une **liste blanche d'événements** (un inconnu ne peut pas injecter de n'importe
   quel événement) ;
 - un contrôle de taille de payload (< 4 Ko) ;
 - les index nécessaires.
 
-### 4.3 Créer le compte administrateur
+> ⚠️ **Sans e-mail dans `admin_emails`, personne — tien compris — n'accède aux
+> statistiques.** Le back-office affiche « Compte non autorisé ».
 
-1. Dashboard → **Authentication** → **Users** → **Add user** → *Create new user*.
-2. Saisir un e-mail et un mot de passe forts → **Create user**.
-3. **IMPORTANT** : Authentication → **Sign In / Providers** → **Email** →
-   désactiver **Enable Sign Ups** (personne ne peut s'auto-inscrire).
+### 4.3 Autoriser les inscriptions (comptes utilisateurs)
+
+1. Dashboard → **Authentication** → **Sign In / Providers** → **Email** :
+   provider **activé**, et **Enable Sign Ups activé** (le public peut créer un
+   compte depuis la section « Compte » de l'app).
+2. **Confirm email** :
+   - *ON* (défaut) : l'inscrit doit cliquer le lien reçu par e-mail avant de se
+     connecter — recommandé ;
+   - *OFF* : connexion immédiate (utile pour tester rapidement).
+3. Créer ton compte : soit depuis l'app (section « Compte »), soit depuis
+   l'écran `/admin/` (bouton **Créer un compte**), puis **ajouter son e-mail
+   dans `admin_emails`** (§4.2).
+4. Pour ouvrir l'accès à quelqu'un d'autre : même procédure (compte + ligne SQL).
+   Pour le retirer : `delete from public.admin_emails where email = '…';`
+
+Les comptes et leurs e-mails restent visibles uniquement dans
+**Authentication → Users** (Supabase) : jamais dans l'app ni dans Git.
 
 ### 4.4 Récupérer les identifiants publics
 
@@ -273,19 +314,41 @@ window.LSV_CONFIG = {
 
 ---
 
-## 5. Back-office `/admin`
+## 5. Comptes & back-office `/admin`
+
+### 5.1 S'inscrire / se connecter (application publique)
+
+Dans le panneau de droite → section **Compte** :
+
+| Situation | Résultat |
+|---|---|
+| Non connecté | bouton `Se connecter / S'inscrire` (formulaire fermé par défaut) |
+| `Créer un compte` | e-mail + mot de passe (6 car. min.) → `signUp` |
+| Confirmation e-mail activée | message « confirme ton e-mail puis connecte-toi » |
+| Connecté | e-mail affiché + `Se déconnecter` |
+| E-mail **dans** `admin_emails` | bouton `Ouvrir le back-office` en plus |
+| E-mail **hors** liste blanche | aucun accès au back-office proposé |
+
+Le mot de passe ne va **que** vers Supabase Auth ; l'app garde seulement une
+session courte (jeton d'accès + rafraîchissement) dans `localStorage`.
+Aucune donnée personnelle (ni e-mail, ni mot de passe) n'est envoyée aux
+Analytics.
+
+### 5.2 Back-office `/admin`
 
 URL : `https://<votre-site>/admin/`
 
 ```text
 /admin
    ↓
-Page de connexion
+Page de connexion  (ou « Créer un compte »)
    ↓
 Supabase Auth (vérification côté serveur — hachage du mot de passe)
    ↓
-JWT de session (rafraîchi automatiquement, stocké par le SDK)
-   ↓
+is_admin()  →  e-mail présent dans public.admin_emails ?
+   ↓ oui                                    ↓ non
+JWT de session                       « Compte non autorisé »
+   ↓                                      (aucune donnée)
 Dashboard (lectures soumises à la RLS)
 ```
 
@@ -295,11 +358,13 @@ Comportements attendus :
 |---|---|
 | Non authentifié | ❌ dashboard inaccessible, page de connexion |
 | Mauvais identifiants | ❌ « Identifiants incorrects » |
+| Compte créé mais **hors liste blanche** | ❌ « Compte non autorisé : cet accès est réservé aux e-mails de la liste blanche. » |
+| Script SQL non exécuté (`is_admin` absent) | ❌ message « exécuter supabase/upgrade-admin-whitelist.sql » |
 | Session expirée | ❌ retour automatique à la connexion |
 | URL connue sans compte | ❌ aucune donnée affichée (RLS refuse) |
 | Supabase/CDN indisponible | ❌ message d'erreur, aucun crash |
 
-### Pages du dashboard
+### 5.3 Pages du dashboard
 
 - **Vue d'ensemble** — visiteurs, sessions, images, vidéos, chat, erreurs ;
   graphique d'activité quotidienne ; utilisation par fonctionnalité ;
@@ -333,6 +398,8 @@ Périodes : **Aujourd'hui · 7 jours · 30 jours · Tout**.
 | `enhancer_used` | prompt amélioré | status, type, style |
 | `generation_error` | échec de génération | feature, detail |
 | `motion_generated` | réservé (module à venir) | — |
+| `account_created` | compte créé (app ou `/admin`) | — |
+| `account_signed_in` | connexion d'un compte | — |
 
 ### 6.2 Ce qui n'est **jamais** envoyé
 
@@ -340,7 +407,8 @@ Périodes : **Aujourd'hui · 7 jours · 30 jours · Tout**.
 - URLs d'images / vidéos ;
 - clés API, tokens, Authorization ;
 - noms de fichiers, data-URI ;
-- données personnelles (aucun compte utilisateur côté public).
+- **e-mails, mots de passe, identifiants de compte** : les événements
+  `account_*` ne portent aucune propriété (les comptes restent dans Supabase).
 
 Un assainisseur (`cleanProps`) filtre les clés interdites, tronque les chaînes à
 200 caractères et masque les motifs `sk-…`, `Bearer …`, `eyJ…`.
@@ -404,10 +472,11 @@ git grep -i "service_role" # ne doit rien trouver
 
 1. **Déployer la LSV API Gateway** (§2.4) et injecter `AGNES_API_KEY`.
 2. Remplir `shared/config.js` avec les vraies valeurs, committer, push.
-3. Ouvrir `https://<vous>.github.io/lsv-ai/` → générer une image (doit passer
+3. **Exécuter le SQL** (§4.2) puis **ajouter son e-mail dans `admin_emails`**.
+4. Ouvrir `https://<vous>.github.io/lsv-ai/` → générer une image (doit passer
    par `…/functions/v1/lsv-gateway/v1/images/generations`).
-4. Ouvrir `https://<vous>.github.io/lsv-ai/admin/` → se connecter, vérifier
-   que le dashboard se remplit.
+5. Ouvrir `https://<vous>.github.io/lsv-ai/admin/` → se connecter, vérifier
+   que le dashboard se remplit (sinon : « Compte non autorisé » → §4.2).
 
 **Note sur les chemins** : tous les liens sont **relatifs** (`./admin/`,
 `../shared/config.js`) → le site fonctionne aussi bien à la racine que dans
@@ -436,13 +505,14 @@ fonction : jamais dans `index.html`, `admin/`, `analytics/`, `shared/`,
 ## 9. Tests
 
 ```bash
-npm test        # 168 assertions au total
+npm test        # 191 assertions (203 avec ORIG=… voir plus bas)
 ```
 
-**`tests/nonreg.test.js`** (53 assertions) — non-régression
+**`tests/nonreg.test.js`** (41 assertions, **53 avec `ORIG`**) — non-régression
 
 - structure HTML et `body.innerHTML` identiques à l'original, hors blocs
-  volontairement supprimés (clé API, console, infos fournisseur) —
+  volontairement supprimés (clé API, console, infos fournisseur) **et hors
+  section « Compte » ajoutée** —
   `ORIG=/chemin/index.original.html npm test` ;
 - navigation sur les 14 onglets sans exception ;
 - génération d'image simulée **sans aucune clé** : succès + échec, requête
@@ -451,7 +521,7 @@ npm test        # 168 assertions au total
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (48 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (66 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -460,7 +530,10 @@ npm test        # 168 assertions au total
 - erreur amont → toast générique (aucun code HTTP, endpoint, jeton) ;
 - aucun `sk-` dans `index.html` ni dans les fichiers publics ;
 - admin : pas de lien public, pas de mot de passe en dur, RLS en lecture
-  authentifiée uniquement.
+  authentifiée **et listée** uniquement (`is_admin`) ;
+- comptes : section fermée par défaut, échec de connexion → message générique,
+  connexion OK → e-mail affiché, back-office masqué hors liste blanche,
+  aucune donnée secrète en `localStorage`.
 
 **`tests/gateway.test.mjs`** (36 assertions) — passerelle
 
@@ -471,28 +544,33 @@ npm test        # 168 assertions au total
 - erreurs amont sanitisées (401/500/réseau → message générique, aucun détail) ;
 - clé absente → 503, aucun secret dans aucune réponse.
 
-**`tests/admin.test.js`** (31 assertions)
+**`tests/admin.test.js`** (48 assertions)
 
 - configuration absente / non authentifié → dashboard inaccessible ;
 - mauvais identifiants → accès refusé ;
 - identifiants valides → dashboard + KPI + graphiques rendus ;
 - 8 pages + 4 plages temporelles sans exception ;
 - session expirée (RLS) → retour connexion ; déconnexion → données effacées ;
+- **inscription** depuis l'écran de connexion (mode, libellés, création →
+  dashboard si listé, confirmation e-mail si requise) ;
+- **compte hors liste blanche** → « Compte non autorisé », zéro donnée ;
 - aucun mot de passe codé en dur, aucune `service_role`.
 
 ---
 
 ## 10. Limites connues (volontaires)
 
-- **Un seul administrateur**, pas de rôles multiples, pas d'abonnement, pas de
-  paiement, pas de comptes utilisateurs côté public → par choix pour cette phase.
+- **Comptes « légers »** : inscription/connexion + liste blanche pour le
+  back-office, mais pas encore d'espace personnel de synchronisation (projets /
+  historique dans le cloud), pas de rôles multiples, pas d'abonnement ni de
+  paiement.
 - **Motion Control** n'est pas encore implémenté dans LSV.ai : le dashboard
   compte les ouvertures de l'onglet ; `motion_generated` est prêt à l'emploi.
 - Le volume est pensé pour quelques milliers d'événements/jour (limite de 20 000
   lignes lues par requête). Au-delà, ajouter une agrégation serveur (vue SQL).
-- L'insertion anonyme est ouverte (nécessaire pour un site public) : en cas
-  d'abus possible, activer la policy « liste blanche d'e-mails » commentée dans
-  `supabase/schema.sql`, ou poser un rate-limit Cloudflare devant Pages.
+- L'insertion anonyme est ouverte (nécessaire pour un site public) : liste
+  blanche d'événements + quotas Gateway en place ; en cas d'abus, ajouter un
+  rate-limit Cloudflare devant Pages.
 - **Rate limit / quotas Gateway en mémoire** : efficaces contre les rafales,
   mais remis à zéro à chaque redémarrage de l'isolate Edge (plusieurs isolate
   = quota par isolate). Si LSV.ai grandit, brancher un store Supabase
@@ -500,8 +578,8 @@ npm test        # 168 assertions au total
 - **Noms de modèles encore présents dans `index.html`** (constantes `MODEL_*`) :
   ils ne sont jamais affichés à l'écran (testé), mais restent lisibles dans le
   source. Pour les retirer aussi, les faire injecter par la Gateway.
-- CSS des blocs supprimés (`.api-mini`, `.debug*`, `.rp-api-input`) conservé
-  mais inutilisé : aucun rendu, purge possible ultérieurement.
+- CSS des blocs supprimés (`.api-mini`, `.debug*`) conservé mais inutilisé :
+  aucun rendu, purge possible ultérieurement.
 
 ---
 

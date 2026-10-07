@@ -3,6 +3,10 @@
    ───────────────────────────────────────────────────────────────────────────
    • Authentification réelle via Supabase Auth (vérification côté serveur,
      mots de passe hachés, JWT) — aucun identifiant dans ce fichier.
+   • Connexion ET création de compte (signUp) depuis cet écran.
+   • Liste blanche : la lecture des stats est conditionnée à is_admin()
+     (table public.admin_emails) — un compte non autorisé reste sur l'écran
+     de connexion avec un message explicite, sans aucune donnée affichée.
    • Lecture des statistiques soumise aux politiques RLS Supabase :
      sans session valide, la base ne renvoie STRICTEMENT RIENT.
    • Tolérance aux pannes : si Supabase/le réseau est indisponible, l'admin
@@ -18,6 +22,9 @@
         client: null,
         user: null,
         session: null,
+        mode: 'login', // 'login' | 'signup'
+        isAdmin: false,
+        checking: false,
         rows: [],
         priorVisitors: [],
         range: 'today',
@@ -140,33 +147,74 @@
     function friendlyAuthError(message) {
         var m = String(message || '').toLowerCase();
         if (m.indexOf('invalid login') !== -1) return 'Identifiants incorrects.';
-        if (m.indexOf('email not confirmed') !== -1) return 'E-mail non confirmé.';
+        if (m.indexOf('already registered') !== -1 || m.indexOf('user already') !== -1) return 'Compte déjà existant : connecte-toi.';
+        if (m.indexOf('password should be at least') !== -1 || m.indexOf('password is too short') !== -1) return 'Mot de passe : 6 caractères minimum.';
+        if (m.indexOf('signup') !== -1 && m.indexOf('disabled') !== -1) return 'Inscriptions désactivées sur ce projet Supabase.';
+        if (m.indexOf('email not confirmed') !== -1) return 'E-mail non confirmé : clique sur le lien reçu puis reconnecte-toi.';
         if (m.indexOf('rate limit') !== -1 || m.indexOf('too many') !== -1) return 'Trop de tentatives, réessaie plus tard.';
         if (m.indexOf('fetch') !== -1 || m.indexOf('network') !== -1) return 'Impossible de joindre Supabase (réseau).';
         return message || 'Échec de la connexion.';
     }
 
+    /* Mode connexion / création de compte ─────────────────────────────── */
+    function buttonLabel() {
+        return State.mode === 'signup'
+            ? '<span class="ms">person_add</span> Créer le compte'
+            : '<span class="ms">lock</span> Se connecter';
+    }
+    function setBusy(btn, busy) {
+        btn.disabled = busy;
+        btn.innerHTML = busy
+            ? '<span class="ms">progress_activity</span> Vérification…'
+            : buttonLabel();
+    }
+    function setMode(mode) {
+        State.mode = mode === 'signup' ? 'signup' : 'login';
+        var signup = State.mode === 'signup';
+        $('login-btn').innerHTML = buttonLabel();
+        $('signup-toggle').textContent = signup
+            ? 'J’ai déjà un compte — Se connecter'
+            : 'Créer un compte';
+        $('signup-hint').classList.toggle('hidden', !signup);
+        $('auth-title').textContent = signup ? 'Créer un compte' : 'Back-office';
+        $('login-password').setAttribute('autocomplete', signup ? 'new-password' : 'current-password');
+        $('login-password').setAttribute('placeholder', signup ? '6 caractères minimum' : '••••••••');
+    }
+
     function initAuth() {
         var form = $('login-form');
+        $('signup-toggle').addEventListener('click', function () {
+            setMode(State.mode === 'signup' ? 'login' : 'signup');
+            $('login-error').classList.add('hidden');
+            $('login-email').focus();
+        });
         form.addEventListener('submit', function (e) {
             e.preventDefault();
             var email = $('login-email').value.trim();
             var password = $('login-password').value;
             var btn = $('login-btn');
             if (!State.client) { showLogin('Service d\'authentification indisponible.', 'error'); return; }
-            btn.disabled = true;
-            btn.innerHTML = '<span class="ms">progress_activity</span> Vérification…';
-            State.client.auth.signInWithPassword({ email: email, password: password })
+            setBusy(btn, true);
+            var call = State.mode === 'signup'
+                ? State.client.auth.signUp({ email: email, password: password })
+                : State.client.auth.signInWithPassword({ email: email, password: password });
+            call
                 .then(function (res) {
-                    btn.disabled = false;
-                    btn.innerHTML = '<span class="ms">lock</span> Se connecter';
+                    setBusy(btn, false);
                     if (res.error) { showLogin(friendlyAuthError(res.error.message), 'error'); return; }
+                    if (State.mode === 'signup') {
+                        var session = res.data && res.data.session;
+                        if (!session) {
+                            setMode('login');
+                            showLogin('Compte créé : confirme ton e-mail (lien reçu), puis connecte-toi.', '');
+                            return;
+                        }
+                    }
                     State.user = res.data.user;
                     onSignedIn();
                 })
                 .catch(function (err) {
-                    btn.disabled = false;
-                    btn.innerHTML = '<span class="ms">lock</span> Se connecter';
+                    setBusy(btn, false);
                     showLogin(friendlyAuthError(err && err.message), 'error');
                 });
         });
@@ -178,6 +226,7 @@
     function doLogout() {
         if (State.client) State.client.auth.signOut().catch(function () {});
         State.user = null;
+        State.isAdmin = false;
         State.rows = [];
         State.priorVisitors = [];
         stopAutoRefresh();
@@ -185,11 +234,56 @@
         toast('Déconnecté', 'success');
     }
 
+    /* Liste blanche : la RLS renvoie zéro ligne aux non-admins, donc on
+       interroge explicitement is_admin() avant d'ouvrir le tableau de bord. */
+    function checkAdminAccess() {
+        if (!State.client || typeof State.client.rpc !== 'function') {
+            return Promise.resolve({
+                ok: false,
+                msg: 'Script SQL à exécuter : supabase/upgrade-admin-whitelist.sql (fonction is_admin introuvable).'
+            });
+        }
+        return State.client.rpc('is_admin')
+            .then(function (res) {
+                if (res && res.error) {
+                    return {
+                        ok: false,
+                        msg: 'Script SQL à exécuter : supabase/upgrade-admin-whitelist.sql (' +
+                            friendlyAuthError(res.error.message) + ')'
+                    };
+                }
+                if (!res || res.data !== true) {
+                    return { ok: false, msg: 'Compte non autorisé : cet accès est réservé aux e-mails de la liste blanche.' };
+                }
+                return { ok: true };
+            })
+            .catch(function () {
+                return {
+                    ok: false,
+                    msg: 'Script SQL à exécuter : supabase/upgrade-admin-whitelist.sql (fonction is_admin introuvable).'
+                };
+            });
+    }
+
     function onSignedIn() {
-        showApp();
-        toast('Connexion réussie', 'success');
-        load(true);
-        startAutoRefresh();
+        if (!State.user || State.checking) return;
+        if (!$('admin-app').classList.contains('hidden')) return;
+        State.checking = true;
+        checkAdminAccess().then(function (res) {
+            State.checking = false;
+            if (!State.user) return;
+            if (!res.ok) {
+                State.isAdmin = false;
+                stopAutoRefresh();
+                showLogin(res.msg, 'error');
+                return;
+            }
+            State.isAdmin = true;
+            showApp();
+            toast('Connexion réussie', 'success');
+            load(true);
+            startAutoRefresh();
+        });
     }
 
     /* ── Chargement des données (RLS : refusé sans session) ─────────────── */
@@ -513,6 +607,8 @@
                 meta = [p.type, p.style].filter(Boolean).join(' · ');
                 break;
             case 'motion_generated': icon = 'animation'; cls = 'project'; title = 'Motion générée'; break;
+            case 'account_created': icon = 'person_add'; cls = 'project'; title = 'Compte créé'; break;
+            case 'account_signed_in': icon = 'verified_user'; cls = 'tab'; title = 'Connexion compte'; break;
             default: icon = 'bolt'; title = row.event;
         }
         return '<div class="feed-item">' +
@@ -765,6 +861,7 @@
         ]);
         $('settings-session').innerHTML = kvHTML([
             ['Compte', esc((State.user && State.user.email) || '—')],
+            ['Liste blanche', State.isAdmin ? '<span class="badge ok">autorisé</span>' : '<span class="badge err">non</span>'],
             ['Identifiant', esc((State.user && State.user.id) || '—'), true],
             ['Session expire', State.session && State.session.expires_at
                 ? fmtDateTime(new Date(State.session.expires_at * 1000).toISOString())
