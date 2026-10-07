@@ -97,7 +97,9 @@ grant usage on schema public to anon, authenticated;
 grant insert on public.analytics_events to anon, authenticated;
 grant select on public.analytics_events to authenticated;
 
--- ── LISTE BLANCHE : ajoute (ou retire) les e-mails administrateurs ─────────
+-- ── LISTE BLANCHE : un e-mail = un accès admin ─────────────────────────────
+-- Une seule ligne pour un seul administrateur ; ajoute-en une autre
+-- uniquement si tu veux ouvrir l'accès à quelqu'un d'autre.
 -- insert into public.admin_emails (email) values ('toi@exemple.com')
 --     on conflict (email) do nothing;
 -- delete from public.admin_emails where email = 'ancien@exemple.com';

@@ -3257,6 +3257,7 @@ const Utils = {
             return 'Vous avez atteint la limite temporaire de génération. Veuillez patienter avant de réessayer.';
         }
         if (m === 'Arrêt demandé') return 'Génération arrêtée.';
+        if (/connexion requise/i.test(m)) return 'Connecte-toi à ton compte pour créer.';
         return 'Impossible de générer le contenu pour le moment. Veuillez réessayer dans quelques instants.';
     },
     getStyleById: (id) => STYLES.find(s => s.id === id),
@@ -3905,6 +3906,24 @@ const AccountView = {
         this.$('account-guest').classList.remove('hidden');
         this.$('account-form').classList.add('hidden');
     },
+    /* ── Création réservée aux comptes connectés ─────────────────────────
+       Toute génération (image, vidéo, chat, enhancer, batch) passe par
+       ensure() : sans compte, le formulaire s'ouvre et rien n'est envoyé. */
+    requireLogin() {
+        this.open();
+        this.status('Connecte-toi pour créer (images, vidéos, chat).', 'err');
+        const el = this.$('account-section');
+        if (el && typeof el.scrollIntoView === 'function') {
+            try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+        }
+        UI.showToast('Connecte-toi à ton compte pour créer.', 'error', 4000);
+        return false;
+    },
+    async ensure() {
+        const t = await AccountService.token();
+        if (t) return true;
+        return this.requireLogin();
+    },
     async refresh() {
         try {
             if (!AccountService.signedIn()) { this.renderGuest(); return; }
@@ -3965,6 +3984,8 @@ const AccountView = {
 
 const AgnesProvider = {
     async fetch(url, options = {}, label = 'API') {
+        // Création réservée aux comptes connectés (image, vidéo, enhancer, batch…)
+        if (!(await AccountView.ensure())) throw new Error('Connexion requise');
         options = Gateway.withHeaders(options);
         for (let attempt = 0; attempt < CONFIG.RETRY_MAX_ATTEMPTS; attempt++) {
             if (Runtime.stopRequested) throw new Error('Arrêt demandé');
@@ -4604,6 +4625,8 @@ const ChatService = {
         return msgs;
     },
     async send(conversation, userMessage, context) {
+        // Création réservée aux comptes connectés
+        if (!(await AccountView.ensure())) throw new Error('Connexion requise');
         ConversationService.addMessage(conversation.id, 'user', userMessage);
         const conv = ConversationService.get(conversation.id);
         const messages = this.buildMessages(conv, context);
@@ -4946,6 +4969,8 @@ const ChatView = {
         const input = document.getElementById('chat-input');
         const text = input.value.trim();
         if (!text) return;
+        // Création réservée aux comptes connectés (message conservé dans le champ)
+        if (!(await AccountView.ensure())) return;
         if (!Runtime.currentConversationId) {
             const conv = ConversationService.create({ projectId: Runtime.currentProjectId });
             Runtime.currentConversationId = conv.id;

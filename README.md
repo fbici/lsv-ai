@@ -6,6 +6,11 @@ Le public n'utilise que **LSV.ai** : ni clé API à saisir, ni nom de fournisseu
 ni endpoint, ni console de debug. L'application parle à **sa propre passerelle**,
 qui appelle le fournisseur de génération côté serveur avec un secret.
 
+**Création = compte** : toute génération (images, vidéos, chat, enhancer, batch)
+exige un **compte connecté** (inscription gratuite, section « Compte »). Un
+visiteur non connecté conserve l'accès à la consultation, mais rien n'est envoyé
+ni consommé.
+
 ```text
 Navigateur LSV.ai  →  LSV API Gateway (Supabase Edge)  →  Fournisseur de génération
    (aucun secret)        (clé injectée ici)                 (infra invisible)
@@ -203,6 +208,7 @@ ne protègent que notre passerelle.
 | **Inscription** | Supabase Auth (`/auth/v1/signup`) — le mot de passe n'est envoyé qu'à Supabase |
 | **Session** | jeton d'accès + rafraîchissement stockés sur l'appareil (`localStorage.lsv4_account`), jamais le mot de passe |
 | **Liste blanche admin** | table `admin_emails` + fonction SQL `is_admin()` : seul un e-mail listé voit les statistiques |
+| **Création = compte** | `AgnesProvider.fetch` + `ChatService.send` appellent `AccountView.ensure()` : sans compte, **aucune requête** de génération n'est émise (image, vidéo, chat, enhancer, batch) — le formulaire Compte s'ouvre avec le message « Connecte-toi à ton compte pour créer. » |
 | **Bouton back-office** | affiché dans l'app **uniquement** si l'e-mail connecté est dans la liste blanche |
 | **Événements** | `account_created`, `account_signed_in` (sans e-mail, sans donnée personnelle) |
 
@@ -323,6 +329,7 @@ Dans le panneau de droite → section **Compte** :
 | Situation | Résultat |
 |---|---|
 | Non connecté | bouton `Se connecter / S'inscrire` (formulaire fermé par défaut) |
+| Non connecté **+ création** | ❌ aucune requête envoyée : toast « Connecte-toi à ton compte pour créer. » + formulaire Compte ouvert (le champ de saisie est conservé) |
 | `Créer un compte` | e-mail + mot de passe (6 car. min.) → `signUp` |
 | Confirmation e-mail activée | message « confirme ton e-mail puis connecte-toi » |
 | Connecté | e-mail affiché + `Se déconnecter` |
@@ -505,7 +512,7 @@ fonction : jamais dans `index.html`, `admin/`, `analytics/`, `shared/`,
 ## 9. Tests
 
 ```bash
-npm test        # 191 assertions (203 avec ORIG=… voir plus bas)
+npm test        # 199 assertions (211 avec ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (41 assertions, **53 avec `ORIG`**) — non-régression
@@ -521,7 +528,7 @@ npm test        # 191 assertions (203 avec ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (66 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (74 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -533,7 +540,9 @@ npm test        # 191 assertions (203 avec ORIG=… voir plus bas)
   authentifiée **et listée** uniquement (`is_admin`) ;
 - comptes : section fermée par défaut, échec de connexion → message générique,
   connexion OK → e-mail affiché, back-office masqué hors liste blanche,
-  aucune donnée secrète en `localStorage`.
+  aucune donnée secrète en `localStorage` ;
+- **création bloquée sans compte** : aucune requête image/chat émise, toast
+  d'invitation, formulaire Compte ouvert, champ de saisie conservé.
 
 **`tests/gateway.test.mjs`** (36 assertions) — passerelle
 
@@ -560,10 +569,12 @@ npm test        # 191 assertions (203 avec ORIG=… voir plus bas)
 
 ## 10. Limites connues (volontaires)
 
-- **Comptes « légers »** : inscription/connexion + liste blanche pour le
-  back-office, mais pas encore d'espace personnel de synchronisation (projets /
-  historique dans le cloud), pas de rôles multiples, pas d'abonnement ni de
-  paiement.
+- **Comptes « légers »** : inscription/connexion obligatoire pour **créer**
+  (image, vidéo, chat, enhancer, batch) + liste blanche pour le back-office,
+  mais pas encore d'espace personnel de synchronisation (projets / historique
+  dans le cloud), pas de rôles multiples, pas d'abonnement ni de paiement.
+  Les données locales (projets, bibliothèque, historique) restent consultables
+  sans compte — elles ne consomment rien.
 - **Motion Control** n'est pas encore implémenté dans LSV.ai : le dashboard
   compte les ouvertures de l'onglet ; `motion_generated` est prêt à l'emploi.
 - Le volume est pensé pour quelques milliers d'événements/jour (limite de 20 000
@@ -585,8 +596,10 @@ npm test        # 191 assertions (203 avec ORIG=… voir plus bas)
 
 ## 11. LSV.ai — accès rapide
 
-L'application est prête pour le public : ouvrir `index.html` et utiliser
-Images, Vidéos, Chat IA, Motion, Storyboard, Workflows, Cohérence, Batch,
-Projets et Bibliothèque **sans saisir aucune clé**. Seule condition : la
-Gateway (§2.4) doit être déployée, sinon les boutons de génération restent
-inactifs (et non pas « cassés »).
+L'application est prête pour le public : ouvrir `index.html`, **créer un compte**
+(section Compte, une fois) et utiliser Images, Vidéos, Chat IA, Motion,
+Storyboard, Workflows, Cohérence, Batch, Projets et Bibliothèque **sans saisir
+aucune clé**. Sans compte, la consultation reste ouverte mais toute génération
+est refusée. Deux autres conditions : la Gateway (§2.4) doit être déployée,
+sinon les boutons de génération restent inactifs (et non pas « cassés »), et
+ton e-mail doit être dans `admin_emails` pour ouvrir `/admin/` (§4.2).

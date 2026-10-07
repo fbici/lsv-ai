@@ -100,11 +100,23 @@ function check(label, cond, extra) {
     console.log((cond ? '  OK   ' : '  FAIL ') + label + (extra !== undefined ? '  [' + extra + ']' : ''));
 }
 
+/* La création (image/vidéo/chat) exige un compte connecté : on ouvre une
+   session de test pour que les scénarios de génération restent valides. */
+function connect(w) {
+    w.LSV.services.account._s = {
+        access_token: 'jwt-de-test',
+        refresh_token: 'rfr-de-test',
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        email: 'test@lsv.ai'
+    };
+}
+
 (async () => {
     console.log('\n=== CHARGEMENT DU DÉPÔT ===');
     const b = await load(prepare(MOD, true));
     console.log('erreurs : ' + (b.errors.length ? b.errors.join(' | ') : 'aucune'));
     const wb = b.dom.window;
+    connect(wb);
 
     if (ORIG && fs.existsSync(ORIG)) {
         console.log('=== CHARGEMENT ORIGINAL ===');
@@ -243,6 +255,7 @@ function check(label, cond, extra) {
     console.log('\n=== 8. MODULE ANALYTICS INTÉGRALEMENT ABSENT ===');
     const stripped = await load(prepare(MOD, false));
     const ws = stripped.dom.window;
+    connect(ws);
     check('aucune erreur au chargement', stripped.errors.length === 0, stripped.errors.join('|'));
     check('LSV disponible sans analytics', !!ws.LSV && typeof ws.LSV.handlers.runImageGeneration === 'function');
     check('shim actif (track inerte)', typeof ws.LSVAnalytics.track === 'function' && ws.LSVAnalytics.isConfigured() === false);

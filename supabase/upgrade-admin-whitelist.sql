@@ -58,10 +58,14 @@ alter table public.analytics_events
         'account_signed_in'
     ));
 
--- 5) ⚠️  AJOUTE TON E-MAIL (sinon personne n'accède au back-office) ⚠️ ─────
+-- 5) ⚠️  AJOUTE TON E-MAIL — ET UNIQUEMENT LE TIEN — CI-DESSOUS ⚠️ ────────
+-- (si tu ouvres l'accès à quelqu'un : même procédure, une ligne par e-mail)
 insert into public.admin_emails (email) values ('toi@exemple.com')
     on conflict (email) do nothing;
 -- (remplace toi@exemple.com par l'e-mail exact de ton compte Supabase Auth)
 
--- Vérification :
+-- Retirer quelqu'un :
+-- delete from public.admin_emails where email = 'ancien@exemple.com';
+
+-- Vérification (doit renvoyer UNE seule ligne : la tienne) :
 -- select * from public.admin_emails;

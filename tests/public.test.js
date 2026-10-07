@@ -53,6 +53,15 @@ async function load(html) {
     const wb = dom.window;
     const doc = wb.document;
 
+    /* La création exige un compte connecté : session de test ouverte pour
+       que les scénarios de génération restent valides. */
+    wb.LSV.services.account._s = {
+        access_token: 'jwt-de-test',
+        refresh_token: 'rfr-de-test',
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        email: 'test@lsv.ai'
+    };
+
     console.log('=== 1. ÉLÉMENTS TECHNIQUES SUPPRIMÉS DE L INTERFACE ===');
     check('aucune erreur au chargement', errors.length === 0, errors.join('|'));
     check('champ de clé API absent', !doc.getElementById('api-input'));
@@ -212,6 +221,30 @@ async function load(html) {
     check('session conservée sur l appareil', !!wb.localStorage.getItem('lsv4_account'));
     check('aucun mot de passe en clair stocké', !/password|motdepasse|secret-de-test/i.test(wb.localStorage.getItem('lsv4_account') || ''));
     check('aucune erreur console (comptes)', errors.length === 0, errors.join('|'));
+
+    console.log('\n=== 8. CRÉATION BLOQUÉE SANS COMPTE ===');
+    const anon = await load(prepare());
+    const wa = anon.dom.window;
+    const da = wa.document;
+    const anonCalls = [];
+    wa.fetch = function (url, options) {
+        anonCalls.push(String(url));
+        if (String(url).includes('/rest/v1/analytics_events')) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    da.getElementById('image-prompt').value = 'Un tigre en costume, style cinématique';
+    await wa.LSV.handlers.runImageGeneration();
+    check('aucune requête image sans compte', !anonCalls.some(u => u.includes('/images/generations')), anonCalls.join(','));
+    check('aucune image créée', wa.LSV.runtime.imageCount === 0, wa.LSV.runtime.imageCount);
+    check('toast = invitation à se connecter', /Connecte-toi/.test(da.getElementById('toast-text').textContent), da.getElementById('toast-text').textContent);
+    check('formulaire Compte ouvert automatiquement', !da.getElementById('account-form').classList.contains('hidden'));
+    check('aucun détail technique dans le toast', !/sk-|HTTP|apihub|agnes/i.test(da.getElementById('toast-text').textContent));
+
+    da.getElementById('chat-input').value = 'Salut, une idée ?';
+    await wa.LSV.views.chat.sendMessage();
+    check('aucune requête chat sans compte', !anonCalls.some(u => u.includes('/chat/completions')), anonCalls.join(','));
+    check('message conservé dans le champ', da.getElementById('chat-input').value === 'Salut, une idée ?', da.getElementById('chat-input').value);
+    check('aucune erreur console (bloqué)', anon.errors.length === 0, anon.errors.join('|'));
 
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');
