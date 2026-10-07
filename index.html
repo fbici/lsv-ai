@@ -2268,10 +2268,6 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
         <div class="sidebar-spacer"></div>
 
         <div class="sidebar-footer">
-            <div class="api-mini" id="api-mini">
-                <span class="dot"></span>
-                <span id="api-mini-text">API inactive</span>
-            </div>
             <div class="sidebar-stat">
                 <span>Images</span>
                 <span class="stat-value" id="sidebar-image-count">0</span>
@@ -2959,18 +2955,6 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
                 </div>
                 <div class="kv-grid">
                     <div class="kv">
-                        <div class="kv-label">API Base</div>
-                        <div class="kv-value">apihub.agnes-ai.com/v1</div>
-                    </div>
-                    <div class="kv">
-                        <div class="kv-label">Modèle image</div>
-                        <div class="kv-value">agnes-image-2.1-flash</div>
-                    </div>
-                    <div class="kv">
-                        <div class="kv-label">Modèle vidéo</div>
-                        <div class="kv-value">agnes-video-v2.0</div>
-                    </div>
-                    <div class="kv">
                         <div class="kv-label">Limite image</div>
                         <div class="kv-value">4096 × 4096 max par côté</div>
                     </div>
@@ -2990,7 +2974,7 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
                     <div class="card-title"><span class="ms">warning</span> Réinitialisation</div>
                 </div>
                 <div class="info-block warn">
-                    <strong>Attention :</strong> supprime tous les projets, ressources, conversations et locks. La clé API est conservée.
+                    <strong>Attention :</strong> supprime tous les projets, ressources, conversations et locks.
                 </div>
                 <button type="button" class="btn btn-danger" id="reset-all-btn">
                     <span class="ms">delete_forever</span>
@@ -3003,16 +2987,6 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
 
     <!-- RIGHT PANEL -->
     <aside class="right-panel">
-        <div class="rp-section">
-            <div class="rp-title"><span class="ms">key</span> Clé API Agnes</div>
-            <input type="password" class="rp-api-input" id="api-input" placeholder="sk-..." autocomplete="off" spellcheck="false">
-            <button type="button" class="rp-btn" id="api-save">Enregistrer</button>
-            <div class="rp-status" id="api-status">
-                <span class="dot"></span>
-                <span id="api-status-text">Aucune clé</span>
-            </div>
-        </div>
-
         <div class="rp-section">
             <div class="rp-title"><span class="ms">tune</span> Paramètres</div>
             <div class="toggle-row">
@@ -3046,14 +3020,6 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
                 · <strong style="color:var(--orange);">Storyboard</strong> pour structurer un film<br>
                 · <strong style="color:var(--blue);">Workflows</strong> pour aller de l'idée au résultat
             </div>
-        </div>
-
-        <div class="rp-section bottom">
-            <div class="rp-title"><span class="ms">link</span> Ressources</div>
-            <a href="https://platform.agnes-ai.com" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:space-between;padding:0.7rem 0.9rem;background:var(--bg-3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--ink-2);text-decoration:none;font-size:0.78rem;font-weight:500;">
-                <span>Obtenir une clé API</span>
-                <span class="ms ms-sm">open_in_new</span>
-            </a>
         </div>
     </aside>
 
@@ -3097,22 +3063,6 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
     <div class="modal" id="modal"></div>
 </div>
 
-<div class="debug" id="debug">
-    <div class="debug-header" id="debug-header">
-        <div class="debug-title">
-            <span class="ms">terminal</span>
-            Console LSV
-            <span class="debug-badge" id="debug-count">0</span>
-        </div>
-        <div class="debug-actions">
-            <button type="button" class="debug-btn" id="debug-copy"><span class="ms">content_copy</span> Copier</button>
-            <button type="button" class="debug-btn" id="debug-clear"><span class="ms">delete</span> Effacer</button>
-            <button type="button" class="debug-btn" id="debug-collapse"><span class="ms">expand_more</span></button>
-        </div>
-    </div>
-    <div class="debug-body" id="debug-body"></div>
-</div>
-
 <canvas id="noSleepCanvas" width="2" height="2"></canvas>
 <video id="noSleepVideo" playsinline muted loop></video>
 
@@ -3129,9 +3079,14 @@ window.LSVAnalytics = window.LSVAnalytics || { track: function () {}, flush: fun
    LSV.AI — Version finale
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* Toutes les requêtes de génération passent par la LSV API Gateway.
+   Le fournisseur final et sa clé restent côté serveur (jamais ici). */
+const GATEWAY_URL = String((window.LSV_CONFIG && window.LSV_CONFIG.LSV_GATEWAY_URL) || '').replace(/\/+$/, '');
+
 const CONFIG = Object.freeze({
-    API_BASE: 'https://apihub.agnes-ai.com/v1',
-    POLL_BASE: 'https://apihub.agnes-ai.com/agnesapi',
+    GATEWAY_READY: /^https?:\/\//.test(GATEWAY_URL),
+    API_BASE: GATEWAY_URL ? GATEWAY_URL + '/v1' : '',
+    POLL_BASE: GATEWAY_URL ? GATEWAY_URL + '/agnesapi' : '',
     MODEL_IMAGE: 'agnes-image-2.1-flash',
     MODEL_VIDEO: 'agnes-video-v2.0',
     MODEL_CHAT: 'agnes-2.5-flash',
@@ -3155,7 +3110,6 @@ const CONFIG = Object.freeze({
 });
 
 const STORAGE_KEYS = Object.freeze({
-    API_KEY: 'lsv4_api_key',
     TIMING: 'lsv4_timing',
     WAKELOCK: 'lsv4_wakelock',
     COUNTERS: 'lsv4_counters',
@@ -3236,6 +3190,16 @@ const Utils = {
     sleep: (ms) => new Promise(r => setTimeout(r, ms)),
     escapeHtml: (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
+    /* Message affiché à l'utilisateur : jamais de détail technique
+       (code HTTP, endpoint, modèle, jeton) — voir mission §11. */
+    friendlyError: (e) => {
+        const m = (e && e.message) || String(e || '');
+        if (/limite temporaire|quota|rate.?limit/i.test(m)) {
+            return 'Vous avez atteint la limite temporaire de génération. Veuillez patienter avant de réessayer.';
+        }
+        if (m === 'Arrêt demandé') return 'Génération arrêtée.';
+        return 'Impossible de générer le contenu pour le moment. Veuillez réessayer dans quelques instants.';
+    },
     getStyleById: (id) => STYLES.find(s => s.id === id),
     clampSize: (size) => {
         const parts = size.split('x');
@@ -3309,9 +3273,6 @@ const StorageService = {
     _get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     _set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } },
     _remove(k) { try { localStorage.removeItem(k); return true; } catch (e) { return false; } },
-    getApiKey() { return (this._get(STORAGE_KEYS.API_KEY) || '').trim(); },
-    setApiKey(k) { return this._set(STORAGE_KEYS.API_KEY, k); },
-    clearApiKey() { return this._remove(STORAGE_KEYS.API_KEY); },
     getTimingCache() { try { return JSON.parse(this._get(STORAGE_KEYS.TIMING) || '{}'); } catch (e) { return {}; } },
     setTimingCache(c) { return this._set(STORAGE_KEYS.TIMING, JSON.stringify(c)); },
     getWakeLockPref() { return this._get(STORAGE_KEYS.WAKELOCK) === '1'; },
@@ -3543,10 +3504,16 @@ const LockService = {
 
 const DebugService = {
     _count: 0, _entries: [], _body: null,
+    /* La console n'apparaît plus dans l'interface publique. Les entrées
+       restent en mémoire (bornée à DEBUG_MAX_ENTRIES) pour le diagnostic
+       développeur : window.LSV.debug.entries */
     init() { this._body = document.getElementById('debug-body'); },
     log(level, category, message, data) {
-        if (!this._body) return;
         const time = new Date().toLocaleTimeString('fr-FR', { hour12: false });
+        this._entries.push({ time, level, category, message, data });
+        if (this._entries.length > CONFIG.DEBUG_MAX_ENTRIES) this._entries.shift();
+        this._count++;
+        if (!this._body) return;
         const el = document.createElement('div');
         el.className = 'debug-entry ' + level;
         let html = '<span class="debug-time">' + time + '</span>' +
@@ -3561,11 +3528,8 @@ const DebugService = {
         }
         el.innerHTML = html;
         this._body.appendChild(el);
-        this._entries.push({ time, level, category, message });
-        if (this._entries.length > CONFIG.DEBUG_MAX_ENTRIES) this._entries.shift();
         while (this._body.children.length > CONFIG.DEBUG_MAX_ENTRIES) this._body.removeChild(this._body.firstChild);
         this._body.scrollTop = this._body.scrollHeight;
-        this._count++;
         const c = document.getElementById('debug-count');
         if (c) c.textContent = this._count;
     },
@@ -3660,8 +3624,34 @@ const WakeLockService = {
     }
 };
 
+/* LSV API Gateway — en-têtes envoyés à NOTRE passerelle (JWT anon Supabase +
+   identifiant visiteur anonyme pour les quotas). Aucune clé de fournisseur. */
+const Gateway = {
+    headers() {
+        const h = {};
+        try {
+            if (window.LSVAnalytics && typeof window.LSVAnalytics.visitorId === 'function') {
+                const v = window.LSVAnalytics.visitorId();
+                if (v) h['x-lsv-visitor'] = v;
+            }
+        } catch (e) {}
+        const anon = (window.LSV_CONFIG && window.LSV_CONFIG.SUPABASE_ANON_KEY) || '';
+        if (anon) {
+            h['Authorization'] = 'Bearer ' + anon;
+            h['apikey'] = anon;
+        }
+        return h;
+    },
+    withHeaders(options) {
+        return Object.assign({}, options, {
+            headers: Object.assign({}, Gateway.headers(), options.headers || {})
+        });
+    }
+};
+
 const AgnesProvider = {
     async fetch(url, options = {}, label = 'API') {
+        options = Gateway.withHeaders(options);
         for (let attempt = 0; attempt < CONFIG.RETRY_MAX_ATTEMPTS; attempt++) {
             if (Runtime.stopRequested) throw new Error('Arrêt demandé');
             const method = options.method || 'GET';
@@ -3684,7 +3674,7 @@ const AgnesProvider = {
                 if (res.status === 429) {
                     const wait = CONFIG.RETRY_429_WAITS[Math.min(attempt, 6)];
                     DebugService.log('warn', 'RATELIMIT', '429 — attente ' + wait + 's');
-                    UI.setStatus('Attente rate limit… (' + wait + 's)');
+                    UI.setStatus('Génération en cours… (' + wait + 's)');
                     await Utils.sleep(wait * 1000);
                     continue;
                 }
@@ -3766,7 +3756,6 @@ const ImageService = {
             {
                 method: 'POST',
                 headers: {
-                    'Authorization': 'Bearer ' + StorageService.getApiKey(),
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(body)
@@ -3796,7 +3785,6 @@ const VideoService = {
             {
                 method: 'POST',
                 headers: {
-                    'Authorization': 'Bearer ' + StorageService.getApiKey(),
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(body)
@@ -3835,7 +3823,7 @@ const VideoService = {
                 }
             }
             const url = CONFIG.POLL_BASE + '?video_id=' + encodeURIComponent(id) + '&model_name=' + encodeURIComponent(CONFIG.MODEL_VIDEO);
-            const res = await AgnesProvider.fetch(url, { method: 'GET', headers: { 'Authorization': 'Bearer ' + StorageService.getApiKey() } }, 'Polling');
+            const res = await AgnesProvider.fetch(url, { method: 'GET' }, 'Polling');
             const d = await res.json();
             const status = d.status || 'unknown';
             const progress = d.progress || 0;
@@ -3969,7 +3957,6 @@ const EnhancerService = {
             {
                 method: 'POST',
                 headers: {
-                    'Authorization': 'Bearer ' + StorageService.getApiKey(),
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
@@ -4048,7 +4035,7 @@ const UI = {
         if (id === 'locks') LocksView.refresh();
     },
     updateButtons() {
-        const hasKey = !!StorageService.getApiKey();
+        const hasKey = CONFIG.GATEWAY_READY;
         const imgBtn = document.getElementById('image-generate');
         if (imgBtn) {
             const ok = UIState.imagePrompt.trim().length > 5 && (!(UIState.imageMode !== 'prompt-only') || UIState.imageRefs.length > 0);
@@ -4072,28 +4059,6 @@ const UI = {
             const hasPrompt = document.getElementById('batch-prompt').value.trim().length > 5;
             batchBtn.disabled = !hasKey || !hasPrompt || Runtime.batchRunning;
         }
-    },
-    updateApiUI() {
-        const status = document.getElementById('api-status');
-        const text = document.getElementById('api-status-text');
-        const mini = document.getElementById('api-mini');
-        const miniText = document.getElementById('api-mini-text');
-        const input = document.getElementById('api-input');
-        const key = StorageService.getApiKey();
-        if (key) {
-            if (status) status.classList.add('ok');
-            if (text) text.textContent = 'Clé active · ' + key.slice(0, 8) + '…' + key.slice(-4);
-            if (mini) mini.classList.add('ok');
-            if (miniText) miniText.textContent = 'API active';
-            if (input) input.value = key;
-        } else {
-            if (status) status.classList.remove('ok');
-            if (text) text.textContent = 'Aucune clé';
-            if (mini) mini.classList.remove('ok');
-            if (miniText) miniText.textContent = 'API inactive';
-            if (input) input.value = '';
-        }
-        this.updateButtons();
     },
     updateDurationInfo() {
         const info = document.getElementById('video-duration-info');
@@ -4328,10 +4293,9 @@ const ChatService = {
         ConversationService.addMessage(conversation.id, 'user', userMessage);
         const conv = ConversationService.get(conversation.id);
         const messages = this.buildMessages(conv, context);
-        const response = await fetch(CONFIG.API_BASE + '/chat/completions', {
+        const response = await fetch(CONFIG.API_BASE + '/chat/completions', Gateway.withHeaders({
             method: 'POST',
             headers: {
-                'Authorization': 'Bearer ' + StorageService.getApiKey(),
                 'Content-Type': 'application/json',
                 'Accept': 'text/event-stream'
             },
@@ -4342,7 +4306,7 @@ const ChatService = {
                 max_tokens: CONFIG.CHAT_MAX_TOKENS,
                 stream: true
             })
-        });
+        }));
         if (!response.ok) return this._fallbackSend(conv, context);
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -4382,7 +4346,6 @@ const ChatService = {
             {
                 method: 'POST',
                 headers: {
-                    'Authorization': 'Bearer ' + StorageService.getApiKey(),
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
@@ -4669,7 +4632,6 @@ const ChatView = {
         const input = document.getElementById('chat-input');
         const text = input.value.trim();
         if (!text) return;
-        if (!StorageService.getApiKey()) { UI.showToast('Ajoutez votre clé API', 'error'); return; }
         if (!Runtime.currentConversationId) {
             const conv = ConversationService.create({ projectId: Runtime.currentProjectId });
             Runtime.currentConversationId = conv.id;
@@ -4698,7 +4660,7 @@ const ChatView = {
         } catch (e) {
             DebugService.log('error', 'CHAT', e.message);
             LSVAnalytics.track('chat_used', { status: 'error', detail: e.message });
-            UI.showToast('Erreur chat : ' + e.message.slice(0, 60), 'error', 4000);
+            UI.showToast(Utils.friendlyError(e), 'error', 4000);
             const ph = document.getElementById('chat-typing-msg');
             if (ph) ph.remove();
             this.refresh();
@@ -5003,7 +4965,6 @@ const EnhancerView = {
     async generate() {
         const idea = document.getElementById('enhancer-input').value.trim();
         if (!idea) return;
-        if (!StorageService.getApiKey()) { UI.showToast('Ajoutez votre clé API', 'error'); return; }
         const type = document.getElementById('enhancer-type').value;
         const style = document.getElementById('enhancer-style').value;
         const btn = document.getElementById('enhancer-generate');
@@ -5021,7 +4982,7 @@ const EnhancerView = {
         } catch (e) {
             DebugService.log('error', 'ENHANCER', e.message);
             LSVAnalytics.track('enhancer_used', { status: 'error', type: type, style: style });
-            UI.showToast('Erreur : ' + e.message.slice(0, 60), 'error', 4000);
+            UI.showToast(Utils.friendlyError(e), 'error', 4000);
         } finally {
             btn.disabled = false;
             btn.innerHTML = '<span class="ms">auto_fix_high</span> Améliorer le prompt';
@@ -5296,7 +5257,6 @@ const BatchView = {
         const style = document.getElementById('batch-style').value;
         const basePrompt = document.getElementById('batch-prompt').value.trim();
         if (!basePrompt) return;
-        if (!StorageService.getApiKey()) { UI.showToast('Ajoutez votre clé API', 'error'); return; }
         Runtime.batchRunning = true;
         UI.updateButtons();
         const queueCard = document.getElementById('batch-queue-card');
@@ -5386,23 +5346,6 @@ const BatchView = {
 };
 
 const Handlers = {
-    saveApiKey() {
-        const input = document.getElementById('api-input');
-        const key = input.value.trim();
-        if (!key) {
-            StorageService.clearApiKey();
-            UI.updateApiUI();
-            UI.showToast('Clé supprimée', 'warn');
-            return;
-        }
-        if (!key.startsWith('sk-')) {
-            if (!confirm('La clé ne commence pas par "sk-". Sauvegarder ?')) return;
-        }
-        StorageService.setApiKey(key);
-        UI.updateApiUI();
-        UI.showToast('Clé enregistrée', 'success');
-        input.blur();
-    },
     async runImageGeneration() {
         if (Runtime.isRunning) return;
         Runtime.isRunning = true;
@@ -5443,7 +5386,7 @@ const Handlers = {
         } catch (e) {
             DebugService.log('error', 'IMAGE', e.message);
             LSVAnalytics.track('generation_error', { feature: 'image', detail: e.message });
-            UI.showToast('Erreur : ' + e.message.slice(0, 60), 'error', 4000);
+            UI.showToast(Utils.friendlyError(e), 'error', 4000);
             UI.setStatus('Erreur');
             await Utils.sleep(2500);
             UI.setStatus(null);
@@ -5533,7 +5476,7 @@ const Handlers = {
         } catch (e) {
             DebugService.log('error', 'VIDÉO', e.message);
             LSVAnalytics.track('generation_error', { feature: 'video', detail: e.message });
-            UI.showToast('Erreur : ' + e.message.slice(0, 60), 'error', 4000);
+            UI.showToast(Utils.friendlyError(e), 'error', 4000);
             UI.setStatus('Erreur');
             await Utils.sleep(2500);
             UI.setStatus(null);
@@ -5613,7 +5556,7 @@ const Handlers = {
     resetAll() {
         UI.showModal({
             title: 'Réinitialiser tout le stockage ?',
-            desc: 'Projets, ressources, conversations et locks seront supprimés. La clé API est conservée.',
+            desc: 'Projets, ressources, conversations et locks seront supprimés.',
             confirmLabel: 'Tout supprimer',
             danger: true,
             onConfirm: () => {
@@ -5740,10 +5683,6 @@ function init() {
     });
 
     document.getElementById('sidebar-toggle').addEventListener('click', () => Handlers.toggleSidebar());
-    document.getElementById('api-save').addEventListener('click', () => Handlers.saveApiKey());
-    document.getElementById('api-input').addEventListener('keydown', e => {
-        if (e.key === 'Enter') { e.preventDefault(); Handlers.saveApiKey(); }
-    });
 
     // Toggles thème et autodownload (panneau + avancé)
     document.getElementById('theme-toggle-panel').addEventListener('click', () => Handlers.toggleTheme());
@@ -5890,21 +5829,8 @@ function init() {
     // ADVANCED
     document.getElementById('reset-all-btn').addEventListener('click', () => Handlers.resetAll());
 
-    // DEBUG
-    document.getElementById('debug-header').addEventListener('click', e => {
-        if (e.target.closest('button')) return;
-        document.getElementById('debug').classList.toggle('collapsed');
-    });
-    document.getElementById('debug-clear').addEventListener('click', e => { e.stopPropagation(); DebugService.clear(); });
-    document.getElementById('debug-copy').addEventListener('click', e => { e.stopPropagation(); DebugService.copy(); });
-    document.getElementById('debug-collapse').addEventListener('click', e => {
-        e.stopPropagation();
-        document.getElementById('debug').classList.toggle('collapsed');
-    });
-
     WakeLockService.enableFromStorage();
 
-    UI.updateApiUI();
     UI.updateDurationInfo();
     UI.updateButtons();
     Dashboard.refresh();
@@ -5923,6 +5849,7 @@ function init() {
 
     DebugService.log('success', 'INIT', '◈ LSV.ai — Le Studio Viral prêt');
     DebugService.log('info', 'INIT', 'Thème : ' + StorageService.getTheme());
+    if (!CONFIG.GATEWAY_READY) DebugService.log('warn', 'GATEWAY', 'LSV_GATEWAY_URL non configurée : génération désactivée');
     DebugService.log('info', 'INIT', 'Sidebar : ' + (StorageService.getSidebarCollapsed() ? 'réduite' : 'déployée'));
     DebugService.log('info', 'INIT', 'Auto-download : ' + (StorageService.getAutoDownload() ? 'activé' : 'désactivé'));
     DebugService.log('info', 'INIT', 'Résultats restaurés depuis la bibliothèque');

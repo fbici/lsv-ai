@@ -59,7 +59,7 @@ function stats(win, doc) {
         navMob: doc.querySelectorAll('.nav-mob').length,
         tabs: doc.querySelectorAll('.tab-content').length,
         ids: b.querySelectorAll('[id]').length,
-        sidebar: doc.querySelector('.sidebar') ? doc.querySelector('.sidebar').innerHTML.length : 0,
+        sidebar: doc.querySelector('.sidebar') ? doc.querySelector('.sidebar').innerHTML.replace(/>\s+</g, '><').length : 0,
         imagePrompt: !!doc.getElementById('image-prompt'),
         videoPrompt: !!doc.getElementById('video-prompt'),
         chatInput: !!doc.getElementById('chat-input'),
@@ -67,6 +67,25 @@ function stats(win, doc) {
         services: win.LSV ? Object.keys(win.LSV.services).length : 0,
         views: win.LSV ? Object.keys(win.LSV.views).length : 0
     };
+}
+
+/* Retire les blocs SUPPRIMÉS VOLONTAIREMENT par la mission publique
+   (clé API, console LSV, infos Agnes) avant toute comparaison avec
+   l'original : tout le reste doit rester strictement identique. */
+function normalizePublic(doc) {
+    const drop = sel => { const el = doc.querySelector(sel); if (el) el.remove(); };
+    drop('#api-mini');
+    drop('#debug');
+    const keyInput = doc.getElementById('api-input');
+    if (keyInput && keyInput.closest('.rp-section')) keyInput.closest('.rp-section').remove();
+    doc.querySelectorAll('.rp-section.bottom').forEach(s => { if (/agnes/i.test(s.innerHTML)) s.remove(); });
+    ['API Base', 'Modèle image', 'Modèle vidéo'].forEach(label => {
+        doc.querySelectorAll('.kv').forEach(kv => {
+            const l = kv.querySelector('.kv-label');
+            if (l && l.textContent.trim() === label) kv.remove();
+        });
+    });
+    return doc;
 }
 
 const results = [];
@@ -86,6 +105,8 @@ function check(label, cond, extra) {
         const a = await load(prepare(ORIG, false));
         console.log('erreurs : ' + (a.errors.length ? a.errors.join(' | ') : 'aucune'));
         const wa = a.dom.window;
+        normalizePublic(wa.document);
+        normalizePublic(wb.document);
         const sa = stats(wa, wa.document), sb = stats(wb, wb.document);
 
         console.log('\n=== 1. STRUCTURE IDENTIQUE ===');
@@ -96,6 +117,8 @@ function check(label, cond, extra) {
             .replace(/<script[\s\S]*?<\/script>/g, '')
             .replace(/<!--[\s\S]*?-->/g, '')
             .replace(/<span class="debug-time">[^<]*<\/span>/g, '<span class="debug-time">HH:MM:SS</span>')
+            .replace(/ La clé API est conservée\./g, '')
+            .replace(/>\s+</g, '><')
             .replace(/\n\s*\n+/g, '\n');
         const ha = strip(wa.document), hb = strip(wb.document);
         check('body.innerHTML identique', ha === hb, ha.length + ' vs ' + hb.length);
@@ -126,7 +149,8 @@ function check(label, cond, extra) {
         }
         return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'boom' });
     };
-    wb.localStorage.setItem('lsv4_api_key', 'sk-test-123');
+    /* Aucune clé utilisateur : la génération doit fonctionner telle quelle. */
+    check('aucune clé locale avant génération', !wb.localStorage.getItem('lsv4_api_key'));
     wb.LSV_CONFIG = { SUPABASE_URL: 'https://test.supabase.co', SUPABASE_ANON_KEY: 'anon-test-key-0123456789' };
 
     const before = wb.LSV.runtime.imageCount;
@@ -134,7 +158,15 @@ function check(label, cond, extra) {
     check('compteur image incrémenté', wb.LSV.runtime.imageCount === before + 1, wb.LSV.runtime.imageCount);
     check('carte image créée', wb.document.querySelectorAll('#image-results-grid .result-card').length > 0);
     const imgCall = calls.find(c => c.url.includes('/images/generations'));
-    check('appel Agnes inchangé', !!imgCall && JSON.parse(imgCall.options.body).model === wb.LSV.config.MODEL_IMAGE);
+    check('requête passée par la LSV Gateway (pas l API amont)',
+        !!imgCall && imgCall.url.indexOf('apihub') === -1 && imgCall.url.indexOf('/v1/images/generations') !== -1,
+        imgCall && imgCall.url);
+    check('modèle inchangé dans le corps', !!imgCall && JSON.parse(imgCall.options.body).model === wb.LSV.config.MODEL_IMAGE);
+    check('auth = JWT anon LSV (aucun sk-)',
+        !!imgCall && imgCall.options.headers && imgCall.options.headers.Authorization === 'Bearer anon-test-key-0123456789' &&
+        JSON.stringify(imgCall.options.headers).indexOf('sk-') === -1,
+        imgCall && JSON.stringify(imgCall.options.headers));
+    check('toujours aucune clé stockée', !wb.localStorage.getItem('lsv4_api_key'));
 
     wb.fetch = function (url, options) {
         calls.push({ url: String(url), options: options || {} });
@@ -212,7 +244,6 @@ function check(label, cond, extra) {
     try { ws.LSV.ui.switchTab('image'); ws.LSV.ui.switchTab('video'); ws.LSV.ui.switchTab('chat'); }
     catch (e) { navOk2 = false; console.log('    exception : ' + e.message); }
     check('navigation sans analytics', navOk2);
-    ws.localStorage.setItem('lsv4_api_key', 'sk-test-123');
     ws.fetch = () => Promise.resolve({ ok: true, status: 200, json: async () => ({ data: [{ url: 'https://cdn.test/x.png' }] }), text: async () => '' });
     let genOk = true;
     try { await ws.LSV.handlers.runImageGeneration(); } catch (e) { genOk = false; console.log('    exception : ' + e.message); }

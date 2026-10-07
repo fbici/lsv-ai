@@ -1,0 +1,164 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Tests « interface publique » + sécurité LSV.ai
+   ───────────────────────────────────────────────────────────────────────────
+   Couvre les sections 25 et 26 de la mission :
+   - plus aucune trace visible de clé API / Agnes / console de debug ;
+   - génération sans aucune clé utilisateur ;
+   - erreurs utilisateur génériques (jamais de détail technique) ;
+   - aucun secret dans le HTML, le JavaScript public, localStorage ou Git.
+   Usage : node tests/public.test.js
+   ═══════════════════════════════════════════════════════════════════════════ */
+const fs = require('fs');
+const path = require('path');
+const { JSDOM, VirtualConsole } = require('jsdom');
+
+const PROJECT = path.resolve(__dirname, '..');
+const INDEX = path.join(PROJECT, 'index.html');
+
+const results = [];
+function check(label, cond, extra) {
+    results.push({ label, ok: !!cond });
+    console.log((cond ? '  OK   ' : '  FAIL ') + label + (extra !== undefined ? '  [' + extra + ']' : ''));
+}
+
+function prepare() {
+    let html = fs.readFileSync(INDEX, 'utf8');
+    html = html.replace(/<link[^>]*fonts\.(googleapis|gstatic)[^>]*>/g, '');
+    const cfg = fs.readFileSync(path.join(PROJECT, 'shared/config.js'), 'utf8');
+    const ana = fs.readFileSync(path.join(PROJECT, 'analytics/analytics.js'), 'utf8');
+    html = html.replace('<script src="./shared/config.js"></script>', '<script>' + cfg + '</script>');
+    html = html.replace('<script src="./analytics/analytics.js"></script>', '<script>' + ana + '</script>');
+    return html;
+}
+
+async function load(html) {
+    const vc = new VirtualConsole();
+    const errors = [];
+    vc.on('jsdomError', e => { if (!/Not implemented/.test(e.message)) errors.push('jsdomError: ' + e.message); });
+    vc.on('error', (...a) => errors.push('console.error: ' + a.join(' ')));
+    vc.on('warn', () => {});
+    const dom = new JSDOM(html, { url: 'https://fbici.github.io/lsv-ai/', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc });
+    await new Promise(res => {
+        if (dom.window.document.readyState === 'complete') return res();
+        dom.window.addEventListener('load', res);
+        setTimeout(res, 4000);
+    });
+    await new Promise(r => setTimeout(r, 250));
+    return { dom, errors };
+}
+
+(async () => {
+    const source = fs.readFileSync(INDEX, 'utf8');
+    const { dom, errors } = await load(prepare());
+    const wb = dom.window;
+    const doc = wb.document;
+
+    console.log('=== 1. ÉLÉMENTS TECHNIQUES SUPPRIMÉS DE L INTERFACE ===');
+    check('aucune erreur au chargement', errors.length === 0, errors.join('|'));
+    check('champ de clé API absent', !doc.getElementById('api-input'));
+    check('bouton Enregistrer la clé absent', !doc.getElementById('api-save'));
+    check('statut de clé absent', !doc.getElementById('api-status') && !doc.getElementById('api-mini'));
+    check('console LSV absente', !doc.getElementById('debug') && !doc.getElementById('debug-body'));
+
+    console.log('\n=== 2. SCAN DU CONTENU PUBLIC (hors scripts) ===');
+    const publicHtml = doc.body.innerHTML
+        .replace(/<script[\s\S]*?<\/script>/g, '')
+        .replace(/<!--[\s\S]*?-->/g, '');
+    const bodyClone = doc.body.cloneNode(true);
+    bodyClone.querySelectorAll('script, style, noscript').forEach(n => n.remove());
+    const publicText = bodyClone.textContent.replace(/\s+/g, ' ');
+    const forbidden = [
+        'API Key', 'Clé API', 'clé API', 'Ajoutez votre clé', 'Obtenir une clé',
+        'Agnes', 'agnes-image', 'agnes-video', 'agnes-2.5',
+        'apihub.agnes-ai.com', 'platform.agnes-ai.com',
+        'Bearer', 'sk-', 'Console LSV', 'lsv4_api_key',
+        'Token', 'Authorization', 'Polling', 'Endpoint'
+    ];
+    forbidden.forEach(tok => {
+        const hit = publicHtml.indexOf(tok) !== -1 || publicText.indexOf(tok) !== -1;
+        check('pas de « ' + tok + ' » dans l interface', !hit);
+    });
+    check('pas de mention Agnes en clair', !/agnes/i.test(publicText));
+
+    console.log('\n=== 3. GÉNÉRATION SANS AUCUNE CLÉ UTILISATEUR ===');
+    check('localStorage sans clé après chargement', wb.localStorage.getItem('lsv4_api_key') === null);
+    check('CONFIG pointe vers la LSV Gateway',
+        wb.LSV.config.API_BASE.indexOf('/functions/v1/lsv-gateway/v1') !== -1,
+        wb.LSV.config.API_BASE);
+    check('aucun appel direct vers le fournisseur', wb.LSV.config.API_BASE.indexOf('apihub') === -1 && wb.LSV.config.POLL_BASE.indexOf('apihub') === -1);
+
+    const calls = [];
+    wb.fetch = function (url, options) {
+        calls.push({ url: String(url), options: options || {} });
+        if (String(url).includes('/images/generations')) {
+            return Promise.resolve({ ok: true, status: 200, json: async () => ({ data: [{ url: 'https://cdn.test/img.png' }] }), text: async () => '' });
+        }
+        if (String(url).includes('/rest/v1/analytics_events')) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'boom' });
+    };
+    wb.document.getElementById('image-prompt').value = 'Un tigre en costume, style cinématique';
+    await wb.LSV.handlers.runImageGeneration();
+    const gen = calls.find(c => c.url.includes('/images/generations'));
+    check('image générée sans clé', wb.LSV.runtime.imageCount === 1, wb.LSV.runtime.imageCount);
+    check('requête envoyée à la Gateway', !!gen && gen.url.indexOf('apihub') === -1, gen && gen.url);
+    check('aucune clé créée en localStorage', wb.localStorage.getItem('lsv4_api_key') === null);
+    check('aucun token sk- dans les en-têtes', !!gen && JSON.stringify(gen.options.headers || {}).indexOf('sk-') === -1, gen && JSON.stringify(gen.options.headers || {}));
+    check('aucun toast demandant une clé', doc.getElementById('toast-text').textContent.indexOf('clé') === -1, doc.getElementById('toast-text').textContent);
+
+    console.log('\n=== 4. ERREURS UTILISATEUR GÉNÉRIQUES (§11) ===');
+    wb.fetch = function (url) {
+        const u = String(url);
+        if (u.includes('/rest/v1/analytics_events')) return Promise.resolve({ ok: true, status: 201 });
+        if (u.includes('/images/generations')) {
+            return Promise.resolve({
+                ok: false, status: 401,
+                json: async () => ({ error: { message: 'Invalid key sk-SECRETAGNES on apihub.agnes-ai.com' } }),
+                text: async () => 'Invalid key sk-SECRETAGNES on apihub.agnes-ai.com'
+            });
+        }
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    const beforeFail = wb.LSV.runtime.imageCount;
+    await wb.LSV.handlers.runImageGeneration();
+    const toast = doc.getElementById('toast-text').textContent;
+    check('génération échouée sans bloquer l app', wb.LSV.runtime.imageCount === beforeFail, wb.LSV.runtime.imageCount);
+    check('toast = message générique', /Impossible de générer|limite temporaire/.test(toast), toast);
+    check('aucun détail technique dans le toast', !/apihub|sk-|agnes|HTTP|401|Bearer/i.test(toast), toast);
+    check('aucune erreur console', errors.length === 0, errors.join('|'));
+
+    console.log('\n=== 5. SÉCURITÉ : AUCUN SECRET DANS LE DÉPÔT ===');
+    check('index.html sans token sk-', source.indexOf('sk-') === -1);
+    check('index.html sans clé en localStorage', source.indexOf('lsv4_api_key') === -1);
+    check('index.html sans endpoint amont', source.indexOf('apihub.agnes-ai.com') === -1);
+    check('index.html sans lien plateforme fournisseur', source.indexOf('platform.agnes-ai.com') === -1);
+    const publicFiles = ['admin/admin.js', 'admin/index.html', 'analytics/analytics.js', 'shared/config.js', 'admin/admin.css'];
+    let leak = null;
+    publicFiles.forEach(f => {
+        const p = path.join(PROJECT, f);
+        if (!fs.existsSync(p)) return;
+        const c = fs.readFileSync(p, 'utf8');
+        const m = c.match(/sk-[A-Za-z0-9]{10,}/);
+        if (m && !leak) leak = f + ' : ' + m[0].slice(0, 16) + '…';
+    });
+    check('aucun token sk- dans les fichiers publics', !leak, leak || '');
+    check('HTML non BOM', fs.readFileSync(INDEX).length > 3 && fs.readFileSync(INDEX)[0] !== 0xEF);
+
+    console.log('\n=== 6. SÉPARATION PUBLIC / ADMIN ===');
+    check('index.html sans lien vers /admin', !/(href|src)="[^"]*admin/.test(source));
+    const adminJs = fs.readFileSync(path.join(PROJECT, 'admin/admin.js'), 'utf8');
+    check('admin.js sans mot de passe en dur', !/password\s*[:=]\s*['"][^'"]+['"]/i.test(adminJs));
+    check('admin.js s appuie sur Supabase Auth', /auth\.signInWithPassword|signInWithPassword/.test(adminJs));
+    const schema = fs.readFileSync(path.join(PROJECT, 'supabase/schema.sql'), 'utf8');
+    check('lecture analytics réservée aux comptes authentifiés',
+        /create policy "authenticated_select_events"[\s\S]{0,160}to authenticated/.test(schema));
+    check('grant select jamais accordé à anon',
+        /grant select on public\.analytics_events to authenticated/.test(schema) &&
+        !/grant select on public\.analytics_events to anon/.test(schema));
+
+    const failed = results.filter(r => !r.ok);
+    console.log('\n════════════════════════════════');
+    console.log((results.length - failed.length) + '/' + results.length + ' tests interface/sécurité OK');
+    if (failed.length) console.log('ECHECS : ' + failed.map(f => f.label).join(', '));
+    else console.log('INTERFACE PUBLIQUE CONFORME');
+    setTimeout(() => process.exit(failed.length ? 1 : 0), 100);
+})().catch(e => { console.error(e); process.exit(1); });

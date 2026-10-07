@@ -4,8 +4,10 @@
   "private": true,
   "description": "LSV.ai — Studio Viral : application créative (Images, Vidéos, Chat IA, Motion) + Analytics + back-office admin sécurisé.",
   "scripts": {
-    "test": "node tests/nonreg.test.js && node tests/admin.test.js",
+    "test": "node tests/nonreg.test.js && node tests/public.test.js && node tests/gateway.test.mjs && node tests/admin.test.js",
     "test:nonreg": "node tests/nonreg.test.js",
+    "test:public": "node tests/public.test.js",
+    "test:gateway": "node tests/gateway.test.mjs",
     "test:admin": "node tests/admin.test.js",
     "serve": "npx --yes serve . -l 4173"
   },

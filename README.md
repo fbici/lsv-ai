@@ -1,22 +1,35 @@
-# LSV.ai — Studio Viral v3
+# LSV.ai — Studio Viral v3.2
 
-Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**, alimentées par les APIs Agnes AI.
+Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
 
-Cette version ajoute une couche **extension** autour de l'application (qui n'a pas été refaite) :
+Le public n'utilise que **LSV.ai** : ni clé API à saisir, ni nom de fournisseur,
+ni endpoint, ni console de debug. L'application parle à **sa propre passerelle**,
+qui appelle le fournisseur de génération côté serveur avec un secret.
 
+```text
+Navigateur LSV.ai  →  LSV API Gateway (Supabase Edge)  →  Fournisseur de génération
+   (aucun secret)        (clé injectée ici)                 (infra invisible)
+```
+
+Extensions en place autour de l'application (non refaite) :
+
+- **LSV API Gateway** — proxy sécurisé + quotas configurables ;
 - **Analytics** anonymes et non bloquants ;
 - **Back-office admin** (`/admin`) avec authentification réelle ;
-- **Architecture GitHub-ready** (front statique + service externe).
+- **Architecture GitHub-ready** (front statique + service serverless).
 
 ```text
 LSV.ai
 │
-├── Application créative existante (inchangée)
+├── Application créative existante (design et workflows inchangés)
 │   Images · Vidéos · Chat IA · Motion · Projects · Library
 │
-├── Analytics            → analytics/analytics.js
+├── LSV API Gateway     → supabase/functions/lsv-gateway
+│   Clé fournisseur côté serveur · rate limit · quotas · erreurs sanitizées
 │
-└── Back-office Admin    → /admin
+├── Analytics           → analytics/analytics.js
+│
+└── Back-office Admin   → /admin
     Connexion · Dashboard · Visiteurs · Images · Vidéos · Chat
     Motion · Activité · Erreurs · Paramètres
 ```
@@ -26,18 +39,20 @@ LSV.ai
 ## 1. Architecture
 
 ```text
-Navigateur (GitHub Pages — statique)
+Navigateur (GitHub Pages — statique, aucun secret)
    │
    ├── index.html            application LSV.ai (publique)
-   │      └── analytics/analytics.js  →  POST asynchrone (non bloquant)
+   │      ├── génération      → LSV API Gateway   (POST /v1/…)
+   │      └── analytics/analytics.js → POST asynchrone (non bloquant)
    │
    └── admin/                back-office (page publique, données protégées)
           └── Supabase JS SDK
                  │
                  ▼
         Supabase (service externe)
-        ├── Auth        : e-mail + mot de passe → JWT (vérifié côté serveur)
-        └── Postgres    : table analytics_events + Row Level Security
+        ├── Edge Function : LSV API Gateway  →  clé fournisseur (secret serveur)
+        ├── Auth          : e-mail + mot de passe → JWT (vérifié côté serveur)
+        └── Postgres      : table analytics_events + Row Level Security
                  │
                  ▼
         Dashboard admin (lecture = compte authentifié uniquement)
@@ -48,13 +63,13 @@ Navigateur (GitHub Pages — statique)
 ```text
 lsv-ai/
 │
-├── index.html                 # Application LSV.ai (modifiée : + hooks Analytics)
+├── index.html                 # Application LSV.ai (Gateway + UI publique)
 │
 ├── analytics/
 │   └── analytics.js           # Module Analytics indépendant et tolérant aux pannes
 │
 ├── shared/
-│   └── config.js              # Configuration commune (URL + clé anon Supabase)
+│   └── config.js              # URL Supabase + clé anon + URL LSV Gateway
 │
 ├── admin/
 │   ├── index.html             # Back-office (connexion + dashboard)
@@ -62,11 +77,16 @@ lsv-ai/
 │   └── admin.js               # Auth, chargement, agrégats, graphiques
 │
 ├── supabase/
-│   └── schema.sql             # Table + RLS + indexes (à exécuter une fois)
+│   ├── schema.sql             # Table + RLS + indexes (à exécuter une fois)
+│   └── functions/lsv-gateway/
+│       ├── index.ts           # Point d'entrée Edge Function (Deno)
+│       └── core.mjs           # Cœur de la passerelle (testable sous Node)
 │
 ├── tests/
 │   ├── nonreg.test.js         # Non-régression LSV.ai + unités Analytics
-│   └── admin.test.js          # Scénarios d'accès admin (§24)
+│   ├── public.test.js         # Interface publique + sécurité (§25-§26)
+│   ├── gateway.test.mjs       # Passerelle : routage, quotas, sanitisation
+│   └── admin.test.js          # Scénarios d'accès admin
 │
 ├── package.json               # Scripts de test (devDependency : jsdom)
 ├── .env.example               # Modèle de variables (aucun secret réel)
@@ -76,28 +96,102 @@ lsv-ai/
 
 ---
 
-## 2. Ce qui n'a **pas** été touché
+## 2. Changements de cette version + LSV API Gateway
 
-Aucune couleur, typographie, animation, modal, galerie, prompt, logique de
-génération, endpoint Agnes, modèle Agnes, paramètre de génération ni le
-système de clé API n'ont été modifiés.
+### 2.1 Supprimé de l'interface publique
 
-`index.html` a reçu uniquement **34 lignes ajoutées** (0 ligne supprimée) :
-
-| Emplacement | Ajout |
+| Supprimé | Détail |
 |---|---|
-| avant le bloc `<script>` principal | 2 balises `<script src>` + shim de sécurité |
-| `UI.switchTab` | 1 ligne `track('tab_view')` |
-| `ProjectService.create` | 1 ligne `track('project_created')` |
-| `ChatView.sendMessage` | 2 lignes (succès / erreur) |
-| `EnhancerView.generate` | 2 lignes (succès / erreur) |
-| `BatchView.runOne` | 2 lignes (succès / erreur) |
-| `Handlers.runImageGeneration` | 2 blocs (succès / erreur) |
-| `Handlers.runVideoGeneration` | 2 blocs (succès / erreur) |
+| Section / champ **clé API** | carte « Clé API Agnes », `api-input`, `api-save`, `api-status`, `api-mini`, boutons Enregistrer / Supprimer, statut de clé |
+| **Stockage de clé** | `localStorage.lsv4_api_key`, `StorageService.get/set/clearApiKey`, gating des boutons sur la présence d'une clé |
+| **Infos techniques visibles** | carte « État du système » : endpoint amont + noms de modèles, lien « Obtenir une clé API » |
+| **Console LSV** | panneau de debug en bas de page, boutons Copier / Effacer / Collapse, logs visibles |
+| **Appels directs au fournisseur** | `API_BASE` / `POLL_BASE` pointent désormais vers la Gateway |
+| **En-têtes `Bearer sk-…`** | 6 en-têtes `Authorization` supprimés (le navigateur n'a plus aucune clé de génération) |
+| **Erreurs brutes** | les toasts n'affichent plus `e.message` : uniquement `Utils.friendlyError()` |
 
-Chaque appel passe par `LSVAnalytics.track()`, qui est **intercepté par un shim**
-si le module ne se charge pas : la fonctionnalité ne peut donc jamais lever
-d'erreur à cause d'Analytics.
+Les logs internes restent en mémoire (`window.LSV.debug.entries`, bornés à 500) :
+visibles pour le développeur, jamais pour l'utilisateur.
+
+### 2.2 Conservé strictement
+
+Design, couleurs, typographie, animations, structure, 14 onglets, galerie,
+prompts, paramètres de génération, modèles, retries, batching, storyboards,
+workflows, verrous, projets, bibliothèque, analytics et back-office : **inchangés**
+(vérifié par `tests/nonreg.test.js` : structure + `body.innerHTML` identiques à
+l'original, hors blocs volontairement supprimés).
+
+### 2.3 Migration front → Gateway
+
+Aucun service n'a été réécrit : `ImageService`, `VideoService`, `ChatService`,
+`EnhancerService`, `BatchView` appellent les mêmes chemins, seule l'origine a
+changé.
+
+```js
+// shared/config.js
+LSV_GATEWAY_URL: 'https://<ref>.supabase.co/functions/v1/lsv-gateway'
+
+// index.html
+API_BASE  = LSV_GATEWAY_URL + '/v1'
+POLL_BASE = LSV_GATEWAY_URL + '/agnesapi'
+```
+
+La Gateway rejoue la requête vers le fournisseur en ajoutant **côté serveur** :
+`Authorization: Bearer <AGNES_API_KEY>` (secret), et retire tout `Authorization`
+venu du client.
+
+### 2.4 Déployer la Gateway
+
+```bash
+npm install -g supabase      # ou : npx supabase …
+supabase login
+supabase link --project-ref <votre-ref>
+
+# 1) déployer la fonction
+supabase functions deploy lsv-gateway --no-verify-jwt
+
+# 2) injecter le SECRET (jamais dans le dépôt)
+supabase secrets set AGNES_API_KEY=sk-…
+```
+
+> `--no-verify-jwt` : la Gateway s'appuie sur ses propres contrôles (CORS par
+> origine, rate limit, quotas, secret côté serveur). Si vous préférez imposer
+> un JWT de projet valide **au niveau de la plateforme**, redéployez sans ce
+> drapeau : le front envoie déjà le JWT `anon` Supabase dans `Authorization`.
+
+Ensuite, `shared/config.js` → `LSV_GATEWAY_URL` = `https://<ref>.supabase.co/functions/v1/lsv-gateway`.
+
+Tests locaux de la passerelle :
+
+```bash
+npm run serve                 # http://localhost:4173
+npx supabase functions serve  # gateway en local (optionnel)
+```
+
+### 2.5 Quotas et anti-abus (§15-§16)
+
+Variables d'environnement de la fonction (Supabase → **Edge Functions → Secrets**) :
+
+| Variable | Rôle | Défaut |
+|---|---|---|
+| `AGNES_API_KEY` | **secret** du fournisseur, injecté côté serveur | — (requis) |
+| `AGNES_API_BASE` | base amont (secret de configuration) | valeur interne |
+| `ALLOWED_ORIGINS` | origines CORS autorisées | GitHub Pages + localhost |
+| `RATE_LIMIT_PER_MIN` | requêtes / minute / IP + / visiteur | `10` |
+| `IMAGE_LIMIT` | images / jour / visiteur | `0` = illimité |
+| `VIDEO_LIMIT` | vidéos / jour / visiteur | `0` = illimité |
+| `CHAT_LIMIT` | messages / jour / visiteur | `0` = illimité |
+| `MOTION_LIMIT` | motions / jour / visiteur | `0` = illimité |
+| `MAX_BODY_BYTES` | taille max d'une requête | `20` Mo |
+
+Le polling vidéo n'est pas compté comme une génération. Atteindre une limite
+renvoie `429` avec un message générique :
+
+> Vous avez atteint la limite temporaire de génération. Veuillez patienter avant
+> de réessayer.
+
+Les limites **Agnes** restent celles du compte fournisseur ; les limites **LSV**
+ne protègent que notre passerelle.
 
 ---
 
@@ -107,12 +201,14 @@ d'erreur à cause d'Analytics.
 git clone <url-du-repo> lsv-ai
 cd lsv-ai
 npm install        # uniquement pour les tests (jsdom)
-npm test           # lance les deux suites de tests
+npm test           # 4 suites : non-régression, interface, gateway, admin
 ```
 
-Ouvrir simplement `index.html` (double-clic) : l'application fonctionne
-telle quelle. **Sans configuration Supabase, Analytics est inactif** et le
-back-office affiche la page de connexion avec un message d'explication.
+Ouvrir simplement `index.html` (double-clic) : l'application s'affiche et
+navigue telle quelle. **La génération nécessite la Gateway déployée** (§2.4) ;
+sans elle, les boutons de génération restent inactifs. **Sans configuration
+Supabase, Analytics est inactif** et le back-office affiche la page de connexion
+avec un message d'explication.
 
 Pour servir en local :
 
@@ -164,7 +260,8 @@ Dashboard → **Project Settings** → **API** :
 ```js
 window.LSV_CONFIG = {
     SUPABASE_URL: 'https://xxxxxxxx.supabase.co',
-    SUPABASE_ANON_KEY: 'eyJhbGciOi...'
+    SUPABASE_ANON_KEY: 'eyJhbGciOi...',
+    LSV_GATEWAY_URL: 'https://xxxxxxxx.supabase.co/functions/v1/lsv-gateway'
 };
 ```
 
@@ -305,10 +402,12 @@ git grep -i "service_role" # ne doit rien trouver
 
 ### 7.3 Après le déploiement
 
-1. Remplir `shared/config.js` avec les vraies valeurs, committer, push.
-2. Ouvrir `https://<vous>.github.io/lsv-ai/admin/` → se connecter.
-3. Vérifier que le dashboard s'affiche et que des événements arrivent en
-   ouvrant `https://<vous>.github.io/lsv-ai/`.
+1. **Déployer la LSV API Gateway** (§2.4) et injecter `AGNES_API_KEY`.
+2. Remplir `shared/config.js` avec les vraies valeurs, committer, push.
+3. Ouvrir `https://<vous>.github.io/lsv-ai/` → générer une image (doit passer
+   par `…/functions/v1/lsv-gateway/v1/images/generations`).
+4. Ouvrir `https://<vous>.github.io/lsv-ai/admin/` → se connecter, vérifier
+   que le dashboard se remplit.
 
 **Note sur les chemins** : tous les liens sont **relatifs** (`./admin/`,
 `../shared/config.js`) → le site fonctionne aussi bien à la racine que dans
@@ -320,33 +419,57 @@ un sous-dossier GitHub Pages (`/lsv-ai/`).
 
 | Fichier | Contenu | Commité ? |
 |---|---|---|
-| `shared/config.js` | URL Supabase + clé `anon` (public) | ✅ oui |
+| `shared/config.js` | URL Supabase + clé `anon` + URL Gateway (publics) | ✅ oui |
 | `.env.example` | modèle commenté | ✅ oui |
 | `.env` | éventuel, hors dépôt | ❌ non (`.gitignore`) |
+| `AGNES_API_KEY` | **secret de la Gateway** (Supabase Secrets) | ❌ non |
 | `service_role` key | **jamais** utilisée par le front | ❌ non |
 | Mot de passe base | uniquement dans Supabase | ❌ non |
 | Mot de passe admin | uniquement dans Supabase Auth (haché) | ❌ non |
+
+La clé du fournisseur de génération n'existe **que** dans les secrets de la
+fonction : jamais dans `index.html`, `admin/`, `analytics/`, `shared/`,
+`localStorage` ni dans Git (`tests/public.test.js` le vérifie).
 
 ---
 
 ## 9. Tests
 
 ```bash
-npm test
+npm test        # 168 assertions au total
 ```
 
-**`tests/nonreg.test.js`** (49 assertions)
+**`tests/nonreg.test.js`** (53 assertions) — non-régression
 
-- structure HTML identique à l'original (`ORIG=/chemin/index.original.html npm test`) ;
-- `body.innerHTML` identique hors scripts ;
+- structure HTML et `body.innerHTML` identiques à l'original, hors blocs
+  volontairement supprimés (clé API, console, infos fournisseur) —
+  `ORIG=/chemin/index.original.html npm test` ;
 - navigation sur les 14 onglets sans exception ;
-- génération d'image simulée : succès + échec, appel Agnes inchangé ;
-- génération de vidéo simulée (création de tâche + polling) : succès, modèle inchangé ;
+- génération d'image simulée **sans aucune clé** : succès + échec, requête
+  envoyée à la Gateway, `Authorization` = JWT anon LSV, aucun `sk-` ;
+- génération de vidéo simulée (création de tâche + polling) : succès ;
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
-- sanitisation Analytics (clés API/prompts/tokens jamais envoyés) ;
-- config absente → aucun envoi ;
-- réseau en panne → LSV.ai continue ;
-- module Analytics totalement absent → LSV.ai continue.
+- sanitisation Analytics, config absente, panne réseau, module absent.
+
+**`tests/public.test.js`** (48 assertions) — interface publique + sécurité
+
+- éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
+- scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
+  `Authorization`, `Console LSV`, `Endpoint`, `Polling`, `Token`… ;
+- génération sans clé : rien en `localStorage`, requête vers la Gateway ;
+- erreur amont → toast générique (aucun code HTTP, endpoint, jeton) ;
+- aucun `sk-` dans `index.html` ni dans les fichiers publics ;
+- admin : pas de lien public, pas de mot de passe en dur, RLS en lecture
+  authentifiée uniquement.
+
+**`tests/gateway.test.mjs`** (36 assertions) — passerelle
+
+- routage (y compris préfixe `/functions/v1/lsv-gateway`), injection de la clé
+  serveur, rejet de l'authorization client ;
+- CORS (origine autorisée / interdite / preflight) ;
+- rate limit 60 s avec `Retry-After`, quotas journaliers + réinitialisation ;
+- erreurs amont sanitisées (401/500/réseau → message générique, aucun détail) ;
+- clé absente → 503, aucun secret dans aucune réponse.
 
 **`tests/admin.test.js`** (31 assertions)
 
@@ -354,8 +477,7 @@ npm test
 - mauvais identifiants → accès refusé ;
 - identifiants valides → dashboard + KPI + graphiques rendus ;
 - 8 pages + 4 plages temporelles sans exception ;
-- session expirée (RLS) → retour connexion ;
-- déconnexion → données effacées ;
+- session expirée (RLS) → retour connexion ; déconnexion → données effacées ;
 - aucun mot de passe codé en dur, aucune `service_role`.
 
 ---
@@ -371,12 +493,22 @@ npm test
 - L'insertion anonyme est ouverte (nécessaire pour un site public) : en cas
   d'abus possible, activer la policy « liste blanche d'e-mails » commentée dans
   `supabase/schema.sql`, ou poser un rate-limit Cloudflare devant Pages.
+- **Rate limit / quotas Gateway en mémoire** : efficaces contre les rafales,
+  mais remis à zéro à chaque redémarrage de l'isolate Edge (plusieurs isolate
+  = quota par isolate). Si LSV.ai grandit, brancher un store Supabase
+  (table + service role) dans `core.mjs`.
+- **Noms de modèles encore présents dans `index.html`** (constantes `MODEL_*`) :
+  ils ne sont jamais affichés à l'écran (testé), mais restent lisibles dans le
+  source. Pour les retirer aussi, les faire injecter par la Gateway.
+- CSS des blocs supprimés (`.api-mini`, `.debug*`, `.rp-api-input`) conservé
+  mais inutilisé : aucun rendu, purge possible ultérieurement.
 
 ---
 
 ## 11. LSV.ai — accès rapide
 
-L'application principale n'a pas changé : ouvrir `index.html`, renseigner la
-clé API Agnes dans le panneau de configuration, puis utiliser Images, Vidéos,
-Chat IA, Motion, Storyboard, Workflows, Cohérence, Batch, Projets et
-Bibliothèque comme auparavant.
+L'application est prête pour le public : ouvrir `index.html` et utiliser
+Images, Vidéos, Chat IA, Motion, Storyboard, Workflows, Cohérence, Batch,
+Projets et Bibliothèque **sans saisir aucune clé**. Seule condition : la
+Gateway (§2.4) doit être déployée, sinon les boutons de génération restent
+inactifs (et non pas « cassés »).

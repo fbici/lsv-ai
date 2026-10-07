@@ -229,6 +229,7 @@
         track: track,
         flush: flush,
         isConfigured: isConfigured,
+        visitorId: visitorId,
         version: '1.0.0'
     };
 })();
