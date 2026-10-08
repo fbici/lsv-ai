@@ -3,7 +3,8 @@
    ───────────────────────────────────────────────────────────────────────────
    Rôle :
      - reçoit les requêtes du frontend LSV.ai (GitHub Pages) ;
-     - injecte la clé Agnes lue UNIQUEMENT côté serveur (env AGNES_API_KEY) ;
+     - injecte la clé du fournisseur lue UNIQUEMENT côté serveur : clé saisie
+       dans le back-office (table app_settings), sinon secret AGNES_API_KEY ;
      - retire toute authorization envoyée par le client ;
      - applique rate limit + quotas journaliers configurables (IMAGE_LIMIT,
        VIDEO_LIMIT, CHAT_LIMIT, MOTION_LIMIT — 0 = illimité) ;
@@ -101,7 +102,6 @@ export function createHandler(options = {}) {
     const log = options.log || ((...args) => console.error('[lsv-gateway]', ...args));
 
     const agnesBase = (env.AGNES_API_BASE || DEFAULT_AGNES_BASE).replace(/\/+$/, '');
-    const agnesKey = (env.AGNES_API_KEY || '').trim();
     const allowedOrigins = (env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
     const ratePerMin = toInt(env.RATE_LIMIT_PER_MIN, 10);
     const limits = {
@@ -111,6 +111,51 @@ export function createHandler(options = {}) {
         motion: toInt(env.MOTION_LIMIT, 0)
     };
     const maxBodyBytes = toInt(env.MAX_BODY_BYTES, 20 * 1024 * 1024);
+
+    /* ── Clé du fournisseur ────────────────────────────────────────────────
+       Priorité à la clé saisie dans le back-office (table app_settings) :
+       l'administrateur la change depuis /admin sans redéployer la fonction.
+       À défaut : secret serveur AGNES_API_KEY. La table est lue avec la clé de
+       service du projet (aucun droit pour anon) — jamais depuis le navigateur.
+       Une seule lecture par minute et par isolate (cache), y compris en cas
+       d'échec, pour ne jamais marteler la base. */
+    const KEY_CACHE_MS = 60000;
+    let keyCache = { attempted: false, value: '', at: 0 };
+
+    async function resolveKey() {
+        const envKey = (env.AGNES_API_KEY || '').trim();
+        const supaUrl = String(env.SUPABASE_URL || '').replace(/\/+$/, '');
+        /* Clé de service du projet : variable classique (legacy) ou dictionnaire
+           SUPABASE_SECRET_KEYS — les deux sont fournies par la plateforme. */
+        let secretDict = {};
+        try { secretDict = JSON.parse(env.SUPABASE_SECRET_KEYS || '{}') || {}; } catch (e) { secretDict = {}; }
+        const svcKey = String(env.SUPABASE_SERVICE_ROLE_KEY || secretDict.service_role || '').trim();
+        if (!supaUrl || !svcKey) return envKey;
+
+        const t = now();
+        if (keyCache.attempted && t - keyCache.at < KEY_CACHE_MS) return keyCache.value || envKey;
+
+        let value = '';
+        try {
+            const res = await doFetch(supaUrl + '/rest/v1/app_settings?select=value&key=eq.provider_api_key', {
+                headers: {
+                    apikey: svcKey,
+                    Authorization: 'Bearer ' + svcKey,
+                    Accept: 'application/json'
+                }
+            });
+            if (res && res.ok) {
+                const rows = await res.json();
+                value = String((rows && rows[0] && rows[0].value) || '').trim();
+            } else {
+                log('reglages-status', res && res.status);
+            }
+        } catch (e) {
+            log('reglages-lecture', (e && e.message) || 'erreur');
+        }
+        keyCache = { attempted: true, value: value, at: t };
+        return value || envKey;
+    }
 
     function cors(origin) {
         const allowed = !origin || allowedOrigins.length === 0 || allowedOrigins.indexOf(origin) !== -1;
@@ -145,8 +190,9 @@ export function createHandler(options = {}) {
         const isProxy = path === '/v1' || path.startsWith('/v1/') || path.startsWith('/agnesapi');
         if (!isProxy) return json(404, MSG_NOT_FOUND, c.headers);
 
+        const agnesKey = await resolveKey();
         if (!agnesKey) {
-            log('AGNES_API_KEY absente du secrets de la fonction');
+            log('clé du fournisseur absente (back-office ou secret serveur)');
             return json(503, MSG_NO_KEY, c.headers);
         }
 

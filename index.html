@@ -3043,6 +3043,7 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
                 <button type="button" class="rp-btn" id="account-open">Se connecter / S'inscrire</button>
 
                 <div id="account-form" class="hidden">
+                    <input type="text" class="rp-api-input hidden" id="account-name" placeholder="nom complet" autocomplete="name" maxlength="80">
                     <input type="email" class="rp-api-input" id="account-email" placeholder="e-mail" autocomplete="username">
                     <input type="password" class="rp-api-input" id="account-password" placeholder="mot de passe" autocomplete="current-password">
                     <button type="button" class="rp-btn" id="account-submit">Se connecter</button>
@@ -3757,6 +3758,10 @@ const AccountService = {
         const s = this.session();
         return (s && s.email) || '';
     },
+    name() {
+        const s = this.session();
+        return (s && s.name) || '';
+    },
     signedIn() {
         const s = this.session();
         return !!(s && s.access_token);
@@ -3778,17 +3783,22 @@ const AccountService = {
         return data || {};
     },
     _keep(data, fallbackEmail) {
+        const u = data.user || {};
+        const meta = u.user_metadata || {};
         this._save({
             access_token: data.access_token,
             refresh_token: data.refresh_token,
             expires_at: Math.floor(Date.now() / 1000) + (Number(data.expires_in) || 3600),
-            email: (data.user && data.user.email) || fallbackEmail || ''
+            email: u.email || fallbackEmail || '',
+            name: meta.full_name || meta.name || ''
         });
     },
 
-    async signUp(email, password) {
+    async signUp(email, password, name) {
         if (!this._configured()) throw new Error('configuration absente');
-        const data = await this._post('/signup', { email: email, password: password });
+        const body = { email: email, password: password };
+        if (name) body.data = { full_name: name };
+        const data = await this._post('/signup', body);
         if (data.access_token && data.refresh_token) {
             this._keep(data, email);
             return { confirmed: true };
@@ -3870,8 +3880,9 @@ const AccountView = {
         this.$('account-cancel').addEventListener('click', () => this.close());
         this.$('account-mode').addEventListener('click', () => this.setMode(this.mode === 'login' ? 'signup' : 'login'));
         this.$('account-submit').addEventListener('click', () => this.submit());
-        ['account-email', 'account-password'].forEach(id => {
-            this.$(id).addEventListener('keydown', e => { if (e.key === 'Enter') this.submit(); });
+        ['account-name', 'account-email', 'account-password'].forEach(id => {
+            const el = this.$(id);
+            if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') this.submit(); });
         });
         this.$('account-logout').addEventListener('click', () => this.logout());
         this.$('account-admin').addEventListener('click', () => { window.location.href = 'admin/index.html'; });
@@ -3898,6 +3909,8 @@ const AccountView = {
         const signup = this.mode === 'signup';
         this.$('account-submit').textContent = signup ? 'Créer le compte' : 'Se connecter';
         this.$('account-mode').textContent = signup ? 'J\u2019ai déjà un compte' : 'Créer un compte';
+        const nameEl = this.$('account-name');
+        if (nameEl) nameEl.classList.toggle('hidden', !signup);
         this.$('account-password').setAttribute('autocomplete', signup ? 'new-password' : 'current-password');
         this.$('account-password').setAttribute('placeholder', signup ? '6 caractères minimum' : 'mot de passe');
     },
@@ -3931,7 +3944,10 @@ const AccountView = {
             if (!t) { this.renderGuest(); return; }
             this.$('account-guest').classList.add('hidden');
             this.$('account-user').classList.remove('hidden');
-            this.$('account-mail').textContent = AccountService.email() || 'Compte LSV.ai';
+            const nm = AccountService.name();
+            this.$('account-mail').textContent = nm
+                ? nm + ' · ' + (AccountService.email() || '')
+                : (AccountService.email() || 'Compte LSV.ai');
             const admin = await AccountService.isAdmin();
             this.$('account-admin').classList.toggle('hidden', !admin);
         } catch (e) {
@@ -3942,6 +3958,13 @@ const AccountView = {
         if (this.busy) return;
         const email = this.$('account-email').value.trim();
         const password = this.$('account-password').value;
+        const nameEl = this.$('account-name');
+        const name = nameEl ? nameEl.value.trim() : '';
+        if (this.mode === 'signup' && !name) {
+            this.status('Nom complet requis.', 'err');
+            if (nameEl) nameEl.focus();
+            return;
+        }
         if (!email || !password) { this.status('E-mail et mot de passe requis.', 'err'); return; }
         this.busy = true;
         const btn = this.$('account-submit');
@@ -3950,7 +3973,7 @@ const AccountView = {
         btn.textContent = 'Vérification…';
         try {
             if (this.mode === 'signup') {
-                const r = await AccountService.signUp(email, password);
+                const r = await AccountService.signUp(email, password, name);
                 if (r.confirmed) {
                     LSVAnalytics.track('account_created', {});
                     this.status('Compte créé : tu es connecté·e.', 'ok');

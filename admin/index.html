@@ -26,6 +26,10 @@
         <p class="auth-sub">Accès réservé à l'administrateur. Les identifiants sont vérifiés côté serveur (Supabase Auth) — aucun mot de passe n'est stocké dans le navigateur.</p>
 
         <form id="login-form" autocomplete="on">
+            <label class="field hidden" id="login-name-field">
+                <span class="field-label">Nom complet</span>
+                <input type="text" id="login-name" name="name" autocomplete="name" maxlength="80" placeholder="Ton nom">
+            </label>
             <label class="field">
                 <span class="field-label">E-mail</span>
                 <input type="email" id="login-email" name="email" autocomplete="username" required placeholder="admin@exemple.com">
@@ -40,7 +44,7 @@
             </button>
             <button type="button" class="auth-switch" id="signup-toggle">Créer un compte</button>
             <div class="auth-hint hidden" id="signup-hint">
-                Choisis un e-mail et un mot de passe (6 caractères minimum).
+                Nom complet, e-mail et mot de passe (6 caractères minimum).
                 L'accès aux statistiques reste réservé aux e-mails de la liste blanche.
             </div>
         </form>
@@ -260,6 +264,25 @@
                         <div class="card-header"><div class="card-title"><span class="ms">account_circle</span> Session</div></div>
                         <div class="kv" id="settings-session"></div>
                         <button class="btn btn-ghost btn-block" id="settings-logout" style="margin-top:1rem"><span class="ms">logout</span> Se déconnecter</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><div class="card-title"><span class="ms">vpn_key</span> Clé du fournisseur</div></div>
+                    <div class="info-block">
+                        La passerelle utilise cette clé pour générer images, vidéos et chat.
+                        Saisie ici, elle est stockée <strong>côté serveur</strong> (Supabase) :
+                        les visiteurs ne la lisent jamais et seuls les comptes de la liste
+                        blanche peuvent la modifier. Elle remplace le secret serveur si ce
+                        dernier est absent ; effective sous une minute.
+                    </div>
+                    <div class="kv" id="settings-key-status"></div>
+                    <label class="field" style="margin-top:1rem">
+                        <span class="field-label">Nouvelle clé</span>
+                        <input type="password" id="provider-key-input" autocomplete="off" spellcheck="false" placeholder="colle ta clé ici">
+                    </label>
+                    <div class="key-actions">
+                        <button class="btn btn-primary" id="provider-key-save" type="button"><span class="ms">save</span> Enregistrer la clé</button>
+                        <button class="btn btn-ghost" id="provider-key-clear" type="button"><span class="ms">delete</span> Retirer la clé</button>
                     </div>
                 </div>
                 <div class="card">

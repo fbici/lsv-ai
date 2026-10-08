@@ -6,7 +6,7 @@
 -- Pour une base DÉJÀ créée (la table analytics_events existe déjà).
 -- Idempotent : peut être relancé sans risque.
 --
--- Après l'exécution, OUBLIE PAS d'ajouter ton e-mail (étape 3 en bas),
+-- Après l'exécution, OUBLIE PAS d'ajouter ton e-mail (étape 6 en bas),
 -- sinon AUCUN compte ne verra les statistiques.
 -- ═══════════════════════════════════════════════════════════════════════════
 
@@ -58,7 +58,52 @@ alter table public.analytics_events
         'account_signed_in'
     ));
 
--- 5) ⚠️  AJOUTE TON E-MAIL — ET UNIQUEMENT LE TIEN — CI-DESSOUS ⚠️ ────────
+-- 5) Réglages applicatifs : clé du fournisseur saisie dans le back-office ──
+-- La passerelle lit cette clé avec la clé de service du projet ; les visiteurs
+-- (anon) n'ont AUCUN droit sur cette table, seuls les comptes de la liste
+-- blanche peuvent la lire / la modifier.
+create table if not exists public.app_settings (
+    key         text primary key,
+    value       text not null,
+    updated_at  timestamptz not null default now(),
+    constraint app_settings_key_check check (key in ('provider_api_key'))
+);
+alter table public.app_settings enable row level security;
+revoke all on public.app_settings from anon;
+revoke all on public.app_settings from authenticated;
+grant select, insert, update, delete on public.app_settings to authenticated;
+grant all on public.app_settings to service_role;
+
+drop policy if exists "admin_select_settings" on public.app_settings;
+create policy "admin_select_settings"
+    on public.app_settings
+    for select
+    to authenticated
+    using (public.is_admin());
+
+drop policy if exists "admin_insert_settings" on public.app_settings;
+create policy "admin_insert_settings"
+    on public.app_settings
+    for insert
+    to authenticated
+    with check (public.is_admin());
+
+drop policy if exists "admin_update_settings" on public.app_settings;
+create policy "admin_update_settings"
+    on public.app_settings
+    for update
+    to authenticated
+    using (public.is_admin())
+    with check (public.is_admin());
+
+drop policy if exists "admin_delete_settings" on public.app_settings;
+create policy "admin_delete_settings"
+    on public.app_settings
+    for delete
+    to authenticated
+    using (public.is_admin());
+
+-- 6) ⚠️  AJOUTE TON E-MAIL — ET UNIQUEMENT LE TIEN — CI-DESSOUS ⚠️ ────────
 -- (si tu ouvres l'accès à quelqu'un : même procédure, une ligne par e-mail)
 insert into public.admin_emails (email) values ('toi@exemple.com')
     on conflict (email) do nothing;

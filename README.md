@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.3
+# LSV.ai — Studio Viral v3.4
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
 
@@ -103,7 +103,7 @@ lsv-ai/
 
 ---
 
-## 2. Changements de cette version : Gateway + comptes
+## 2. Changements de cette version : Gateway + comptes + clé en back-office
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -157,7 +157,9 @@ supabase link --project-ref <votre-ref>
 # 1) déployer la fonction
 supabase functions deploy lsv-gateway --no-verify-jwt
 
-# 2) injecter le SECRET (jamais dans le dépôt)
+# 2) donner la clé du fournisseur à la passerelle — 2 possibilités :
+#    a) RECOMMANDÉ : back-office → Paramètres → « Clé du fournisseur » (§5.3)
+#    b) secret de la fonction (secours / usage CLI) :
 supabase secrets set AGNES_API_KEY=sk-…
 ```
 
@@ -181,7 +183,8 @@ Variables d'environnement de la fonction (Supabase → **Edge Functions → Secr
 
 | Variable | Rôle | Défaut |
 |---|---|---|
-| `AGNES_API_KEY` | **secret** du fournisseur, injecté côté serveur | — (requis) |
+| *(table `app_settings`)* | **clé du fournisseur saisie dans le back-office** — prioritaire, relue toutes les 60 s | — |
+| `AGNES_API_KEY` | **secret serveur de secours**, utilisé si la table est vide | — (recommandé) |
 | `AGNES_API_BASE` | base amont (secret de configuration) | valeur interne |
 | `ALLOWED_ORIGINS` | origines CORS autorisées | GitHub Pages + localhost |
 | `RATE_LIMIT_PER_MIN` | requêtes / minute / IP + / visiteur | `10` |
@@ -190,6 +193,10 @@ Variables d'environnement de la fonction (Supabase → **Edge Functions → Secr
 | `CHAT_LIMIT` | messages / jour / visiteur | `0` = illimité |
 | `MOTION_LIMIT` | motions / jour / visiteur | `0` = illimité |
 | `MAX_BODY_BYTES` | taille max d'une requête | `20` Mo |
+
+Ordre de résolution de la clé côté serveur : **`app_settings` (saisie dans le
+back-office)** → sinon **`AGNES_API_KEY` (secret)**. Une lecture de base au plus
+par minute et par isolate ; la valeur n'est jamais renvoyée au navigateur.
 
 Le polling vidéo n'est pas compté comme une génération. Atteindre une limite
 renvoie `429` avec un message générique :
@@ -204,12 +211,13 @@ ne protègent que notre passerelle.
 
 | Ajout | Détail |
 |---|---|
-| **Section « Compte »** | panneau de droite : `Se connecter / S'inscrire`, formulaire e-mail + mot de passe, `Se déconnecter` |
-| **Inscription** | Supabase Auth (`/auth/v1/signup`) — le mot de passe n'est envoyé qu'à Supabase |
+| **Section « Compte »** | panneau de droite : `Se connecter / S'inscrire`, formulaire **nom complet + e-mail + mot de passe**, `Se déconnecter` |
+| **Inscription** | Supabase Auth (`/auth/v1/signup`) — le nom complet part dans `user_metadata`, le mot de passe va uniquement à Supabase |
 | **Session** | jeton d'accès + rafraîchissement stockés sur l'appareil (`localStorage.lsv4_account`), jamais le mot de passe |
 | **Liste blanche admin** | table `admin_emails` + fonction SQL `is_admin()` : seul un e-mail listé voit les statistiques |
 | **Création = compte** | `AgnesProvider.fetch` + `ChatService.send` appellent `AccountView.ensure()` : sans compte, **aucune requête** de génération n'est émise (image, vidéo, chat, enhancer, batch) — le formulaire Compte s'ouvre avec le message « Connecte-toi à ton compte pour créer. » |
 | **Bouton back-office** | affiché dans l'app **uniquement** si l'e-mail connecté est dans la liste blanche |
+| **Clé du fournisseur** | back-office → **Paramètres** → « Clé du fournisseur » : champ masqué + `Enregistrer la clé` → table `app_settings` (RLS : **liste blanche uniquement**, aucun droit pour `anon`) ; la Gateway la lit côté serveur, avec priorité sur le secret `AGNES_API_KEY` |
 | **Événements** | `account_created`, `account_signed_in` (sans e-mail, sans donnée personnelle) |
 
 Un compte créé **n'ouvre rien par lui-même** : sans figure dans `admin_emails`,
@@ -266,6 +274,9 @@ Ce script crée :
   comptes authentifiés et listés**, pas de UPDATE/DELETE anon) ;
 - la table `admin_emails` (liste blanche, **invisible côté client** : RLS sans
    policy + droits révoqués sur `anon` et `authenticated`) ;
+- la table `app_settings` (clé du fournisseur saisie dans le back-office :
+   RLS activée, **aucun droit pour `anon`**, lecture/écriture réservées à
+   `is_admin()`) ;
 - la fonction SQL `is_admin()` (légitimée par le JWT de session) ;
 - une **liste blanche d'événements** (un inconnu ne peut pas injecter de n'importe
   quel événement) ;
@@ -330,9 +341,9 @@ Dans le panneau de droite → section **Compte** :
 |---|---|
 | Non connecté | bouton `Se connecter / S'inscrire` (formulaire fermé par défaut) |
 | Non connecté **+ création** | ❌ aucune requête envoyée : toast « Connecte-toi à ton compte pour créer. » + formulaire Compte ouvert (le champ de saisie est conservé) |
-| `Créer un compte` | e-mail + mot de passe (6 car. min.) → `signUp` |
+| `Créer un compte` | **nom complet** (obligatoire) + e-mail + mot de passe (6 car. min.) → `signUp` ; le champ nom n'apparaît qu'en mode inscription |
 | Confirmation e-mail activée | message « confirme ton e-mail puis connecte-toi » |
-| Connecté | e-mail affiché + `Se déconnecter` |
+| Connecté | `nom complet · e-mail` affichés + `Se déconnecter` |
 | E-mail **dans** `admin_emails` | bouton `Ouvrir le back-office` en plus |
 | E-mail **hors** liste blanche | aucun accès au back-office proposé |
 
@@ -384,7 +395,11 @@ Comportements attendus :
 - **Erreurs** — agrégation par fonctionnalité + type + signature, occurrences,
   dernière occurrence, graphique journalier.
 - **Paramètres** — état de la connexion, session, fréquence d'actualisation,
-  déconnexion.
+  déconnexion, et **Clé du fournisseur** (état « aucune clé / configurée »
+  masquée `••••1234`, champ pour enregistrer une nouvelle clé, bouton
+  `Retirer la clé`). La clé est stockée dans `app_settings` : visible et
+  modifiable **uniquement** par les comptes de la liste blanche, jamais
+  renvoyée aux visiteurs ; effective côté passerelle sous ~1 minute.
 
 Périodes : **Aujourd'hui · 7 jours · 30 jours · Tout**.
 
@@ -477,7 +492,8 @@ git grep -i "service_role" # ne doit rien trouver
 
 ### 7.3 Après le déploiement
 
-1. **Déployer la LSV API Gateway** (§2.4) et injecter `AGNES_API_KEY`.
+1. **Déployer la LSV API Gateway** (§2.4), puis saisir la **clé du
+   fournisseur** dans `/admin/` → **Paramètres** (ou injecter `AGNES_API_KEY`).
 2. Remplir `shared/config.js` avec les vraies valeurs, committer, push.
 3. **Exécuter le SQL** (§4.2) puis **ajouter son e-mail dans `admin_emails`**.
 4. Ouvrir `https://<vous>.github.io/lsv-ai/` → générer une image (doit passer
@@ -498,21 +514,24 @@ un sous-dossier GitHub Pages (`/lsv-ai/`).
 | `shared/config.js` | URL Supabase + clé `anon` + URL Gateway (publics) | ✅ oui |
 | `.env.example` | modèle commenté | ✅ oui |
 | `.env` | éventuel, hors dépôt | ❌ non (`.gitignore`) |
-| `AGNES_API_KEY` | **secret de la Gateway** (Supabase Secrets) | ❌ non |
+| `AGNES_API_KEY` | **secret serveur de secours** de la Gateway (Supabase Secrets) | ❌ non |
+| Clé du fournisseur | saisie dans `/admin` → Paramètres → table `app_settings` (RLS liste blanche) | ❌ non |
 | `service_role` key | **jamais** utilisée par le front | ❌ non |
 | Mot de passe base | uniquement dans Supabase | ❌ non |
 | Mot de passe admin | uniquement dans Supabase Auth (haché) | ❌ non |
 
-La clé du fournisseur de génération n'existe **que** dans les secrets de la
-fonction : jamais dans `index.html`, `admin/`, `analytics/`, `shared/`,
-`localStorage` ni dans Git (`tests/public.test.js` le vérifie).
+La clé du fournisseur de génération n'existe **que** côté serveur : secret de
+la fonction ou table `app_settings` (protégée par RLS, lue par la passerelle
+avec la clé de service). Jamais dans `index.html`, `admin/`, `analytics/`,
+`shared/`, `localStorage` ni dans Git (`tests/public.test.js` le vérifie) —
+dans le back-office elle n'apparaît masquée que sous forme `••••1234`.
 
 ---
 
 ## 9. Tests
 
 ```bash
-npm test        # 199 assertions (211 avec ORIG=… voir plus bas)
+npm test        # 241 assertions (253 avec ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (41 assertions, **53 avec `ORIG`**) — non-régression
@@ -528,7 +547,7 @@ npm test        # 199 assertions (211 avec ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (74 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (88 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -537,32 +556,44 @@ npm test        # 199 assertions (211 avec ORIG=… voir plus bas)
 - erreur amont → toast générique (aucun code HTTP, endpoint, jeton) ;
 - aucun `sk-` dans `index.html` ni dans les fichiers publics ;
 - admin : pas de lien public, pas de mot de passe en dur, RLS en lecture
-  authentifiée **et listée** uniquement (`is_admin`) ;
+  authentifiée **et listée** uniquement (`is_admin`), table `app_settings`
+  sans aucun droit pour `anon` ;
 - comptes : section fermée par défaut, échec de connexion → message générique,
   connexion OK → e-mail affiché, back-office masqué hors liste blanche,
   aucune donnée secrète en `localStorage` ;
+- **inscription avec nom complet** : champ masqué en mode connexion, visible
+  en inscription, refus sans nom (zéro requête), `full_name` bien transmis,
+  nom affiché avec l'e-mail ;
 - **création bloquée sans compte** : aucune requête image/chat émise, toast
   d'invitation, formulaire Compte ouvert, champ de saisie conservé.
 
-**`tests/gateway.test.mjs`** (36 assertions) — passerelle
+**`tests/gateway.test.mjs`** (49 assertions) — passerelle
 
 - routage (y compris préfixe `/functions/v1/lsv-gateway`), injection de la clé
   serveur, rejet de l'authorization client ;
 - CORS (origine autorisée / interdite / preflight) ;
 - rate limit 60 s avec `Retry-After`, quotas journaliers + réinitialisation ;
 - erreurs amont sanitisées (401/500/réseau → message générique, aucun détail) ;
-- clé absente → 503, aucun secret dans aucune réponse.
+- clé absente → 503, aucun secret dans aucune réponse ;
+- **clé du back-office** : lue dans `app_settings` (une lecture par minute —
+  cache), injectée dans l'en-tête amont, jamais renvoyée au client ; table
+  vide ou lecture en échec → repli sur le secret serveur ; ni l'un ni l'autre
+  → 503 ; clé de service lue dans `SUPABASE_SERVICE_ROLE_KEY` ou
+  `SUPABASE_SECRET_KEYS`.
 
-**`tests/admin.test.js`** (48 assertions)
+**`tests/admin.test.js`** (63 assertions)
 
 - configuration absente / non authentifié → dashboard inaccessible ;
 - mauvais identifiants → accès refusé ;
 - identifiants valides → dashboard + KPI + graphiques rendus ;
 - 8 pages + 4 plages temporelles sans exception ;
 - session expirée (RLS) → retour connexion ; déconnexion → données effacées ;
-- **inscription** depuis l'écran de connexion (mode, libellés, création →
-  dashboard si listé, confirmation e-mail si requise) ;
+- **inscription** depuis l'écran de connexion : champ **nom complet** requis
+  (masqué en mode connexion), refus sans nom, `full_name` transmis, création →
+  dashboard si listé, confirmation e-mail si requise ;
 - **compte hors liste blanche** → « Compte non autorisé », zéro donnée ;
+- **clé du fournisseur** dans Paramètres : refus (< 8 caractères), enregistre,
+  affiche `••••1234` (jamais la valeur), retrait → état initial ;
 - aucun mot de passe codé en dur, aucune `service_role`.
 
 ---
@@ -586,6 +617,9 @@ npm test        # 199 assertions (211 avec ORIG=… voir plus bas)
   mais remis à zéro à chaque redémarrage de l'isolate Edge (plusieurs isolate
   = quota par isolate). Si LSV.ai grandit, brancher un store Supabase
   (table + service role) dans `core.mjs`.
+- **Clé du fournisseur en base** : la passerelle la relit au plus une fois par
+  minute (cache) → un changement depuis le back-office prend effet sous ~1 min
+  et par isolate. Si la base est injoignable, le secret serveur reprend la main.
 - **Noms de modèles encore présents dans `index.html`** (constantes `MODEL_*`) :
   ils ne sont jamais affichés à l'écran (testé), mais restent lisibles dans le
   source. Pour les retirer aussi, les faire injecter par la Gateway.

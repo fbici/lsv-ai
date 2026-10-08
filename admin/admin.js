@@ -177,6 +177,8 @@
             : 'Créer un compte';
         $('signup-hint').classList.toggle('hidden', !signup);
         $('auth-title').textContent = signup ? 'Créer un compte' : 'Back-office';
+        if ($('login-name-field')) $('login-name-field').classList.toggle('hidden', !signup);
+        if (!signup && $('login-name')) $('login-name').value = '';
         $('login-password').setAttribute('autocomplete', signup ? 'new-password' : 'current-password');
         $('login-password').setAttribute('placeholder', signup ? '6 caractères minimum' : '••••••••');
     }
@@ -194,10 +196,24 @@
             var password = $('login-password').value;
             var btn = $('login-btn');
             if (!State.client) { showLogin('Service d\'authentification indisponible.', 'error'); return; }
+            var call;
+            if (State.mode === 'signup') {
+                var nameEl = $('login-name');
+                var name = nameEl ? nameEl.value.trim() : '';
+                if (!name) {
+                    showLogin('Nom complet requis.', 'error');
+                    if (nameEl) nameEl.focus();
+                    return;
+                }
+                call = State.client.auth.signUp({
+                    email: email,
+                    password: password,
+                    options: { data: { full_name: name } }
+                });
+            } else {
+                call = State.client.auth.signInWithPassword({ email: email, password: password });
+            }
             setBusy(btn, true);
-            var call = State.mode === 'signup'
-                ? State.client.auth.signUp({ email: email, password: password })
-                : State.client.auth.signInWithPassword({ email: email, password: password });
             call
                 .then(function (res) {
                     setBusy(btn, false);
@@ -221,6 +237,7 @@
 
         $('logout-btn').addEventListener('click', doLogout);
         $('settings-logout').addEventListener('click', doLogout);
+        initKeyCard();
     }
 
     function doLogout() {
@@ -849,9 +866,95 @@
             : [], { barColor: COLORS.error });
     }
 
+    /* ── Clé du fournisseur (passerelle) ──────────────────────────────────
+       Écrite par l'admin ici, lue par la passerelle côté serveur (RLS :
+       lecture/écriture réservées à la liste blanche, aucun droit pour anon). */
+    function renderKeyCard() {
+        var el = $('settings-key-status');
+        if (!el) return;
+        if (!State.client || !State.isAdmin) {
+            el.innerHTML = kvHTML([['Statut', '<span class="badge err">réservé à l\'administrateur</span>']]);
+            return;
+        }
+        el.innerHTML = kvHTML([['Statut', '<span class="badge">lecture…</span>']]);
+        State.client.from('app_settings')
+            .select('value, updated_at')
+            .eq('key', 'provider_api_key')
+            .then(function (res) {
+                if (res && res.error) {
+                    el.innerHTML = kvHTML([
+                        ['Statut', '<span class="badge err">base non prête</span>'],
+                        ['Détail', esc(friendlyAuthError(res.error.message)), true]
+                    ]);
+                    return;
+                }
+                var row = res && res.data && res.data[0];
+                if (!row || !row.value) {
+                    el.innerHTML = kvHTML([
+                        ['Statut', '<span class="badge err">aucune clé enregistrée</span>'],
+                        ['Source utilisée', 'secret serveur de la fonction (si présent)']
+                    ]);
+                    return;
+                }
+                el.innerHTML = kvHTML([
+                    ['Statut', '<span class="badge ok">configurée</span>'],
+                    ['Clé', '••••••••' + esc(String(row.value).slice(-4)), true],
+                    ['Modifiée', row.updated_at ? fmtDateTime(row.updated_at) : '—']
+                ]);
+            })
+            .catch(function (e) {
+                el.innerHTML = kvHTML([
+                    ['Statut', '<span class="badge err">lecture impossible</span>'],
+                    ['Détail', esc((e && e.message) || 'réseau'), true]
+                ]);
+            });
+    }
+
+    function initKeyCard() {
+        var save = $('provider-key-save');
+        var clear = $('provider-key-clear');
+        if (!save || !clear) return;
+        save.addEventListener('click', function () {
+            var input = $('provider-key-input');
+            var v = (input.value || '').trim();
+            if (v.length < 8) { toast('Clé trop courte : 8 caractères minimum.', 'error'); input.focus(); return; }
+            if (!State.client || !State.isAdmin) { toast('Réservé à l\'administrateur.', 'error'); return; }
+            save.disabled = true;
+            State.client.from('app_settings')
+                .upsert({ key: 'provider_api_key', value: v, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+                .then(function (res) {
+                    save.disabled = false;
+                    if (res && res.error) { toast('Enregistrement impossible : ' + friendlyAuthError(res.error.message), 'error'); return; }
+                    input.value = '';
+                    toast('Clé enregistrée — prise en compte sous une minute.', 'success');
+                    renderKeyCard();
+                })
+                .catch(function (e) {
+                    save.disabled = false;
+                    toast('Enregistrement impossible : ' + ((e && e.message) || 'réseau'), 'error');
+                });
+        });
+        clear.addEventListener('click', function () {
+            if (!State.client || !State.isAdmin) { toast('Réservé à l\'administrateur.', 'error'); return; }
+            State.client.from('app_settings')
+                .delete()
+                .eq('key', 'provider_api_key')
+                .then(function (res) {
+                    if (res && res.error) { toast('Retrait impossible : ' + friendlyAuthError(res.error.message), 'error'); return; }
+                    toast('Clé retirée : la passerelle utilise le secret serveur.', 'success');
+                    renderKeyCard();
+                })
+                .catch(function (e) {
+                    toast('Retrait impossible : ' + ((e && e.message) || 'réseau'), 'error');
+                });
+        });
+    }
+
     function renderSettings() {
         var c = window.LSV_CONFIG || {};
         var url = String(c.SUPABASE_URL || '');
+        var meta = (State.user && State.user.user_metadata) || {};
+        var fullName = meta.full_name || meta.name || '';
         $('settings-connection').innerHTML = kvHTML([
             ['Supabase configuré', isConfigured() ? '<span class="badge ok">oui</span>' : '<span class="badge err">non</span>'],
             ['URL', esc(url.replace(/^https?:\/\//, '')) || '—', true],
@@ -860,7 +963,7 @@
             ['Table', 'analytics_events', true]
         ]);
         $('settings-session').innerHTML = kvHTML([
-            ['Compte', esc((State.user && State.user.email) || '—')],
+            ['Compte', esc(fullName ? fullName + ' · ' + ((State.user && State.user.email) || '') : ((State.user && State.user.email) || '—'))],
             ['Liste blanche', State.isAdmin ? '<span class="badge ok">autorisé</span>' : '<span class="badge err">non</span>'],
             ['Identifiant', esc((State.user && State.user.id) || '—'), true],
             ['Session expire', State.session && State.session.expires_at
@@ -869,6 +972,7 @@
             ['Événements chargés', num(State.rows.length)],
             ['Dernière synchro', State.syncedAt ? State.syncedAt.toLocaleTimeString('fr-FR') : '—']
         ]);
+        renderKeyCard();
     }
 
     function renderAll() {

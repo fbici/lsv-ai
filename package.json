@@ -1,6 +1,6 @@
 {
   "name": "lsv-ai",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "private": true,
   "description": "LSV.ai — Studio Viral : application créative (Images, Vidéos, Chat IA, Motion) + comptes Supabase Auth + Analytics + back-office admin sur liste blanche.",
   "scripts": {

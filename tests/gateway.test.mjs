@@ -168,6 +168,125 @@ async function run() {
     check('aucun endpoint amont dans les réponses', !/apihub|agnes-ai\.com/.test(joined));
     check('aucun token sk- dans les réponses', !/sk-/.test(joined));
 
+    console.log('\n=== 9. CLÉ SAISIE DANS LE BACK-OFFICE (table app_settings) ===');
+    const SUPA = 'https://umhsxebemspyyqrecsuq.supabase.co';
+    const SVC = 'secret-service-key-123456';
+    const DB_KEY = 'cle-de-la-base-XYZ';
+    const dbEnv = extra => Object.assign({}, env, {
+        AGNES_API_KEY: '',
+        SUPABASE_URL: SUPA,
+        SUPABASE_SERVICE_ROLE_KEY: SVC
+    }, extra || {});
+
+    let tDb = 1700000000000;
+    const settingsCalls = [];
+    const upCalls = [];
+    const mkDb = () => makeReq(GW + '/v1/images/generations', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}'
+    });
+    const handleDb = createHandler({
+        env: dbEnv(), store: createMemoryStore(), now: () => tDb, log: () => {},
+        fetchImpl: async (url, init) => {
+            const u = String(url);
+            if (u.indexOf('/rest/v1/app_settings') !== -1) {
+                settingsCalls.push({ url: u, init: init });
+                return new Response(JSON.stringify([{ value: DB_KEY }]), {
+                    status: 200, headers: { 'content-type': 'application/json' }
+                });
+            }
+            upCalls.push({ url: u, init: init });
+            return new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+    });
+
+    const d1 = await handleDb(mkDb());
+    const d2 = await handleDb(mkDb());
+    check('requête relayée avec la clé de la base', d1.status === 200 && upCalls.length === 2 &&
+        upCalls[0].init.headers['Authorization'] === 'Bearer ' + DB_KEY, upCalls[0] && upCalls[0].init.headers['Authorization']);
+    check('lecture de la table en une seule fois (cache)', settingsCalls.length === 1, settingsCalls.length);
+    check('lecture filtrée sur la clé du fournisseur', /select=value&key=eq\.provider_api_key/.test(settingsCalls[0].url), settingsCalls[0].url);
+    check('lecture avec la clé de service du projet', settingsCalls[0].init.headers.apikey === SVC, settingsCalls[0].init.headers.apikey);
+    const d1Body = JSON.stringify(await d1.json());
+    check('clé de service jamais renvoyée au client', d1Body.indexOf(SVC) === -1);
+    check('clé de la base jamais renvoyée au client', d1Body.indexOf(DB_KEY) === -1);
+    tDb += 61000;
+    await handleDb(mkDb());
+    check('cache expiré → nouvelle lecture', settingsCalls.length === 2, settingsCalls.length);
+
+    const dictCalls = [];
+    const handleDict = createHandler({
+        env: Object.assign({}, env, {
+            AGNES_API_KEY: '',
+            SUPABASE_URL: SUPA,
+            SUPABASE_SECRET_KEYS: JSON.stringify({ service_role: SVC })
+        }),
+        store: createMemoryStore(), now: () => tDb, log: () => {},
+        fetchImpl: async (url, init) => {
+            const u = String(url);
+            if (u.indexOf('/rest/v1/app_settings') !== -1) {
+                dictCalls.push(init);
+                return new Response(JSON.stringify([{ value: DB_KEY }]), { status: 200, headers: { 'content-type': 'application/json' } });
+            }
+            return new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+    });
+    const dictRes = await handleDict(mkDb());
+    check('clé de service lue dans SUPABASE_SECRET_KEYS', dictRes.status === 200 &&
+        dictCalls.length === 1 && dictCalls[0].headers.apikey === SVC, dictCalls.length);
+
+    console.log('\n=== 10. SECOURS : SECRET SERVEUR + PANNES ===');
+    let tSec = 1700000000000;
+    const secSettings = [];
+    const secUps = [];
+    const mkSec = () => makeReq(GW + '/v1/chat/completions', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}'
+    });
+    const handleEnv = createHandler({
+        env: dbEnv({ AGNES_API_KEY: 'cle-du-secret-CLI' }),
+        store: createMemoryStore(), now: () => tSec, log: () => {},
+        fetchImpl: async (url, init) => {
+            const u = String(url);
+            if (u.indexOf('/rest/v1/app_settings') !== -1) {
+                secSettings.push(u);
+                return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+            }
+            secUps.push(init);
+            return new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+    });
+    const sec1 = await handleEnv(mkSec());
+    check('base vide → secret serveur utilisé', sec1.status === 200 &&
+        secUps[0].headers['Authorization'] === 'Bearer cle-du-secret-CLI', secUps[0] && secUps[0].headers['Authorization']);
+    await handleEnv(mkSec());
+    check('base relue en une seule fois (cache)', secSettings.length === 1, secSettings.length);
+
+    const failSettings = [];
+    const handleFail = createHandler({
+        env: dbEnv({ AGNES_API_KEY: 'cle-de-secours' }),
+        store: createMemoryStore(), now: () => tSec, log: () => {},
+        fetchImpl: async url => {
+            if (String(url).indexOf('/rest/v1/app_settings') !== -1) { failSettings.push(1); throw new Error('ENOTFOUND supabase.co'); }
+            return new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+    });
+    const f1 = await handleFail(mkSec());
+    await handleFail(mkSec());
+    check('lecture impossible → secours sans blocage', f1.status === 200, f1.status);
+    check('échec mis en cache aussi (1 tentative)', failSettings.length === 1, failSettings.length);
+
+    const handleNone = createHandler({
+        env: dbEnv(), store: createMemoryStore(), now: () => tSec, log: () => {},
+        fetchImpl: async url => {
+            if (String(url).indexOf('/rest/v1/app_settings') !== -1) {
+                return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+            }
+            throw new Error('ne devrait pas être appelé');
+        }
+    });
+    const n1 = await handleNone(mkSec());
+    const bNone = await n1.json();
+    check('ni clé en base ni secret → 503', n1.status === 503 && /indisponible/.test(bNone.error.message), n1.status);
+
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');
     console.log((results.length - failed.length) + '/' + results.length + ' tests gateway OK');

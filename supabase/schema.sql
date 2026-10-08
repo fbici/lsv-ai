@@ -97,6 +97,54 @@ grant usage on schema public to anon, authenticated;
 grant insert on public.analytics_events to anon, authenticated;
 grant select on public.analytics_events to authenticated;
 
+-- ── Réglages applicatifs (clé du fournisseur, saisie dans le back-office) ──
+-- La passerelle (Edge Function lsv-gateway) lit la clé avec la clé de service
+-- du projet : elle n'est JAMAIS exposée aux visiteurs (aucun droit pour anon).
+-- Seuls les comptes de la liste blanche peuvent la lire ou la modifier.
+create table if not exists public.app_settings (
+    key         text primary key,
+    value       text not null,
+    updated_at  timestamptz not null default now(),
+    constraint app_settings_key_check check (key in ('provider_api_key'))
+);
+alter table public.app_settings enable row level security;
+revoke all on public.app_settings from anon;
+revoke all on public.app_settings from authenticated;
+grant select, insert, update, delete on public.app_settings to authenticated;
+grant all on public.app_settings to service_role;
+
+drop policy if exists "admin_select_settings" on public.app_settings;
+create policy "admin_select_settings"
+    on public.app_settings
+    for select
+    to authenticated
+    using (public.is_admin());
+
+drop policy if exists "admin_insert_settings" on public.app_settings;
+create policy "admin_insert_settings"
+    on public.app_settings
+    for insert
+    to authenticated
+    with check (public.is_admin());
+
+drop policy if exists "admin_update_settings" on public.app_settings;
+create policy "admin_update_settings"
+    on public.app_settings
+    for update
+    to authenticated
+    using (public.is_admin())
+    with check (public.is_admin());
+
+drop policy if exists "admin_delete_settings" on public.app_settings;
+create policy "admin_delete_settings"
+    on public.app_settings
+    for delete
+    to authenticated
+    using (public.is_admin());
+
+-- insert into public.app_settings (key, value) values ('provider_api_key', '...')
+--     on conflict (key) do update set value = excluded.value, updated_at = now();
+
 -- ── LISTE BLANCHE : un e-mail = un accès admin ─────────────────────────────
 -- Une seule ligne pour un seul administrateur ; ajoute-en une autre
 -- uniquement si tu veux ouvrir l'accès à quelqu'un d'autre.

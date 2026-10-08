@@ -95,6 +95,7 @@ html, body {
 .btn-block { width: 100%; }
 .btn-sm { padding: 0.42rem 0.7rem; font-size: 0.8rem; }
 .btn:disabled { opacity: .6; cursor: not-allowed; }
+.key-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .9rem; }
 
 .icon-btn {
     display: inline-flex; align-items: center; justify-content: center;

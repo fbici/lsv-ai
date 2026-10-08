@@ -165,6 +165,12 @@ async function load(html) {
     check('grant select jamais accordé à anon',
         /grant select on public\.analytics_events to authenticated/.test(schema) &&
         !/grant select on public\.analytics_events to anon/.test(schema));
+    check('clé du fournisseur : aucun droit pour anon',
+        /revoke all on public\.app_settings from anon/.test(schema) &&
+        !/grant select on public\.app_settings to anon/.test(schema));
+    check('écriture de la clé réservée à la liste blanche',
+        /create policy "admin_insert_settings"[\s\S]{0,200}with check \(public\.is_admin\(\)\)/.test(schema) &&
+        /create policy "admin_select_settings"[\s\S]{0,200}using \(public\.is_admin\(\)\)/.test(schema));
 
     console.log('\n=== 7. COMPTES UTILISATEURS (Supabase Auth) ===');
     check('section Compte présente', !!doc.getElementById('account-section'));
@@ -221,6 +227,54 @@ async function load(html) {
     check('session conservée sur l appareil', !!wb.localStorage.getItem('lsv4_account'));
     check('aucun mot de passe en clair stocké', !/password|motdepasse|secret-de-test/i.test(wb.localStorage.getItem('lsv4_account') || ''));
     check('aucune erreur console (comptes)', errors.length === 0, errors.join('|'));
+
+    console.log('\n=== 7bis. INSCRIPTION AVEC NOM COMPLET ===');
+    doc.getElementById('account-logout').click();
+    await new Promise(r => setTimeout(r, 80));
+    doc.getElementById('account-open').click();
+    check('champ nom masqué en mode connexion', doc.getElementById('account-name').classList.contains('hidden'));
+    doc.getElementById('account-mode').click(); // → mode inscription
+    check('champ nom complet visible en inscription', !doc.getElementById('account-name').classList.contains('hidden'));
+    check('trois champs : nom, e-mail, mot de passe',
+        !!doc.getElementById('account-name') && !!doc.getElementById('account-email') && !!doc.getElementById('account-password'));
+
+    const signCalls = [];
+    wb.fetch = function (url, options) {
+        const u = String(url);
+        signCalls.push({ url: u, body: (options && options.body) || '' });
+        if (u.includes('/rest/v1/analytics_events')) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
+        if (u.includes('/auth/v1/signup')) {
+            return Promise.resolve({
+                ok: true, status: 200,
+                json: async () => ({
+                    access_token: 'jwt-inscription', refresh_token: 'rfr-inscription', expires_in: 3600,
+                    user: { email: 'nouveau@lsv.ai', user_metadata: { full_name: 'Ada Lovelace' } }
+                }),
+                text: async () => ''
+            });
+        }
+        if (u.includes('/rest/v1/rpc/is_admin')) return Promise.resolve({ ok: true, status: 200, json: async () => false, text: async () => '' });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    doc.getElementById('account-email').value = 'nouveau@lsv.ai';
+    doc.getElementById('account-password').value = 'mot-de-passe-test';
+    doc.getElementById('account-submit').click();
+    await new Promise(r => setTimeout(r, 250));
+    const noNameMsg = doc.getElementById('account-status-text').textContent;
+    check('inscription sans nom refusée', /Nom complet requis/i.test(noNameMsg), noNameMsg);
+    check('aucune requête d inscription sans nom', !signCalls.some(c => c.url.includes('/auth/v1/signup')), signCalls.map(c => c.url).join(','));
+    check('toujours déconnecté', doc.getElementById('account-user').classList.contains('hidden'));
+
+    doc.getElementById('account-name').value = 'Ada Lovelace';
+    doc.getElementById('account-submit').click();
+    await new Promise(r => setTimeout(r, 450));
+    const up = signCalls.find(c => c.url.includes('/auth/v1/signup'));
+    check('nom complet envoyé à Supabase Auth', !!up && /"full_name":"Ada Lovelace"/.test(up.body), up && up.body);
+    check('e-mail et mot de passe envoyés', !!up && /nouveau@lsv\.ai/.test(up.body) && /mot-de-passe-test/.test(up.body), up && up.body);
+    check('compte créé et connecté', !doc.getElementById('account-user').classList.contains('hidden'));
+    check('nom affiché avec l e-mail', /Ada Lovelace/.test(doc.getElementById('account-mail').textContent), doc.getElementById('account-mail').textContent);
+    check('mot de passe jamais stocké', !/mot-de-passe-test/.test(wb.localStorage.getItem('lsv4_account') || ''));
+    check('aucune erreur console (inscription app)', errors.length === 0, errors.join('|'));
 
     console.log('\n=== 8. CRÉATION BLOQUÉE SANS COMPTE ===');
     const anon = await load(prepare());

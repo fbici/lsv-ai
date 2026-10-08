@@ -114,16 +114,36 @@ async function login(dom, email, password) {
 (async () => {
     const src = fs.readFileSync(ADMIN_HTML, 'utf8');
     const fake = function makeFakeSupabase() {
-        function builder(rowsForRequest) {
+        function builder(rowsForRequest, table) {
             const b = {
+                _table: table, _upsert: null, _isDelete: false,
                 select() { return b; }, gte() { return b; }, lt() { return b; },
-                order() { return b; }, limit() { return b; },
-                then(resolve) {
+                order() { return b; }, limit() { return b; }, eq() { return b; },
+                upsert(row) { b._upsert = row; return b; },
+                delete() { b._isDelete = true; return b; },
+                then(resolve, reject) {
                     const session = api._session;
                     const listed = session && (window.__WHITELIST || []).indexOf(session.user.email) !== -1;
+                    let result;
                     if (window.__rlsEnabled && !listed) {
-                        resolve({ data: null, error: { message: 'permission denied for table analytics_events' } });
-                    } else resolve({ data: rowsForRequest, error: null });
+                        result = { data: null, error: { message: 'permission denied for table ' + (b._table || 'analytics_events') } };
+                    } else if (b._table === 'app_settings') {
+                        const store = window.__SETTINGS || {};
+                        if (b._upsert) {
+                            store[b._upsert.key] = b._upsert;
+                            window.__SETTINGS = store;
+                            result = { data: [b._upsert], error: null };
+                        } else if (b._isDelete) {
+                            window.__SETTINGS = {};
+                            result = { data: null, error: null };
+                        } else {
+                            const row = store.provider_api_key;
+                            result = { data: row ? [{ key: row.key, value: row.value, updated_at: row.updated_at }] : [], error: null };
+                        }
+                    } else {
+                        result = { data: rowsForRequest, error: null };
+                    }
+                    return Promise.resolve(result).then(resolve, reject);
                 }
             };
             return b;
@@ -136,7 +156,7 @@ async function login(dom, email, password) {
                     const ok = creds.password === window.__GOOD_PASSWORD &&
                         (creds.email === window.__GOOD_EMAIL || creds.email === window.__USER_EMAIL);
                     if (ok) {
-                        const session = { user: { id: 'uid-1', email: creds.email }, expires_at: Math.floor(Date.now() / 1000) + 3600 };
+                        const session = { user: { id: 'uid-1', email: creds.email, user_metadata: {} }, expires_at: Math.floor(Date.now() / 1000) + 3600 };
                         api._session = session;
                         api._listeners.forEach(cb => cb('SIGNED_IN', session));
                         return Promise.resolve({ data: { user: session.user, session }, error: null });
@@ -144,10 +164,11 @@ async function login(dom, email, password) {
                     return Promise.resolve({ data: { user: null, session: null }, error: { message: 'Invalid login credentials' } });
                 },
                 signUp(creds) {
+                    const meta = (creds.options && creds.options.data) || {};
                     if (creds.email === window.__CONFIRM_EMAIL) {
-                        return Promise.resolve({ data: { user: { id: 'uid-2', email: creds.email }, session: null }, error: null });
+                        return Promise.resolve({ data: { user: { id: 'uid-2', email: creds.email, user_metadata: meta }, session: null }, error: null });
                     }
-                    const session = { user: { id: 'uid-2', email: creds.email }, expires_at: Math.floor(Date.now() / 1000) + 3600 };
+                    const session = { user: { id: 'uid-2', email: creds.email, user_metadata: meta }, expires_at: Math.floor(Date.now() / 1000) + 3600 };
                     api._session = session;
                     api._listeners.forEach(cb => cb('SIGNED_IN', session));
                     return Promise.resolve({ data: { user: session.user, session }, error: null });
@@ -155,7 +176,7 @@ async function login(dom, email, password) {
                 signOut() { api._session = null; api._listeners.forEach(cb => cb('SIGNED_OUT', null)); return Promise.resolve({ error: null }); },
                 onAuthStateChange(cb) { api._listeners.push(cb); return { data: { subscription: {} } }; }
             },
-            from() { return builder(window.__EVENTS); },
+            from(table) { return builder(window.__EVENTS, table); },
             rpc(name) {
                 if (name !== 'is_admin') return Promise.resolve({ data: null, error: { message: 'unknown function' } });
                 const s = api._session;
@@ -177,7 +198,7 @@ async function login(dom, email, password) {
                 '<script>window.__rlsEnabled=true;window.__GOOD_EMAIL="' + GOOD_EMAIL + '";window.__GOOD_PASSWORD="' + GOOD_PASSWORD +
                 '";window.__USER_EMAIL="' + OTHER_EMAIL + '";window.__CONFIRM_EMAIL="' + CONFIRM_EMAIL +
                 '";window.__WHITELIST=' + JSON.stringify(WHITELIST) +
-                ';window.__EVENTS=' + JSON.stringify(EVENTS) + ';window.supabase=(' + fake.toString() + ')();</script>')
+                ';window.__SETTINGS={};window.__EVENTS=' + JSON.stringify(EVENTS) + ';window.supabase=(' + fake.toString() + ')();</script>')
             .replace('<script src="../shared/config.js"></script>', '<script>window.LSV_CONFIG=' + JSON.stringify(config) + ';</script>')
             .replace('<script src="./admin.js"></script>', '<script>' + fs.readFileSync(path.join(PROJECT, 'admin/admin.js'), 'utf8') + '</script>');
     }
@@ -271,10 +292,12 @@ async function login(dom, email, password) {
     console.log('\n=== I. INSCRIPTION DEPUIS L ÉCRAN CONNEXION ===');
     t = await load(inject(src, CONFIG_OK));
     let wi = t.dom.window;
+    check('champ nom masqué en mode connexion', wi.document.getElementById('login-name-field').classList.contains('hidden'));
     wi.document.getElementById('signup-toggle').dispatchEvent(new wi.Event('click', { bubbles: true }));
     await sleep(80);
     check('titre = Créer un compte', wi.document.getElementById('auth-title').textContent === 'Créer un compte');
     check('indice d inscription visible', !wi.document.getElementById('signup-hint').classList.contains('hidden'));
+    check('champ nom complet visible en inscription', !wi.document.getElementById('login-name-field').classList.contains('hidden'));
     check('bouton = Créer le compte', /Créer le compte/.test(wi.document.getElementById('login-btn').textContent));
     check('libellé inversé (j ai déjà un compte)', /déjà un compte/.test(wi.document.getElementById('signup-toggle').textContent));
     check('autocomplete = new-password', wi.document.getElementById('login-password').getAttribute('autocomplete') === 'new-password');
@@ -283,14 +306,23 @@ async function login(dom, email, password) {
     wi.document.getElementById('login-email').value = NEW_EMAIL;
     wi.document.getElementById('login-password').value = 'mot-de-passe-test';
     wi.document.getElementById('login-form').dispatchEvent(new wi.Event('submit', { bubbles: true, cancelable: true }));
+    await sleep(200);
+    check('inscription sans nom refusée', /Nom complet requis/i.test(wi.document.getElementById('login-error').textContent), wi.document.getElementById('login-error').textContent);
+    check('dashboard fermé sans nom', wi.document.getElementById('admin-app').classList.contains('hidden'));
+
+    wi.document.getElementById('login-name').value = 'Jean Nouveau';
+    wi.document.getElementById('login-form').dispatchEvent(new wi.Event('submit', { bubbles: true, cancelable: true }));
     await sleep(500);
     check('inscription → dashboard (liste blanche)', !wi.document.getElementById('admin-app').classList.contains('hidden'));
     check('e-mail du nouveau compte affiché', wi.document.getElementById('admin-email').textContent === NEW_EMAIL, wi.document.getElementById('admin-email').textContent);
+    const meta = wi.supabase._api._session && wi.supabase._api._session.user.user_metadata;
+    check('nom complet transmis à Supabase Auth', meta && meta.full_name === 'Jean Nouveau', JSON.stringify(meta));
 
     const t2 = await load(inject(src, CONFIG_OK));
     const wc = t2.dom.window;
     wc.document.getElementById('signup-toggle').dispatchEvent(new wc.Event('click', { bubbles: true }));
     await sleep(60);
+    wc.document.getElementById('login-name').value = 'Confirme Toi';
     wc.document.getElementById('login-email').value = CONFIRM_EMAIL;
     wc.document.getElementById('login-password').value = 'mot-de-passe-test';
     wc.document.getElementById('login-form').dispatchEvent(new wc.Event('submit', { bubbles: true, cancelable: true }));
@@ -310,6 +342,36 @@ async function login(dom, email, password) {
     check('écran de connexion visible', !wo.document.getElementById('auth-screen').classList.contains('hidden'));
     check('aucune donnée affichée (hors liste)', wo.document.getElementById('kpi-grid').innerHTML.trim() === '');
     check('aucune erreur console (hors liste)', t.errors.length === 0, t.errors.join('|'));
+
+    console.log('\n=== L. CLÉ DU FOURNISSEUR DANS PARAMÈTRES ===');
+    t = await load(inject(src, CONFIG_OK));
+    const wk = t.dom.window;
+    await login(t, GOOD_EMAIL, GOOD_PASSWORD);
+    await sleep(500);
+    wk.document.querySelector('.nav-item[data-page="settings"]').dispatchEvent(new wk.Event('click', { bubbles: true }));
+    await sleep(250);
+    check('carte « Clé du fournisseur » présente', !!wk.document.getElementById('provider-key-input'));
+    const keyStatus = () => wk.document.getElementById('settings-key-status').textContent;
+    check('statut initial : aucune clé en base', /aucune clé/i.test(keyStatus()), keyStatus().replace(/\s+/g, ' ').slice(0, 90));
+
+    wk.document.getElementById('provider-key-input').value = 'court';
+    wk.document.getElementById('provider-key-save').dispatchEvent(new wk.Event('click', { bubbles: true }));
+    await sleep(120);
+    check('clé trop courte refusée', /8 caractères/.test(wk.document.getElementById('toast-text').textContent), wk.document.getElementById('toast-text').textContent);
+    check('statut inchangé après refus', /aucune clé/i.test(keyStatus()));
+
+    wk.document.getElementById('provider-key-input').value = 'cle-de-test-1234567890';
+    wk.document.getElementById('provider-key-save').dispatchEvent(new wk.Event('click', { bubbles: true }));
+    await sleep(250);
+    check('clé enregistrée (confirmation)', /enregistrée/i.test(wk.document.getElementById('toast-text').textContent), wk.document.getElementById('toast-text').textContent);
+    check('statut = configurée', /configurée/i.test(keyStatus()), keyStatus().replace(/\s+/g, ' ').slice(0, 90));
+    check('clé masquée dans le statut', !/cle-de-test-1234567890/.test(keyStatus()) && /••••/.test(keyStatus()), keyStatus().replace(/\s+/g, ' ').slice(0, 90));
+    check('champ vidé après enregistrement', wk.document.getElementById('provider-key-input').value === '');
+
+    wk.document.getElementById('provider-key-clear').dispatchEvent(new wk.Event('click', { bubbles: true }));
+    await sleep(250);
+    check('clé retirée → statut initial', /aucune clé/i.test(keyStatus()), keyStatus().replace(/\s+/g, ' ').slice(0, 90));
+    check('aucune erreur console (clé)', t.errors.length === 0, t.errors.join('|'));
 
     console.log('\n=== K. SANITÉ ===');
     check('aucune erreur console globale', t.errors.length === 0, t.errors.join('|'));
