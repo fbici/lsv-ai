@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.4
+# LSV.ai — Studio Viral v3.4.1
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
 
@@ -7,7 +7,8 @@ ni endpoint, ni console de debug. L'application parle à **sa propre passerelle*
 qui appelle le fournisseur de génération côté serveur avec un secret.
 
 **Création = compte** : toute génération (images, vidéos, chat, enhancer, batch)
-exige un **compte connecté** (inscription gratuite, section « Compte »). Un
+exige un **compte connecté** (inscription gratuite, page de connexion plein
+écran ouverte depuis la section « Compte »). Un
 visiteur non connecté conserve l'accès à la consultation, mais rien n'est envoyé
 ni consommé.
 
@@ -29,7 +30,7 @@ LSV.ai
 │
 ├── Application créative existante (design et workflows inchangés)
 │   Images · Vidéos · Chat IA · Motion · Projects · Library
-│   + section « Compte » (inscription / connexion / déconnexion)
+│   + section « Compte » (page de connexion plein écran : inscription / connexion / déconnexion)
 │
 ├── LSV API Gateway     → supabase/functions/lsv-gateway
 │   Clé fournisseur côté serveur · rate limit · quotas · erreurs sanitizées
@@ -211,7 +212,7 @@ ne protègent que notre passerelle.
 
 | Ajout | Détail |
 |---|---|
-| **Section « Compte »** | panneau de droite : `Se connecter / S'inscrire`, formulaire **nom complet + e-mail + mot de passe**, `Se déconnecter` |
+| **Section « Compte »** | panneau de droite : `Se connecter / S'inscrire` → **page de connexion plein écran** (carte centrée, champs icônes + libellés, œil afficher/masquer, fermeture par le fond / `Échap`), formulaire **nom complet + e-mail + mot de passe**, `Se déconnecter` |
 | **Inscription** | Supabase Auth (`/auth/v1/signup`) — le nom complet part dans `user_metadata`, le mot de passe va uniquement à Supabase |
 | **Session** | jeton d'accès + rafraîchissement stockés sur l'appareil (`localStorage.lsv4_account`), jamais le mot de passe |
 | **Liste blanche admin** | table `admin_emails` + fonction SQL `is_admin()` : seul un e-mail listé voit les statistiques |
@@ -335,14 +336,19 @@ window.LSV_CONFIG = {
 
 ### 5.1 S'inscrire / se connecter (application publique)
 
-Dans le panneau de droite → section **Compte** :
+Dans le panneau de droite → section **Compte** : le bouton ouvre la
+**page de connexion plein écran** (`#auth-modal`, `role="dialog"`, overlay
+flouté) qui reste affichée tant qu'elle n'est pas fermée (bouton ✕, clic
+sur le fond, `Échap` ou `Annuler`) :
 
 | Situation | Résultat |
 |---|---|
-| Non connecté | bouton `Se connecter / S'inscrire` (formulaire fermé par défaut) |
-| Non connecté **+ création** | ❌ aucune requête envoyée : toast « Connecte-toi à ton compte pour créer. » + formulaire Compte ouvert (le champ de saisie est conservé) |
-| `Créer un compte` | **nom complet** (obligatoire) + e-mail + mot de passe (6 car. min.) → `signUp` ; le champ nom n'apparaît qu'en mode inscription |
+| Non connecté | bouton `Se connecter / S'inscrire` (page fermée par défaut) |
+| Non connecté **+ création** | ❌ aucune requête envoyée : toast « Connecte-toi à ton compte pour créer. » + page de connexion ouverte automatiquement (le champ de saisie est conservé) |
+| `Créer un compte` | **nom complet** (obligatoire) + e-mail + mot de passe (6 car. min.) → `signUp` ; le champ nom n'apparaît qu'en mode inscription (titre, badge et texte changent avec le mode) |
+| `Mot de passe oublié ?` | e-mail saisi → `POST /auth/v1/recover` ; réponse générique (aucune révélation d'existence de compte) |
 | Confirmation e-mail activée | message « confirme ton e-mail puis connecte-toi » |
+| Connexion réussie | la page se referme + toast « Connexion réussie. » |
 | Connecté | `nom complet · e-mail` affichés + `Se déconnecter` |
 | E-mail **dans** `admin_emails` | bouton `Ouvrir le back-office` en plus |
 | E-mail **hors** liste blanche | aucun accès au back-office proposé |
@@ -531,14 +537,14 @@ dans le back-office elle n'apparaît masquée que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 241 assertions (253 avec ORIG=… voir plus bas)
+npm test        # 259 assertions (271 avec ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (41 assertions, **53 avec `ORIG`**) — non-régression
 
 - structure HTML et `body.innerHTML` identiques à l'original, hors blocs
   volontairement supprimés (clé API, console, infos fournisseur) **et hors
-  section « Compte » ajoutée** —
+  section « Compte » + page de connexion ajoutées** —
   `ORIG=/chemin/index.original.html npm test` ;
 - navigation sur les 14 onglets sans exception ;
 - génération d'image simulée **sans aucune clé** : succès + échec, requête
@@ -547,7 +553,7 @@ npm test        # 241 assertions (253 avec ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (88 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (106 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -564,8 +570,12 @@ npm test        # 241 assertions (253 avec ORIG=… voir plus bas)
 - **inscription avec nom complet** : champ masqué en mode connexion, visible
   en inscription, refus sans nom (zéro requête), `full_name` bien transmis,
   nom affiché avec l'e-mail ;
+- **page de connexion plein écran** : fermée par défaut, ouverte par le bouton
+  et par « création sans compte », fermée après connexion / par le fond /
+  `Échap`, titres et champs suivent le mode, œil afficher-masquer,
+  mot de passe oublié (refus sans e-mail, `POST /recover` simulé) ;
 - **création bloquée sans compte** : aucune requête image/chat émise, toast
-  d'invitation, formulaire Compte ouvert, champ de saisie conservé.
+  d'invitation, page de connexion ouverte, champ de saisie conservé.
 
 **`tests/gateway.test.mjs`** (49 assertions) — passerelle
 

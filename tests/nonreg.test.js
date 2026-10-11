@@ -80,6 +80,7 @@ function normalizePublic(doc) {
     // tests (public.test), donc retirés ici pour ne pas fausser l'égalité
     // structurelle avec l'original.
     drop('#account-section');
+    drop('#auth-modal');
     const w = doc.defaultView;
     if (w && w.LSV && w.LSV.services && w.LSV.services.account) delete w.LSV.services.account;
     const keyInput = doc.getElementById('api-input');

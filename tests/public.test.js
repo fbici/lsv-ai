@@ -176,6 +176,8 @@ async function load(html) {
     check('section Compte présente', !!doc.getElementById('account-section'));
     check('formulaire fermé par défaut', doc.getElementById('account-form').classList.contains('hidden'));
     check('aucun compte connecté par défaut', doc.getElementById('account-user').classList.contains('hidden'));
+    check('page de connexion masquée par défaut', doc.getElementById('auth-modal').classList.contains('hidden'));
+    check('page de connexion au niveau du body', !!doc.getElementById('auth-modal').closest('body'));
     check('index.html permet l inscription (Auth REST)', /auth\/v1\/signup|AccountService/.test(source));
     check('index.html sans mot de passe en dur', !/password\s*[:=]\s*['"][^'"]+['"]/i.test(source));
     check('index.html sans service_role', !/service_role/i.test(source));
@@ -196,6 +198,7 @@ async function load(html) {
         return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
     };
     doc.getElementById('account-open').click();
+    check('page de connexion ouverte par le bouton', !doc.getElementById('auth-modal').classList.contains('hidden'));
     doc.getElementById('account-email').value = 'visiteur@lsv.ai';
     doc.getElementById('account-password').value = 'secret-de-test';
     doc.getElementById('account-submit').click();
@@ -204,6 +207,7 @@ async function load(html) {
     check('connexion refusée → message générique', /Identifiants incorrects/i.test(accMsg), accMsg);
     check('aucun détail technique dans le message', !/sk-|HTTP|401|apihub|agnes/i.test(accMsg), accMsg);
     check('toujours déconnecté', doc.getElementById('account-user').classList.contains('hidden'));
+    check('page de connexion restée ouverte après échec', !doc.getElementById('auth-modal').classList.contains('hidden'));
 
     // Connexion réussie → compte affiché, back-office masqué hors liste blanche
     wb.fetch = function (url) {
@@ -222,6 +226,7 @@ async function load(html) {
     doc.getElementById('account-submit').click();
     await new Promise(r => setTimeout(r, 400));
     check('compte affiché après connexion', !doc.getElementById('account-user').classList.contains('hidden'));
+    check('page de connexion fermée après connexion', doc.getElementById('auth-modal').classList.contains('hidden'));
     check('e-mail affiché', /visiteur@lsv\.ai/.test(doc.getElementById('account-mail').textContent), doc.getElementById('account-mail').textContent);
     check('back-office masqué hors liste blanche', doc.getElementById('account-admin').classList.contains('hidden'));
     check('session conservée sur l appareil', !!wb.localStorage.getItem('lsv4_account'));
@@ -237,6 +242,45 @@ async function load(html) {
     check('champ nom complet visible en inscription', !doc.getElementById('account-name').classList.contains('hidden'));
     check('trois champs : nom, e-mail, mot de passe',
         !!doc.getElementById('account-name') && !!doc.getElementById('account-email') && !!doc.getElementById('account-password'));
+    check('champ nom regroupé (label + icône)', !doc.getElementById('account-name-field').classList.contains('hidden'));
+    check('réinitialisation masquée en inscription', doc.getElementById('account-forgot').classList.contains('hidden'));
+    check('titre de page en inscription', doc.getElementById('auth-heading').textContent === 'Créer un compte', doc.getElementById('auth-heading').textContent);
+
+    doc.getElementById('account-eye').click();
+    check('œil : mot de passe affiché', doc.getElementById('account-password').type === 'text');
+    doc.getElementById('account-eye').click();
+    check('œil : mot de passe masqué', doc.getElementById('account-password').type === 'password');
+
+    doc.getElementById('account-mode').click(); // → retour mode connexion
+    check('retour en mode connexion', doc.getElementById('account-name').classList.contains('hidden') &&
+        !doc.getElementById('account-forgot').classList.contains('hidden'));
+    check('titre de page en connexion', doc.getElementById('auth-heading').textContent === 'Se connecter', doc.getElementById('auth-heading').textContent);
+
+    doc.getElementById('account-email').value = '';
+    doc.getElementById('account-forgot').click();
+    const emptyForgot = doc.getElementById('account-status-text').textContent;
+    check('réinitialisation sans e-mail refusée', /e-mail/i.test(emptyForgot), emptyForgot);
+
+    wb.fetch = function (url) {
+        const u = String(url);
+        if (u.includes('/rest/v1/analytics_events')) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
+        if (u.includes('/auth/v1/recover')) return Promise.resolve({ ok: true, status: 200, json: async () => ({}), text: async () => '' });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    doc.getElementById('account-email').value = 'visiteur@lsv.ai';
+    doc.getElementById('account-forgot').click();
+    await new Promise(r => setTimeout(r, 250));
+    const forgotMsg = doc.getElementById('account-status-text').textContent;
+    check('e-mail de réinitialisation demandé', /E-mail envoyé/i.test(forgotMsg), forgotMsg);
+
+    doc.getElementById('auth-modal').dispatchEvent(new wb.MouseEvent('mousedown', { bubbles: true }));
+    check('fermeture en cliquant le fond', doc.getElementById('auth-modal').classList.contains('hidden'));
+    doc.getElementById('account-open').click();
+    check('réouverture depuis le panneau', !doc.getElementById('auth-modal').classList.contains('hidden'));
+    doc.dispatchEvent(new wb.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    check('fermeture avec Échap', doc.getElementById('auth-modal').classList.contains('hidden'));
+    doc.getElementById('account-open').click();
+    doc.getElementById('account-mode').click(); // → mode inscription pour la suite
 
     const signCalls = [];
     wb.fetch = function (url, options) {
@@ -292,6 +336,7 @@ async function load(html) {
     check('aucune image créée', wa.LSV.runtime.imageCount === 0, wa.LSV.runtime.imageCount);
     check('toast = invitation à se connecter', /Connecte-toi/.test(da.getElementById('toast-text').textContent), da.getElementById('toast-text').textContent);
     check('formulaire Compte ouvert automatiquement', !da.getElementById('account-form').classList.contains('hidden'));
+    check('page de connexion ouverte automatiquement', !da.getElementById('auth-modal').classList.contains('hidden'));
     check('aucun détail technique dans le toast', !/sk-|HTTP|apihub|agnes/i.test(da.getElementById('toast-text').textContent));
 
     da.getElementById('chat-input').value = 'Salut, une idée ?';

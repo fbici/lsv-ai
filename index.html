@@ -1953,6 +1953,178 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
 .modal-btn.danger { background: var(--red); color: #ffffff; border-color: var(--red); }
 .modal-btn.danger:hover { background: var(--red-hover); }
 
+/* AUTH MODAL — page de connexion / inscription en surimpression */
+.auth-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 600;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 1.2rem;
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(7px);
+    -webkit-backdrop-filter: blur(7px);
+}
+.auth-modal:not(.hidden) { display: flex; animation: authFade 0.18s ease; }
+@keyframes authFade { from { opacity: 0; } to { opacity: 1; } }
+.auth-card {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    max-height: 92vh;
+    overflow-y: auto;
+    padding: 1.7rem 1.7rem 1.3rem;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+    animation: authPop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes authPop { from { opacity: 0; transform: translateY(14px) scale(0.97); } to { opacity: 1; transform: none; } }
+.auth-close {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 50%;
+    color: var(--ink-3);
+    font-family: var(--font);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.auth-close:hover { background: var(--bg-3); border-color: var(--border); color: var(--ink); }
+.auth-head { display: flex; align-items: center; gap: 0.55rem; margin-bottom: 1.05rem; }
+.auth-logo {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+}
+.auth-logo span { color: var(--accent); }
+.auth-badge {
+    font-family: var(--font-mono);
+    font-size: 0.56rem;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-light);
+    border-radius: 999px;
+    padding: 0.2rem 0.5rem;
+}
+.auth-title {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin: 0 0 0.4rem;
+}
+.auth-sub {
+    font-size: 0.83rem;
+    line-height: 1.55;
+    color: var(--ink-3);
+    margin: 0 0 1.25rem;
+}
+.auth-field { display: block; margin-bottom: 0.8rem; }
+.auth-field.hidden { display: none; }
+.auth-label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 0.38rem;
+}
+.auth-wrap { position: relative; display: block; }
+.auth-wrap .auth-icon {
+    position: absolute;
+    left: 0.72rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 17px;
+    color: var(--ink-4);
+    pointer-events: none;
+}
+.auth-wrap input {
+    width: 100%;
+    padding: 0.74rem 2.6rem 0.74rem 2.3rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: 0.88rem;
+    transition: all 0.15s;
+}
+.auth-wrap input:focus {
+    outline: none;
+    background: var(--bg-2);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-light);
+}
+.auth-wrap input::placeholder { color: var(--ink-4); }
+.auth-eye {
+    position: absolute;
+    right: 0.3rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    border-radius: 50%;
+    color: var(--ink-3);
+    font-family: var(--font);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.auth-eye:hover { background: var(--bg-3); color: var(--ink); }
+.auth-side {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin-top: -0.2rem;
+}
+.auth-side .account-switch { margin-top: 0.7rem; }
+.auth-forgot {
+    margin-top: 0.7rem;
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--ink-3);
+    font-family: var(--font);
+    font-size: 0.73rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.auth-forgot:hover { color: var(--accent); }
+.auth-submit { margin-top: 1rem; padding: 0.82rem; font-size: 0.9rem; }
+.auth-foot {
+    margin-top: 1.15rem;
+    padding-top: 0.95rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.68rem;
+    line-height: 1.55;
+    color: var(--ink-4);
+    text-align: center;
+}
+
 /* EMPTY / PROJECTS / LIBRARY / HISTORY */
 .empty-state {
     padding: 3rem 1.5rem;
@@ -3041,21 +3213,6 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
 
             <div id="account-guest">
                 <button type="button" class="rp-btn" id="account-open">Se connecter / S'inscrire</button>
-
-                <div id="account-form" class="hidden">
-                    <input type="text" class="rp-api-input hidden" id="account-name" placeholder="nom complet" autocomplete="name" maxlength="80">
-                    <input type="email" class="rp-api-input" id="account-email" placeholder="e-mail" autocomplete="username">
-                    <input type="password" class="rp-api-input" id="account-password" placeholder="mot de passe" autocomplete="current-password">
-                    <button type="button" class="rp-btn" id="account-submit">Se connecter</button>
-                    <div>
-                        <button type="button" class="account-switch" id="account-mode">Créer un compte</button>
-                        <button type="button" class="account-switch" id="account-cancel">Annuler</button>
-                    </div>
-                </div>
-
-                <div class="rp-status hidden" id="account-status">
-                    <span class="dot"></span><span id="account-status-text"></span>
-                </div>
             </div>
 
             <div id="account-user" class="hidden">
@@ -3112,6 +3269,65 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
 <div class="status-bar" id="status-bar">
     <div class="spinner"></div>
     <span id="status-text">Préparation…</span>
+</div>
+
+<div class="auth-modal hidden" id="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-heading">
+    <div class="auth-card">
+        <button type="button" class="auth-close" id="account-close" aria-label="Fermer"><span class="ms">close</span></button>
+
+        <div class="auth-head">
+            <span class="auth-logo">LSV<span>.ai</span></span>
+            <span class="auth-badge" id="account-badge">Connexion</span>
+        </div>
+
+        <h2 class="auth-title" id="auth-heading">Se connecter</h2>
+        <p class="auth-sub" id="account-sub">Connecte-toi pour créer des images, vidéos et chat. Ton compte retrouve tes projets sur tous tes appareils.</p>
+
+        <div id="account-form" class="hidden">
+            <label class="auth-field hidden" id="account-name-field" for="account-name">
+                <span class="auth-label">Nom complet</span>
+                <span class="auth-wrap">
+                    <span class="ms auth-icon">person</span>
+                    <input type="text" class="hidden" id="account-name" placeholder="Ada Lovelace" autocomplete="name" maxlength="80">
+                </span>
+            </label>
+
+            <label class="auth-field" for="account-email">
+                <span class="auth-label">E-mail</span>
+                <span class="auth-wrap">
+                    <span class="ms auth-icon">mail</span>
+                    <input type="email" id="account-email" placeholder="toi@exemple.com" autocomplete="username">
+                </span>
+            </label>
+
+            <label class="auth-field" for="account-password">
+                <span class="auth-label">Mot de passe</span>
+                <span class="auth-wrap">
+                    <span class="ms auth-icon">lock</span>
+                    <input type="password" id="account-password" placeholder="mot de passe" autocomplete="current-password">
+                    <button type="button" class="auth-eye" id="account-eye" aria-label="Afficher le mot de passe"><span class="ms">visibility_off</span></button>
+                </span>
+            </label>
+
+            <div class="auth-side">
+                <button type="button" class="account-switch" id="account-mode">Créer un compte</button>
+                <button type="button" class="auth-forgot" id="account-forgot">Mot de passe oublié ?</button>
+            </div>
+
+            <div class="rp-status hidden" id="account-status">
+                <span class="dot"></span><span id="account-status-text"></span>
+            </div>
+
+            <button type="button" class="rp-btn auth-submit" id="account-submit">Se connecter</button>
+
+            <div class="auth-side">
+                <span></span>
+                <button type="button" class="account-switch" id="account-cancel">Annuler</button>
+            </div>
+        </div>
+
+        <p class="auth-foot">Les mots de passe sont vérifiés et chiffrés par Supabase : ils ne transitent jamais par LSV.ai et ne sont jamais gardés sur cet appareil.</p>
+    </div>
 </div>
 
 <div class="toast" id="toast">
@@ -3824,6 +4040,13 @@ const AccountService = {
         }
         return true;
     },
+    /* Mot de passe oublié : Supabase envoie un e-mail de réinitialisation.
+       Réponse identique que le compte existe ou non (pas d'énumération). */
+    async recover(email) {
+        if (!this._configured()) throw new Error('configuration absente');
+        await this._post('/recover', { email: email });
+        return true;
+    },
     async token() {
         const s = this.session();
         if (!s || !s.access_token) return null;
@@ -3886,23 +4109,81 @@ const AccountView = {
         });
         this.$('account-logout').addEventListener('click', () => this.logout());
         this.$('account-admin').addEventListener('click', () => { window.location.href = 'admin/index.html'; });
+        this.setMode(this.mode);
+        const modal = this.$('auth-modal');
+        if (modal) {
+            const closeBtn = this.$('account-close');
+            if (closeBtn) closeBtn.addEventListener('click', () => this.close());
+            modal.addEventListener('mousedown', e => { if (e.target === modal) this.close(); });
+            const eye = this.$('account-eye');
+            if (eye) eye.addEventListener('click', () => this.toggleEye());
+            const forgot = this.$('account-forgot');
+            if (forgot) forgot.addEventListener('click', () => this.forgot());
+            document.addEventListener('keydown', e => {
+                if ((e.key === 'Escape' || e.key === 'Esc') && !modal.classList.contains('hidden') && !this.busy) this.close();
+            });
+        }
         this.refresh();
     },
 
     status(msg, kind) {
         const el = this.$('account-status');
         if (!el) return;
+        if (!msg) {
+            el.className = 'rp-status hidden';
+            this.$('account-status-text').textContent = '';
+            return;
+        }
         el.className = 'rp-status' + (kind === 'ok' ? ' ok' : kind === 'err' ? ' err' : '');
-        this.$('account-status-text').textContent = msg || '';
+        this.$('account-status-text').textContent = msg;
     },
     open() {
+        this.status('');
+        const modal = this.$('auth-modal');
+        if (modal) modal.classList.remove('hidden');
         this.$('account-form').classList.remove('hidden');
-        this.$('account-email').focus();
+        try { document.documentElement.style.overflow = 'hidden'; } catch (e) {}
+        const target = this.mode === 'signup' ? this.$('account-name') : this.$('account-email');
+        if (target && typeof target.focus === 'function') target.focus();
     },
     close() {
+        const modal = this.$('auth-modal');
+        if (modal) modal.classList.add('hidden');
         this.$('account-form').classList.add('hidden');
+        try { document.documentElement.style.overflow = ''; } catch (e) {}
         this.status('');
-        this.$('account-status').classList.add('hidden');
+    },
+    toggleEye() {
+        const input = this.$('account-password');
+        const eye = this.$('account-eye');
+        if (!input) return;
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        const icon = eye ? eye.querySelector('.ms') : null;
+        if (icon) icon.textContent = show ? 'visibility' : 'visibility_off';
+        if (eye) eye.setAttribute('aria-label', show ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
+    },
+    async forgot() {
+        if (this.busy) return;
+        const email = this.$('account-email');
+        const value = email ? email.value.trim() : '';
+        if (!value) {
+            this.status('Entre ton e-mail pour recevoir le lien de réinitialisation.', 'err');
+            if (email && typeof email.focus === 'function') email.focus();
+            return;
+        }
+        this.busy = true;
+        const btn = this.$('account-forgot');
+        if (btn) btn.disabled = true;
+        try {
+            await AccountService.recover(value);
+            this.status('E-mail envoyé : vérifie ta boîte de réception.', 'ok');
+        } catch (e) {
+            this.status(AccountService.friendly(e && e.message), 'err');
+        } finally {
+            this.busy = false;
+            if (btn) btn.disabled = false;
+        }
     },
     setMode(mode) {
         this.mode = mode === 'signup' ? 'signup' : 'login';
@@ -3911,24 +4192,35 @@ const AccountView = {
         this.$('account-mode').textContent = signup ? 'J\u2019ai déjà un compte' : 'Créer un compte';
         const nameEl = this.$('account-name');
         if (nameEl) nameEl.classList.toggle('hidden', !signup);
+        const nameField = this.$('account-name-field');
+        if (nameField) nameField.classList.toggle('hidden', !signup);
+        const forgot = this.$('account-forgot');
+        if (forgot) forgot.classList.toggle('hidden', signup);
         this.$('account-password').setAttribute('autocomplete', signup ? 'new-password' : 'current-password');
         this.$('account-password').setAttribute('placeholder', signup ? '6 caractères minimum' : 'mot de passe');
+        const set = (id, txt) => { const el = this.$(id); if (el) el.textContent = txt; };
+        set('auth-heading', signup ? 'Créer un compte' : 'Se connecter');
+        set('account-badge', signup ? 'Inscription' : 'Connexion');
+        set('account-sub', signup
+            ? 'Ton nom complet, ton e-mail et un mot de passe : ton compte gratuit est créé en une seconde.'
+            : 'Connecte-toi pour créer des images, vidéos et chat. Ton compte retrouve tes projets sur tous tes appareils.');
     },
     renderGuest() {
         this.$('account-user').classList.add('hidden');
         this.$('account-guest').classList.remove('hidden');
+        const modal = this.$('auth-modal');
+        if (modal) modal.classList.add('hidden');
         this.$('account-form').classList.add('hidden');
+        try { document.documentElement.style.overflow = ''; } catch (e) {}
+        this.status('');
     },
     /* ── Création réservée aux comptes connectés ─────────────────────────
        Toute génération (image, vidéo, chat, enhancer, batch) passe par
-       ensure() : sans compte, le formulaire s'ouvre et rien n'est envoyé. */
+       ensure() : sans compte, la page de connexion s'ouvre et rien n'est
+       envoyé. */
     requireLogin() {
         this.open();
         this.status('Connecte-toi pour créer (images, vidéos, chat).', 'err');
-        const el = this.$('account-section');
-        if (el && typeof el.scrollIntoView === 'function') {
-            try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
-        }
         UI.showToast('Connecte-toi à ton compte pour créer.', 'error', 4000);
         return false;
     },
@@ -3979,6 +4271,8 @@ const AccountView = {
                     this.status('Compte créé : tu es connecté·e.', 'ok');
                     this.$('account-password').value = '';
                     await this.refresh();
+                    this.close();
+                    UI.showToast('Compte créé : bienvenue sur LSV.ai.', 'success', 3500);
                 } else {
                     this.setMode('login');
                     this.status('Compte créé : confirme ton e-mail puis connecte-toi.', 'ok');
@@ -3989,6 +4283,8 @@ const AccountView = {
                 this.$('account-password').value = '';
                 this.status('Connexion réussie.', 'ok');
                 await this.refresh();
+                this.close();
+                UI.showToast('Connexion réussie.', 'success', 2600);
             }
         } catch (e) {
             this.status(AccountService.friendly(e && e.message), 'err');
@@ -4002,6 +4298,7 @@ const AccountView = {
         try { await AccountService.signOut(); } catch (e) {}
         this.renderGuest();
         this.status('Déconnecté.', 'ok');
+        UI.showToast('Déconnecté de ton compte.', 'success', 2400);
     }
 };
 
