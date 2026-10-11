@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.4.1
+# LSV.ai — Studio Viral v3.4.2
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
 
@@ -85,7 +85,9 @@ lsv-ai/
 │   └── admin.js               # Auth, chargement, agrégats, graphiques
 │
 ├── supabase/
-│   ├── schema.sql             # Table + RLS + indexes (à exécuter une fois)
+│   ├── schema.sql             # Tables + RLS + indexes (à exécuter une fois)
+│   ├── upgrade-admin-whitelist.sql  # Migration : liste blanche admin
+│   ├── upgrade-profiles.sql   # Migration : noms des comptes (profiles)
 │   └── functions/lsv-gateway/
 │       ├── index.ts           # Point d'entrée Edge Function (Deno)
 │       └── core.mjs           # Cœur de la passerelle (testable sous Node)
@@ -216,6 +218,7 @@ ne protègent que notre passerelle.
 | **Inscription** | Supabase Auth (`/auth/v1/signup`) — le nom complet part dans `user_metadata`, le mot de passe va uniquement à Supabase |
 | **Session** | jeton d'accès + rafraîchissement stockés sur l'appareil (`localStorage.lsv4_account`), jamais le mot de passe |
 | **Liste blanche admin** | table `admin_emails` + fonction SQL `is_admin()` : seul un e-mail listé voit les statistiques |
+| **Nom en base** | table `profiles` (`full_name`) remplie par trigger à chaque inscription, lisible par soi-même et par la liste blanche |
 | **Création = compte** | `AgnesProvider.fetch` + `ChatService.send` appellent `AccountView.ensure()` : sans compte, **aucune requête** de génération n'est émise (image, vidéo, chat, enhancer, batch) — le formulaire Compte s'ouvre avec le message « Connecte-toi à ton compte pour créer. » |
 | **Bouton back-office** | affiché dans l'app **uniquement** si l'e-mail connecté est dans la liste blanche |
 | **Clé du fournisseur** | back-office → **Paramètres** → « Clé du fournisseur » : champ masqué + `Enregistrer la clé` → table `app_settings` (RLS : **liste blanche uniquement**, aucun droit pour `anon`) ; la Gateway la lit côté serveur, avec priorité sur le secret `AGNES_API_KEY` |
@@ -260,7 +263,8 @@ npm run serve      # http://localhost:4173
 
 1. Dashboard → **SQL Editor** → **New query**.
 2. Coller le contenu de `supabase/schema.sql` → **Run**.
-   *(Base déjà créée ? exécuter `supabase/upgrade-admin-whitelist.sql`.)*
+   *(Base déjà créée ? exécuter `supabase/upgrade-admin-whitelist.sql`,
+   puis `supabase/upgrade-profiles.sql`.)*
 3. **Ajouter son e-mail administrateur** (décommenter la dernière ligne du
    script, ou SQL direct) :
 
@@ -278,11 +282,22 @@ Ce script crée :
 - la table `app_settings` (clé du fournisseur saisie dans le back-office :
    RLS activée, **aucun droit pour `anon`**, lecture/écriture réservées à
    `is_admin()`) ;
+- la table `profiles` (**nom complet de chaque compte**, recopié de
+   `auth.users` par un trigger à chaque inscription — aucun secret, aucun mot
+   de passe ; lecture : soi-même ou liste blanche ; `anon` n'y accède pas) ;
 - la fonction SQL `is_admin()` (légitimée par le JWT de session) ;
 - une **liste blanche d'événements** (un inconnu ne peut pas injecter de n'importe
   quel événement) ;
 - un contrôle de taille de payload (< 4 Ko) ;
 - les index nécessaires.
+
+Voir les noms enregistrés :
+
+```sql
+select u.email, p.full_name, p.created_at
+from public.profiles p join auth.users u on u.id = p.id
+order by p.created_at desc;
+```
 
 > ⚠️ **Sans e-mail dans `admin_emails`, personne — tien compris — n'accède aux
 > statistiques.** Le back-office affiche « Compte non autorisé ».
@@ -537,7 +552,7 @@ dans le back-office elle n'apparaît masquée que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 259 assertions (271 avec ORIG=… voir plus bas)
+npm test        # 268 assertions (280 avec ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (41 assertions, **53 avec `ORIG`**) — non-régression
@@ -553,7 +568,7 @@ npm test        # 259 assertions (271 avec ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (106 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (115 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -575,7 +590,10 @@ npm test        # 259 assertions (271 avec ORIG=… voir plus bas)
   `Échap`, titres et champs suivent le mode, œil afficher-masquer,
   mot de passe oublié (refus sans e-mail, `POST /recover` simulé) ;
 - **création bloquée sans compte** : aucune requête image/chat émise, toast
-  d'invitation, page de connexion ouverte, champ de saisie conservé.
+  d'invitation, page de connexion ouverte, champ de saisie conservé ;
+- **profils (noms)** : table `profiles` liée à `auth.users`, RLS sans aucun droit
+  `anon`, lecture « soi-même ou liste blanche », remplissage automatique par
+  trigger, aucune colonne secrète.
 
 **`tests/gateway.test.mjs`** (49 assertions) — passerelle
 

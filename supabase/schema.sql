@@ -145,6 +145,84 @@ create policy "admin_delete_settings"
 -- insert into public.app_settings (key, value) values ('provider_api_key', '...')
 --     on conflict (key) do update set value = excluded.value, updated_at = now();
 
+-- ── Profils : le nom complet de chaque compte, en SQL ──────────────────────
+-- Supabase Auth garde le compte (e-mail, mot de passe) dans auth.users.
+-- Cette table ne recopie que le NOM (pas de secret, pas de mot de passe) pour
+-- le rendre lisible dans le SQL Editor et lisible par la liste blanche.
+-- Remplie automatiquement à l'inscription (trigger), jamais par le client.
+create table if not exists public.profiles (
+    id          uuid primary key references auth.users (id) on delete cascade,
+    full_name   text check (char_length(full_name) between 1 and 120),
+    created_at  timestamptz not null default now(),
+    updated_at  timestamptz not null default now()
+);
+alter table public.profiles enable row level security;
+revoke all on public.profiles from anon;
+revoke all on public.profiles from authenticated;
+grant select, update on public.profiles to authenticated;
+grant all on public.profiles to service_role;
+
+-- Lecture : chacun voit son propre profil ; la liste blanche voit tous les noms.
+drop policy if exists "profiles_select_own" on public.profiles;
+create policy "profiles_select_own"
+    on public.profiles
+    for select
+    to authenticated
+    using (auth.uid() = id);
+
+drop policy if exists "profiles_select_admin" on public.profiles;
+create policy "profiles_select_admin"
+    on public.profiles
+    for select
+    to authenticated
+    using (public.is_admin());
+
+-- Mise à jour : chacun corrige son propre nom ; pas d'INSERT ni de DELETE
+-- côté client (c'est le trigger ci-dessous qui remplit la table).
+drop policy if exists "profiles_update_own" on public.profiles;
+create policy "profiles_update_own"
+    on public.profiles
+    for update
+    to authenticated
+    using (auth.uid() = id)
+    with check (auth.uid() = id);
+
+create or replace function public.handle_new_user() returns trigger
+    language plpgsql security definer
+    set search_path = public
+    as $$
+    begin
+        insert into public.profiles (id, full_name)
+        values (new.id, nullif(coalesce(
+            new.raw_user_meta_data ->> 'full_name',
+            new.raw_user_meta_data ->> 'name'
+        ), ''))
+        on conflict (id) do update
+            set full_name = excluded.full_name,
+                updated_at = now();
+        return new;
+    end;
+    $$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+    after insert on auth.users
+    for each row execute function public.handle_new_user();
+
+drop trigger if exists on_auth_user_updated on auth.users;
+create trigger on_auth_user_updated
+    after update of raw_user_meta_data on auth.users
+    for each row execute function public.handle_new_user();
+
+-- Comptes créés avant l'existence de cette table : recopie unique du nom.
+insert into public.profiles (id, full_name)
+select u.id, nullif(coalesce(
+    u.raw_user_meta_data ->> 'full_name',
+    u.raw_user_meta_data ->> 'name'
+), '')
+from auth.users u
+on conflict (id) do nothing;
+
 -- ── LISTE BLANCHE : un e-mail = un accès admin ─────────────────────────────
 -- Une seule ligne pour un seul administrateur ; ajoute-en une autre
 -- uniquement si tu veux ouvrir l'accès à quelqu'un d'autre.

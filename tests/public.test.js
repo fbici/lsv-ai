@@ -172,6 +172,26 @@ async function load(html) {
         /create policy "admin_insert_settings"[\s\S]{0,200}with check \(public\.is_admin\(\)\)/.test(schema) &&
         /create policy "admin_select_settings"[\s\S]{0,200}using \(public\.is_admin\(\)\)/.test(schema));
 
+    console.log('\n=== 6bis. PROFILS (NOMS DES COMPTES) ===');
+    const upgradeProfiles = fs.readFileSync(path.join(PROJECT, 'supabase/upgrade-profiles.sql'), 'utf8');
+    check('table profiles présente (schéma + migration)',
+        /create table if not exists public\.profiles/.test(schema) &&
+        /create table if not exists public\.profiles/.test(upgradeProfiles));
+    check('profil lié à auth.users (suppression en cascade)',
+        /references auth\.users \(id\) on delete cascade/.test(schema));
+    check('RLS activée sur profiles', /alter table public\.profiles enable row level security/.test(schema));
+    check('aucun droit anon sur profiles',
+        /revoke all on public\.profiles from anon/.test(schema) &&
+        !/grant .* on public\.profiles to anon/.test(schema));
+    check('lecture réservée : soi-même ou liste blanche',
+        /"profiles_select_own"/.test(schema) && /"profiles_select_admin"/.test(schema) &&
+        /using \(auth\.uid\(\) = id\)/.test(schema));
+    check('aucune écriture client sur profiles', !/for insert[\s\S]{0,80}on public\.profiles/.test(schema));
+    check('rempli automatiquement à l inscription',
+        /create trigger on_auth_user_created/.test(schema) && /handle_new_user/.test(schema));
+    check('comptes déjà inscrits recopiés', /insert into public\.profiles[\s\S]{0,200}from auth\.users/.test(upgradeProfiles));
+    check('profiles sans colonne secrète', !/password\s+text|access_token\s+text|api_key\s+text|secret\s+text/i.test(schema));
+
     console.log('\n=== 7. COMPTES UTILISATEURS (Supabase Auth) ===');
     check('section Compte présente', !!doc.getElementById('account-section'));
     check('formulaire fermé par défaut', doc.getElementById('account-form').classList.contains('hidden'));
