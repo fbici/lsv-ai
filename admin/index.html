@@ -78,6 +78,7 @@
             <button class="nav-item" data-page="motion"><span class="ms">animation</span> Motion</button>
 
             <div class="nav-section">Système</div>
+            <button class="nav-item" data-page="users"><span class="ms">group</span> Utilisateurs</button>
             <button class="nav-item" data-page="settings"><span class="ms">settings</span> Paramètres</button>
         </nav>
 
@@ -250,6 +251,24 @@
                 <div class="card">
                     <div class="card-header"><div class="card-title"><span class="ms">show_chart</span> Erreurs par jour</div></div>
                     <div class="chart" id="chart-errors"></div>
+                </div>
+            </section>
+
+            <!-- UTILISATEURS -->
+            <section class="page" id="page-users">
+                <div class="kpi-grid" id="kpi-users"></div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="ms">group</span> Comptes créés</div>
+                        <button class="btn btn-ghost btn-sm" id="users-refresh" type="button"><span class="ms">refresh</span> Actualiser</button>
+                    </div>
+                    <div class="info-block">
+                        Table <strong>public.profiles</strong> : nom complet, e-mail, date d'inscription et
+                        dernière connexion. Remplie automatiquement par un trigger Supabase à chaque
+                        compte créé ; lecture réservée à la liste blanche — aucun mot de passe ni secret
+                        n'y figure.
+                    </div>
+                    <div class="table-wrap" id="users-table"></div>
                 </div>
             </section>
 

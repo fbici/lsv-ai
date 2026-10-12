@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.4.2
+# LSV.ai — Studio Viral v3.4.3
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
 
@@ -218,7 +218,7 @@ ne protègent que notre passerelle.
 | **Inscription** | Supabase Auth (`/auth/v1/signup`) — le nom complet part dans `user_metadata`, le mot de passe va uniquement à Supabase |
 | **Session** | jeton d'accès + rafraîchissement stockés sur l'appareil (`localStorage.lsv4_account`), jamais le mot de passe |
 | **Liste blanche admin** | table `admin_emails` + fonction SQL `is_admin()` : seul un e-mail listé voit les statistiques |
-| **Nom en base** | table `profiles` (`full_name`) remplie par trigger à chaque inscription, lisible par soi-même et par la liste blanche |
+| **Nom en base** | table `profiles` (`full_name`, `email`, `last_sign_in_at`) remplie par trigger à chaque inscription/connexion, affichée dans la page **Utilisateurs** du back-office |
 | **Création = compte** | `AgnesProvider.fetch` + `ChatService.send` appellent `AccountView.ensure()` : sans compte, **aucune requête** de génération n'est émise (image, vidéo, chat, enhancer, batch) — le formulaire Compte s'ouvre avec le message « Connecte-toi à ton compte pour créer. » |
 | **Bouton back-office** | affiché dans l'app **uniquement** si l'e-mail connecté est dans la liste blanche |
 | **Clé du fournisseur** | back-office → **Paramètres** → « Clé du fournisseur » : champ masqué + `Enregistrer la clé` → table `app_settings` (RLS : **liste blanche uniquement**, aucun droit pour `anon`) ; la Gateway la lit côté serveur, avec priorité sur le secret `AGNES_API_KEY` |
@@ -282,9 +282,11 @@ Ce script crée :
 - la table `app_settings` (clé du fournisseur saisie dans le back-office :
    RLS activée, **aucun droit pour `anon`**, lecture/écriture réservées à
    `is_admin()`) ;
-- la table `profiles` (**nom complet de chaque compte**, recopié de
-   `auth.users` par un trigger à chaque inscription — aucun secret, aucun mot
-   de passe ; lecture : soi-même ou liste blanche ; `anon` n'y accède pas) ;
+- la table `profiles` (**nom complet, e-mail et dernière connexion de chaque
+  compte**, recopiés de `auth.users` par un trigger à chaque inscription et
+  chaque connexion — aucun secret, aucun mot de passe ; lecture : soi-même ou
+  liste blanche ; `anon` n'y accède pas ; source de la page **Utilisateurs**
+  du back-office) ;
 - la fonction SQL `is_admin()` (légitimée par le JWT de session) ;
 - une **liste blanche d'événements** (un inconnu ne peut pas injecter de n'importe
   quel événement) ;
@@ -318,7 +320,22 @@ order by p.created_at desc;
    Pour le retirer : `delete from public.admin_emails where email = '…';`
 
 Les comptes et leurs e-mails restent visibles uniquement dans
-**Authentication → Users** (Supabase) : jamais dans l'app ni dans Git.
+**Authentication → Users** (Supabase) et dans la table `public.profiles`
+(nom + e-mail, page **Utilisateurs** du back-office) : jamais dans l'app
+publique ni dans Git.
+
+> ⚠️ **E-mail de confirmation jamais reçu** (message « confirme ton e-mail »
+> puis « Identifiants incorrects ») : l'option *Confirm email* est active mais
+> l'envoi échoue (SMTP, spam, quota). Solution rapide : **Authentication →
+> Sign In / Providers → Email → Confirm email = OFF**, puis confirmer à la main
+> les comptes déjà bloqués :
+>
+> ```sql
+> update auth.users set email_confirmed_at = now(), confirmation_token = null
+> where email_confirmed_at is null;
+> ```
+>
+> Vérifier ensuite dans **Utilisateurs** (back-office) que le compte y apparaît.
 
 ### 4.4 Récupérer les identifiants publics
 
@@ -415,6 +432,10 @@ Comportements attendus :
   sans aucune donnée privée.
 - **Erreurs** — agrégation par fonctionnalité + type + signature, occurrences,
   dernière occurrence, graphique journalier.
+- **Utilisateurs** — table des comptes créés (`public.profiles`) : nom complet,
+  e-mail, date d'inscription, dernière connexion + compteurs (total, avec nom,
+  déjà connectés, créés cette semaine). Source = trigger Supabase ; lecture
+  réservée à la liste blanche, aucun mot de passe ni secret affiché.
 - **Paramètres** — état de la connexion, session, fréquence d'actualisation,
   déconnexion, et **Clé du fournisseur** (état « aucune clé / configurée »
   masquée `••••1234`, champ pour enregistrer une nouvelle clé, bouton
@@ -552,7 +573,7 @@ dans le back-office elle n'apparaît masquée que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 268 assertions (280 avec ORIG=… voir plus bas)
+npm test        # 282 assertions (294 avec ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (41 assertions, **53 avec `ORIG`**) — non-régression
@@ -568,7 +589,7 @@ npm test        # 268 assertions (280 avec ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (115 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (120 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -591,9 +612,11 @@ npm test        # 268 assertions (280 avec ORIG=… voir plus bas)
   mot de passe oublié (refus sans e-mail, `POST /recover` simulé) ;
 - **création bloquée sans compte** : aucune requête image/chat émise, toast
   d'invitation, page de connexion ouverte, champ de saisie conservé ;
-- **profils (noms)** : table `profiles` liée à `auth.users`, RLS sans aucun droit
-  `anon`, lecture « soi-même ou liste blanche », remplissage automatique par
-  trigger, aucune colonne secrète.
+- **profils (noms)** : table `profiles` liée à `auth.users` (nom, e-mail, dernière
+  connexion), RLS sans aucun droit `anon`, lecture « soi-même ou liste blanche »,
+  remplissage automatique par trigger, aucune colonne secrète ;
+- **messages d'erreur** : codes GoTrue (`email_not_confirmed`, `weak_password`…)
+  traduits en messages clairs, sans détail technique.
 
 **`tests/gateway.test.mjs`** (49 assertions) — passerelle
 
@@ -609,12 +632,12 @@ npm test        # 268 assertions (280 avec ORIG=… voir plus bas)
   → 503 ; clé de service lue dans `SUPABASE_SERVICE_ROLE_KEY` ou
   `SUPABASE_SECRET_KEYS`.
 
-**`tests/admin.test.js`** (63 assertions)
+**`tests/admin.test.js`** (72 assertions)
 
 - configuration absente / non authentifié → dashboard inaccessible ;
 - mauvais identifiants → accès refusé ;
 - identifiants valides → dashboard + KPI + graphiques rendus ;
-- 8 pages + 4 plages temporelles sans exception ;
+- 9 pages + 4 plages temporelles sans exception ;
 - session expirée (RLS) → retour connexion ; déconnexion → données effacées ;
 - **inscription** depuis l'écran de connexion : champ **nom complet** requis
   (masqué en mode connexion), refus sans nom, `full_name` transmis, création →
@@ -622,6 +645,9 @@ npm test        # 268 assertions (280 avec ORIG=… voir plus bas)
 - **compte hors liste blanche** → « Compte non autorisé », zéro donnée ;
 - **clé du fournisseur** dans Paramètres : refus (< 8 caractères), enregistre,
   affiche `••••1234` (jamais la valeur), retrait → état initial ;
+- **page Utilisateurs** : nav + titre + table des comptes (`profiles`) avec nom,
+  e-mail, inscription, dernière connexion, KPI (comptes, avec nom, déjà
+  connectés), aucun secret affiché, actualisation sans erreur ;
 - aucun mot de passe codé en dur, aucune `service_role`.
 
 ---

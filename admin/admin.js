@@ -26,6 +26,7 @@
         isAdmin: false,
         checking: false,
         rows: [],
+        users: [],
         priorVisitors: [],
         range: 'today',
         page: 'overview',
@@ -45,6 +46,7 @@
         videos: { title: 'Vidéos', sub: 'Statistiques de génération de vidéos' },
         chat: { title: 'Chat IA', sub: 'Usage du chat intégré' },
         motion: { title: 'Motion', sub: 'Module Motion Control' },
+        users: { title: 'Utilisateurs', sub: 'Comptes créés sur LSV.ai (nom, e-mail, connexion)' },
         settings: { title: 'Paramètres', sub: 'Connexion, session et actualisation' }
     };
 
@@ -975,6 +977,63 @@
         renderKeyCard();
     }
 
+    /* ── Comptes (page Utilisateurs) ────────────────────────────────────────
+       Source : table public.profiles (remplie par trigger Supabase à chaque
+       inscription/connexion). Lecture réservée à la liste blanche via RLS :
+       hors liste, la requête est refusée et la page reste vide. */
+    function loadUsers(showToast) {
+        if (!State.client || typeof State.client.from !== 'function') return Promise.resolve();
+        var q;
+        try {
+            q = State.client.from('profiles')
+                .select('id,email,full_name,created_at,last_sign_in_at')
+                .order('created_at', { ascending: false })
+                .limit(500);
+        } catch (e) {
+            State.users = [];
+            renderUsers();
+            return Promise.resolve();
+        }
+        return Promise.resolve(q).then(function (res) {
+            var data = (res && res.data) || [];
+            State.users = data;
+            renderUsers();
+            if (showToast) {
+                if (res && res.error) toast('Lecture refusée : ' + res.error.message, 'error');
+                else toast(num(data.length) + ' compte(s) chargé(s)', 'success');
+            }
+        }).catch(function () {
+            State.users = [];
+            renderUsers();
+            if (showToast) toast('Comptes illisibles pour le moment.', 'error');
+        });
+    }
+
+    function renderUsers() {
+        if (!$('kpi-users')) return;
+        var rows = State.users || [];
+        var withName = rows.filter(function (r) { return !!r.full_name; }).length;
+        var seen = rows.filter(function (r) { return !!r.last_sign_in_at; }).length;
+        var week = Date.now() - 7 * 86400000;
+        var fresh = rows.filter(function (r) { return r.created_at && new Date(r.created_at).getTime() >= week; }).length;
+        $('kpi-users').innerHTML =
+            kpi('Comptes', num(rows.length), rows.length ? 'inscrits sur LSV.ai' : 'aucun compte pour l instant', 'group', COLORS.chat) +
+            kpi('Avec nom complet', num(withName), pct(withName, rows.length) + '% des comptes', 'badge', COLORS.image) +
+            kpi('Déjà connectés', num(seen), 'dernière connexion enregistrée', 'login', COLORS.video) +
+            kpi('Cette semaine', num(fresh), 'nouveaux comptes sur 7 jours', 'person_add', COLORS.project);
+        $('users-table').innerHTML = tableHTML(
+            [{ label: 'Nom complet' }, { label: 'E-mail' }, { label: 'Inscription' }, { label: 'Dernière connexion' }],
+            rows.map(function (r) {
+                return [
+                    esc(r.full_name || '—'),
+                    esc(r.email || '—'),
+                    r.created_at ? esc(fmtDateTime(r.created_at)) : '—',
+                    r.last_sign_in_at ? esc(fmtDateTime(r.last_sign_in_at)) : '—'
+                ];
+            })
+        );
+    }
+
     function renderAll() {
         try {
         if (State.page === 'overview') renderOverview();
@@ -983,6 +1042,7 @@
         }
         else if (State.page === 'activity') renderActivity();
         else if (State.page === 'errors') renderErrors();
+        else if (State.page === 'users') renderUsers();
         else if (State.page === 'settings') renderSettings();
         } catch (e) { if (window.console) console.error(e); toast('Erreur de rendu : ' + e.message, 'error'); }
     }
@@ -1001,6 +1061,7 @@
         $('page-sub').textContent = meta.sub;
         if (window.innerWidth <= 860) $('sidebar').classList.remove('open');
         renderAll();
+        if (page === 'users') loadUsers(false);
     }
 
     function setRange(range) {
@@ -1034,6 +1095,8 @@
             b.addEventListener('click', function () { setRange(b.dataset.range); });
         });
         $('refresh-btn').addEventListener('click', function () { load(true); });
+        var usersBtn = $('users-refresh');
+        if (usersBtn) usersBtn.addEventListener('click', function () { loadUsers(true); });
         $('sidebar-toggle').addEventListener('click', function () { $('sidebar').classList.toggle('open'); });
 
         document.querySelectorAll('#activity-filters .chip').forEach(function (c) {

@@ -191,6 +191,11 @@ async function load(html) {
         /create trigger on_auth_user_created/.test(schema) && /handle_new_user/.test(schema));
     check('comptes déjà inscrits recopiés', /insert into public\.profiles[\s\S]{0,200}from auth\.users/.test(upgradeProfiles));
     check('profiles sans colonne secrète', !/password\s+text|access_token\s+text|api_key\s+text|secret\s+text/i.test(schema));
+    check('profiles : e-mail + dernière connexion',
+        /email\s+text/.test(schema) && /last_sign_in_at\s+timestamptz/.test(schema));
+    check('trigger : e-mail et connexion recopiés à chaque connexion',
+        /after update of raw_user_meta_data, email, last_sign_in_at on auth\.users/.test(schema));
+    check('profil renseigné aussi si le compte existait déjà', /on conflict \(id\) do update/.test(upgradeProfiles));
 
     console.log('\n=== 7. COMPTES UTILISATEURS (Supabase Auth) ===');
     check('section Compte présente', !!doc.getElementById('account-section'));
@@ -201,6 +206,12 @@ async function load(html) {
     check('index.html permet l inscription (Auth REST)', /auth\/v1\/signup|AccountService/.test(source));
     check('index.html sans mot de passe en dur', !/password\s*[:=]\s*['"][^'"]+['"]/i.test(source));
     check('index.html sans service_role', !/service_role/i.test(source));
+    check('message clair si e-mail non confirmé (code GoTrue)',
+        /E-mail non confirmé/i.test(wb.LSV.services.account.friendly('email_not_confirmed')),
+        wb.LSV.services.account.friendly('email_not_confirmed'));
+    check('message clair si identifiants invalides',
+        /Identifiants incorrects/i.test(wb.LSV.services.account.friendly('Invalid login credentials')),
+        wb.LSV.services.account.friendly('Invalid login credentials'));
     check('admin.js permet la création de compte', /auth\.signUp/.test(adminJs));
     check('aucun lien statique vers le back-office', !doc.getElementById('account-admin').hasAttribute('href'));
 

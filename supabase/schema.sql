@@ -151,10 +151,12 @@ create policy "admin_delete_settings"
 -- le rendre lisible dans le SQL Editor et lisible par la liste blanche.
 -- Remplie automatiquement à l'inscription (trigger), jamais par le client.
 create table if not exists public.profiles (
-    id          uuid primary key references auth.users (id) on delete cascade,
-    full_name   text check (char_length(full_name) between 1 and 120),
-    created_at  timestamptz not null default now(),
-    updated_at  timestamptz not null default now()
+    id              uuid primary key references auth.users (id) on delete cascade,
+    email           text,
+    full_name       text check (char_length(full_name) between 1 and 120),
+    last_sign_in_at timestamptz,
+    created_at      timestamptz not null default now(),
+    updated_at      timestamptz not null default now()
 );
 alter table public.profiles enable row level security;
 revoke all on public.profiles from anon;
@@ -192,14 +194,21 @@ create or replace function public.handle_new_user() returns trigger
     set search_path = public
     as $$
     begin
-        insert into public.profiles (id, full_name)
-        values (new.id, nullif(coalesce(
-            new.raw_user_meta_data ->> 'full_name',
-            new.raw_user_meta_data ->> 'name'
-        ), ''))
+        insert into public.profiles (id, email, full_name, last_sign_in_at)
+        values (
+            new.id,
+            new.email,
+            nullif(coalesce(
+                new.raw_user_meta_data ->> 'full_name',
+                new.raw_user_meta_data ->> 'name'
+            ), ''),
+            new.last_sign_in_at
+        )
         on conflict (id) do update
-            set full_name = excluded.full_name,
-                updated_at = now();
+            set email           = coalesce(excluded.email, public.profiles.email),
+                full_name       = coalesce(excluded.full_name, public.profiles.full_name),
+                last_sign_in_at = coalesce(excluded.last_sign_in_at, public.profiles.last_sign_in_at),
+                updated_at      = now();
         return new;
     end;
     $$;
@@ -211,17 +220,22 @@ create trigger on_auth_user_created
 
 drop trigger if exists on_auth_user_updated on auth.users;
 create trigger on_auth_user_updated
-    after update of raw_user_meta_data on auth.users
+    after update of raw_user_meta_data, email, last_sign_in_at on auth.users
     for each row execute function public.handle_new_user();
 
--- Comptes créés avant l'existence de cette table : recopie unique du nom.
-insert into public.profiles (id, full_name)
-select u.id, nullif(coalesce(
+-- Comptes créés avant l'existence de cette table : recopie du nom, de l'e-mail
+-- et de la dernière connexion (exécution possible plusieurs fois sans effet).
+insert into public.profiles (id, email, full_name, last_sign_in_at)
+select u.id, u.email, nullif(coalesce(
     u.raw_user_meta_data ->> 'full_name',
     u.raw_user_meta_data ->> 'name'
-), '')
+), ''), u.last_sign_in_at
 from auth.users u
-on conflict (id) do nothing;
+on conflict (id) do update
+    set email           = coalesce(excluded.email, public.profiles.email),
+        full_name       = coalesce(excluded.full_name, public.profiles.full_name),
+        last_sign_in_at = coalesce(excluded.last_sign_in_at, public.profiles.last_sign_in_at),
+        updated_at      = now();
 
 -- ── LISTE BLANCHE : un e-mail = un accès admin ─────────────────────────────
 -- Une seule ligne pour un seul administrateur ; ajoute-en une autre

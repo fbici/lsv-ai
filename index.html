@@ -4078,14 +4078,16 @@ const AccountService = {
     },
 
     friendly(message) {
-        const m = String(message || '').toLowerCase();
+        const m = String(message || '').toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
         if (m.indexOf('configuration') !== -1) return 'Compte indisponible : configuration absente.';
-        if (m.indexOf('invalid login') !== -1) return 'Identifiants incorrects.';
-        if (m.indexOf('already registered') !== -1 || m.indexOf('user already') !== -1) return 'Compte déjà existant : connecte-toi.';
-        if (m.indexOf('password should be at least') !== -1 || m.indexOf('password is too short') !== -1) return 'Mot de passe : 6 caractères minimum.';
-        if (m.indexOf('email not confirmed') !== -1) return 'E-mail non confirmé : clique sur le lien reçu.';
-        if (m.indexOf('signup') !== -1 && m.indexOf('disabled') !== -1) return 'Inscriptions fermées pour le moment.';
-        if (m.indexOf('rate limit') !== -1 || m.indexOf('too many') !== -1) return 'Trop de tentatives, réessaie plus tard.';
+        if (m.indexOf('invalid login') !== -1 || m.indexOf('invalid credentials') !== -1 ||
+            m.indexOf('user not found') !== -1 || m.indexOf('no user found') !== -1) return 'Identifiants incorrects.';
+        if (m.indexOf('already registered') !== -1 || m.indexOf('user already') !== -1 || m.indexOf('already exists') !== -1) return 'Compte déjà existant : connecte-toi.';
+        if (m.indexOf('password should be at least') !== -1 || m.indexOf('password is too short') !== -1 ||
+            m.indexOf('weak password') !== -1) return 'Mot de passe : 6 caractères minimum.';
+        if (m.indexOf('email not confirmed') !== -1 || m.indexOf('email not verified') !== -1) return 'E-mail non confirmé : clique sur le lien reçu (ou réinitialise ton mot de passe).';
+        if (m.indexOf('signup') !== -1 && (m.indexOf('disabled') !== -1 || m.indexOf('not allowed') !== -1)) return 'Inscriptions fermées pour le moment.';
+        if (m.indexOf('rate limit') !== -1 || m.indexOf('too many') !== -1 || m.indexOf('rate limit exceeded') !== -1) return 'Trop de tentatives, réessaie plus tard.';
         if (m.indexOf('fetch') !== -1 || m.indexOf('network') !== -1 || m.indexOf('http') !== -1) return 'Connexion réseau impossible.';
         return 'Opération impossible pour le moment.';
     }

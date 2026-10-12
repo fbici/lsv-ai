@@ -16,6 +16,12 @@ const EVENTS = [
     { created_at: new Date().toISOString(), visitor_id: 'v3', session_id: 's3', event: 'tab_view', props: { tab: 'motion' } }
 ];
 
+// Table public.profiles (noms + e-mails des comptes, remplie par trigger SQL)
+const PROFILES = [
+    { id: 'u1', email: 'ada@lsv.ai', full_name: 'Ada Lovelace', created_at: new Date(Date.now() - 2 * 86400000).toISOString(), last_sign_in_at: new Date(Date.now() - 3600000).toISOString() },
+    { id: 'u2', email: 'sansnom@lsv.ai', full_name: null, created_at: new Date().toISOString(), last_sign_in_at: null }
+];
+
 const GOOD_EMAIL = 'admin@test.com';
 const GOOD_PASSWORD = 'password-de-test';
 const OTHER_EMAIL = 'user@test.com'; // compte réel mais hors liste blanche
@@ -176,7 +182,7 @@ async function login(dom, email, password) {
                 signOut() { api._session = null; api._listeners.forEach(cb => cb('SIGNED_OUT', null)); return Promise.resolve({ error: null }); },
                 onAuthStateChange(cb) { api._listeners.push(cb); return { data: { subscription: {} } }; }
             },
-            from(table) { return builder(window.__EVENTS, table); },
+            from(table) { return builder(table === 'profiles' ? (window.__PROFILES || []) : window.__EVENTS, table); },
             rpc(name) {
                 if (name !== 'is_admin') return Promise.resolve({ data: null, error: { message: 'unknown function' } });
                 const s = api._session;
@@ -198,7 +204,8 @@ async function login(dom, email, password) {
                 '<script>window.__rlsEnabled=true;window.__GOOD_EMAIL="' + GOOD_EMAIL + '";window.__GOOD_PASSWORD="' + GOOD_PASSWORD +
                 '";window.__USER_EMAIL="' + OTHER_EMAIL + '";window.__CONFIRM_EMAIL="' + CONFIRM_EMAIL +
                 '";window.__WHITELIST=' + JSON.stringify(WHITELIST) +
-                ';window.__SETTINGS={};window.__EVENTS=' + JSON.stringify(EVENTS) + ';window.supabase=(' + fake.toString() + ')();</script>')
+                ';window.__SETTINGS={};window.__EVENTS=' + JSON.stringify(EVENTS) +
+                ';window.__PROFILES=' + JSON.stringify(PROFILES) + ';window.supabase=(' + fake.toString() + ')();</script>')
             .replace('<script src="../shared/config.js"></script>', '<script>window.LSV_CONFIG=' + JSON.stringify(config) + ';</script>')
             .replace('<script src="./admin.js"></script>', '<script>' + fs.readFileSync(path.join(PROJECT, 'admin/admin.js'), 'utf8') + '</script>');
     }
@@ -238,7 +245,7 @@ async function login(dom, email, password) {
     check('feed activité rendu', w.document.getElementById('overview-feed').innerHTML.indexOf('feed-item') !== -1);
 
     console.log('\n=== E. PAGES DU DASHBOARD ===');
-    const pages = ['images', 'videos', 'chat', 'motion', 'activity', 'errors', 'settings', 'overview'];
+    const pages = ['images', 'videos', 'chat', 'motion', 'activity', 'errors', 'settings', 'users', 'overview'];
     let pagesOk = true;
     for (const p of pages) {
         try {
@@ -249,7 +256,7 @@ async function login(dom, email, password) {
             if (w.document.getElementById('page-title').textContent.trim() === '') { pagesOk = false; }
         } catch (e) { pagesOk = false; console.log('    exception ' + p + ': ' + e.message); }
     }
-    check('8 pages navigables sans exception', pagesOk);
+    check('9 pages navigables sans exception', pagesOk);
 
     // contenu des pages
     w.document.querySelector('.nav-item[data-page="errors"]').dispatchEvent(new w.Event('click', { bubbles: true }));
@@ -372,6 +379,28 @@ async function login(dom, email, password) {
     await sleep(250);
     check('clé retirée → statut initial', /aucune clé/i.test(keyStatus()), keyStatus().replace(/\s+/g, ' ').slice(0, 90));
     check('aucune erreur console (clé)', t.errors.length === 0, t.errors.join('|'));
+
+    console.log('\n=== M. PAGE UTILISATEURS ===');
+    t = await load(inject(src, CONFIG_OK));
+    const wu = t.dom.window;
+    await login(t, GOOD_EMAIL, GOOD_PASSWORD);
+    await sleep(500);
+    check('entrée de nav « Utilisateurs »', !!wu.document.querySelector('.nav-item[data-page="users"]'));
+    wu.document.querySelector('.nav-item[data-page="users"]').dispatchEvent(new wu.Event('click', { bubbles: true }));
+    await sleep(350);
+    const activePage = wu.document.querySelector('.page.active');
+    check('page Utilisateurs active', !!activePage && activePage.id === 'page-users', activePage && activePage.id);
+    check('titre de page', wu.document.getElementById('page-title').textContent === 'Utilisateurs', wu.document.getElementById('page-title').textContent);
+    const usersText = wu.document.getElementById('users-table').textContent.replace(/\s+/g, ' ');
+    check('table des comptes remplie', /Ada Lovelace/.test(usersText) && /ada@lsv\.ai/.test(usersText), usersText.slice(0, 140));
+    check('compte sans nom affiché proprement', /sansnom@lsv\.ai/.test(usersText), usersText.slice(0, 140));
+    const usersKpi = wu.document.getElementById('kpi-users').textContent.replace(/\s+/g, ' ');
+    check('KPI comptes = 2', /Comptes\s*2/.test(usersKpi), usersKpi.slice(0, 120));
+    check('KPI avec nom = 1', /Avec nom complet\s*1/.test(usersKpi), usersKpi.slice(0, 120));
+    check('aucun mot de passe ni jeton dans la table', !/password|secret|sbp_|eyJ/i.test(usersText), usersText.slice(0, 140));
+    wu.document.getElementById('users-refresh').dispatchEvent(new wu.Event('click', { bubbles: true }));
+    await sleep(250);
+    check('actualisation des comptes sans erreur', t.errors.length === 0, t.errors.join('|'));
 
     console.log('\n=== K. SANITÉ ===');
     check('aucune erreur console globale', t.errors.length === 0, t.errors.join('|'));
