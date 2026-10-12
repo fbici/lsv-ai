@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.4.3
+# LSV.ai — Studio Viral v3.4.4
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
 
@@ -88,6 +88,8 @@ lsv-ai/
 │   ├── schema.sql             # Tables + RLS + indexes (à exécuter une fois)
 │   ├── upgrade-admin-whitelist.sql  # Migration : liste blanche admin
 │   ├── upgrade-profiles.sql   # Migration : noms des comptes (profiles)
+│   ├── email-confirm-signup.html    # Modèle d'e-mail « confirme ton compte »
+│   ├── email-reset-password.html    # Modèle d'e-mail « mot de passe oublié »
 │   └── functions/lsv-gateway/
 │       ├── index.ts           # Point d'entrée Edge Function (Deno)
 │       └── core.mjs           # Cœur de la passerelle (testable sous Node)
@@ -336,6 +338,8 @@ publique ni dans Git.
 > ```
 >
 > Vérifier ensuite dans **Utilisateurs** (back-office) que le compte y apparaît.
+> Modèle d'e-mail aux couleurs de LSV.ai + lien de retour vers l'app en ligne :
+> voir **§4.6**.
 
 ### 4.4 Récupérer les identifiants publics
 
@@ -361,6 +365,27 @@ window.LSV_CONFIG = {
 > sécurité repose sur les politiques RLS et sur Supabase Auth.
 > La `service_role` key et le mot de passe base de données ne doivent **jamais**
 > apparaître dans le dépôt (`.env.example` le rappelle).
+
+### 4.6 E-mails de confirmation & lien de retour
+
+Deux réglages Supabase (une seule fois) pour que l'e-mail de confirmation
+porte le nom **LSV.ai** et que le lien de confirmation revienne sur l'app
+en ligne (et non sur `localhost`) :
+
+1. **Modèles d'e-mails** — Dashboard → **Authentication → Emails** :
+   - *Confirm signup* → coller le contenu de `supabase/email-confirm-signup.html`
+     → **Save** ;
+   - *Reset Password* (bouton « Mot de passe oublié ? » de l'app) → coller
+     `supabase/email-reset-password.html` → **Save**.
+   Le lien `{{ .ConfirmationURL }}` est généré par Supabase ; les modèles
+   mentionnent déjà LSV.ai et le studio (images / vidéos / chat IA).
+2. **Adresse de retour** — Dashboard → **Authentication → URL Configuration** :
+   - **Site URL** → `https://fbici.github.io/lsv-ai/` ;
+   - **Redirect URLs** → ajouter `https://fbici.github.io/lsv-ai/*`
+     (et `http://localhost:4173/*` pour tester en local avec `npm run serve`).
+
+Après le clic sur le lien, l'app affiche « E-mail confirmé : connecte-toi »
+(et « Lien invalide ou expiré » si le lien est expiré), puis nettoie l'URL.
 
 ---
 
@@ -573,7 +598,7 @@ dans le back-office elle n'apparaît masquée que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 282 assertions (294 avec ORIG=… voir plus bas)
+npm test        # 290 assertions (302 avec ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (41 assertions, **53 avec `ORIG`**) — non-régression
@@ -589,7 +614,7 @@ npm test        # 282 assertions (294 avec ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (120 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (128 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -616,7 +641,10 @@ npm test        # 282 assertions (294 avec ORIG=… voir plus bas)
   connexion), RLS sans aucun droit `anon`, lecture « soi-même ou liste blanche »,
   remplissage automatique par trigger, aucune colonne secrète ;
 - **messages d'erreur** : codes GoTrue (`email_not_confirmed`, `weak_password`…)
-  traduits en messages clairs, sans détail technique.
+  traduits en messages clairs, sans détail technique ;
+- **retour des liens Supabase** : confirmation (`?code=`) → toast « E-mail
+  confirmé », lien expiré → « Lien invalide ou expiré », URL nettoyée, modale
+  fermée, aucune fuite de détail technique.
 
 **`tests/gateway.test.mjs`** (49 assertions) — passerelle
 

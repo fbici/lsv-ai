@@ -4126,6 +4126,28 @@ const AccountView = {
             });
         }
         this.refresh();
+        this.noticeAuthRedirect();
+    },
+
+    /* Retour d'un lien Supabase (confirmation d'e-mail, réinitialisation) :
+       l'utilisateur atterrit ici avec un code dans l'URL — on le prévient
+       et on nettoie l'adresse sans recharger la page. */
+    noticeAuthRedirect() {
+        try {
+            const q = new URLSearchParams(window.location.search || '');
+            const hash = window.location.hash || '';
+            const raw = q.get('error_description') || q.get('error') || ((/#(?:.*&)?error_description=([^&]*)/.exec(hash) || [])[1] || '');
+            const err = decodeURIComponent(String(raw).replace(/\+/g, ' '));
+            const code = q.get('code') || q.get('access_token') || (hash.indexOf('access_token=') !== -1);
+            if (err) {
+                UI.showToast('Lien invalide ou expiré : demande un nouveau lien (e-mail oublié ou inscription).', 'error', 6000);
+            } else if (code) {
+                UI.showToast('E-mail confirmé : connecte-toi pour continuer.', 'success', 6000);
+            }
+            if (err || code) {
+                try { window.history.replaceState(null, '', window.location.pathname); } catch (e) {}
+            }
+        } catch (e) {}
     },
 
     status(msg, kind) {

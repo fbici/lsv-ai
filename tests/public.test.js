@@ -31,13 +31,13 @@ function prepare() {
     return html;
 }
 
-async function load(html) {
+async function load(html, url) {
     const vc = new VirtualConsole();
     const errors = [];
     vc.on('jsdomError', e => { if (!/Not implemented/.test(e.message)) errors.push('jsdomError: ' + e.message); });
     vc.on('error', (...a) => errors.push('console.error: ' + a.join(' ')));
     vc.on('warn', () => {});
-    const dom = new JSDOM(html, { url: 'https://fbici.github.io/lsv-ai/', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc });
+    const dom = new JSDOM(html, { url: url || 'https://fbici.github.io/lsv-ai/', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc });
     await new Promise(res => {
         if (dom.window.document.readyState === 'complete') return res();
         dom.window.addEventListener('load', res);
@@ -375,6 +375,25 @@ async function load(html) {
     check('aucune requête chat sans compte', !anonCalls.some(u => u.includes('/chat/completions')), anonCalls.join(','));
     check('message conservé dans le champ', da.getElementById('chat-input').value === 'Salut, une idée ?', da.getElementById('chat-input').value);
     check('aucune erreur console (bloqué)', anon.errors.length === 0, anon.errors.join('|'));
+
+    console.log('\n=== 8bis. RETOUR DES LIENS SUPABASE (confirmation / réinitialisation) ===');
+    const okReturn = await load(prepare(), 'https://fbici.github.io/lsv-ai/?code=test-code-123');
+    const wo = okReturn.dom.window;
+    const dox = wo.document;
+    check('retour de confirmation : toast de succès', /E-mail confirmé/i.test(dox.getElementById('toast-text').textContent), dox.getElementById('toast-text').textContent);
+    check('retour de confirmation : adresse nettoyée', !/[?&]code=/.test(wo.location.search), wo.location.search);
+    check('retour de confirmation : modale fermée', dox.getElementById('auth-modal').classList.contains('hidden'));
+    check('retour de confirmation : aucune erreur console', okReturn.errors.length === 0, okReturn.errors.join('|'));
+
+    const badReturn = await load(prepare(), 'https://fbici.github.io/lsv-ai/?error_description=Email+link+is+invalid+or+has+expired');
+    const wb2 = badReturn.dom.window;
+    const db2 = wb2.document;
+    check('lien expiré : toast d erreur clair', /Lien invalide ou expiré/i.test(db2.getElementById('toast-text').textContent), db2.getElementById('toast-text').textContent);
+    check('lien expiré : aucun détail technique', !/error_description|token|supabase|HTTP/i.test(db2.getElementById('toast-text').textContent), db2.getElementById('toast-text').textContent);
+    check('lien expiré : aucune erreur console', badReturn.errors.length === 0, badReturn.errors.join('|'));
+
+    const plain = await load(prepare());
+    check('chargement normal : aucun toast de retour', !/E-mail confirmé|Lien invalide/i.test(plain.dom.window.document.getElementById('toast-text').textContent), plain.dom.window.document.getElementById('toast-text').textContent);
 
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');
