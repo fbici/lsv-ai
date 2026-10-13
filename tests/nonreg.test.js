@@ -81,6 +81,9 @@ function normalizePublic(doc) {
     // structurelle avec l'original.
     drop('#account-section');
     drop('#auth-modal');
+    // Lien « À propos » (page séparée, testée par public.test) : ajouté au
+    // footer du sidebar, retiré ici pour garder l'égalité structurelle ORIG.
+    drop('#site-about');
     const w = doc.defaultView;
     if (w && w.LSV && w.LSV.services && w.LSV.services.account) delete w.LSV.services.account;
     const keyInput = doc.getElementById('api-input');

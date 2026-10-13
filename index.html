@@ -5,7 +5,46 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#fafaf9">
-<title>LSV.ai — Le Studio Viral</title>
+<title>LSV.ai — Le Studio Viral · Images, vidéos et chat IA | LeStudioViral</title>
+<meta name="description" content="LSV.ai, le Studio Viral de création de contenu propulsé par l'IA : génère des images, des vidéos et discute avec un chat IA en quelques secondes. Un studio créé par LeStudioViral, fondé par Salaou Souleyman, développeur web et mobile.">
+<meta name="keywords" content="LSV.ai, LeStudioViral, Le Studio Viral, images IA, vidéos IA, chat IA, création de contenu, Salaou Souleyman, studio IA">
+<meta name="author" content="Salaou Souleyman — LeStudioViral">
+<link rel="canonical" href="https://fbici.github.io/lsv-ai/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="LSV.ai">
+<meta property="og:title" content="LSV.ai — Le Studio Viral · Images, vidéos et chat IA">
+<meta property="og:description" content="Le studio de création de contenu propulsé par l'IA : images, vidéos et chat IA en quelques secondes. Par LeStudioViral (Salaou Souleyman).">
+<meta property="og:url" content="https://fbici.github.io/lsv-ai/">
+<meta property="og:locale" content="fr_FR">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="LSV.ai — Le Studio Viral · Images, vidéos et chat IA">
+<meta name="twitter:description" content="Le studio de création de contenu propulsé par l'IA : images, vidéos et chat IA en quelques secondes.">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "name": "LSV.ai — Le Studio Viral",
+      "alternateName": "LeStudioViral",
+      "url": "https://fbici.github.io/lsv-ai/",
+      "inLanguage": "fr-FR",
+      "description": "Studio de création de contenu propulsé par l'IA : images, vidéos et chat IA.",
+      "publisher": {
+        "@type": "Organization",
+        "name": "LeStudioViral",
+        "url": "https://fbici.github.io/lsv-ai/a-propos.html",
+        "founder": {
+          "@type": "Person",
+          "name": "Salaou Souleyman",
+          "jobTitle": "Développeur d'applications web et mobile",
+          "url": "https://fbici.github.io/lsv-ai/a-propos.html"
+        }
+      }
+    }
+  ]
+}
+</script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -380,6 +419,11 @@ body {
 }
 .app.sidebar-collapsed .sidebar-stat { display: none; }
 .sidebar-stat .stat-value { color: var(--ink-2); font-weight: 600; }
+.sidebar-about { margin-top: 6px; padding: 0 0.5rem; white-space: nowrap; overflow: hidden; }
+.sidebar-about a { color: var(--ink-3); font-size: 0.68rem; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem; }
+.sidebar-about a:hover { color: var(--accent); }
+.sidebar-about a .ms { font-size: 0.9rem; }
+.app.sidebar-collapsed .sidebar-about { display: none; }
 .api-mini {
     display: flex;
     align-items: center;
@@ -2478,6 +2522,9 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
             <div class="sidebar-stat">
                 <span>Vidéos</span>
                 <span class="stat-value" id="sidebar-video-count">0</span>
+            </div>
+            <div class="sidebar-about" id="site-about">
+                <a href="./a-propos.html" title="À propos de LeStudioViral et de son fondateur Salaou Souleyman"><span class="ms">info</span>À propos · LeStudioViral</a>
             </div>
         </div>
     </aside>

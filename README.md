@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.4.4
+# LSV.ai — Studio Viral v3.4.5
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
 
@@ -83,6 +83,10 @@ lsv-ai/
 │   ├── index.html             # Back-office (connexion + dashboard)
 │   ├── admin.css              # Design admin (identité LSV.ai)
 │   └── admin.js               # Auth, chargement, agrégats, graphiques
+│
+├── a-propos.html            # Page « À propos » : LeStudioViral · Salaou Souleyman
+├── robots.txt               # SEO : robots autorisés, /admin/ interdit, sitemap
+├── sitemap.xml              # SEO : plan du site (studio + à propos)
 │
 ├── supabase/
 │   ├── schema.sql             # Tables + RLS + indexes (à exécuter une fois)
@@ -228,6 +232,17 @@ ne protègent que notre passerelle.
 
 Un compte créé **n'ouvre rien par lui-même** : sans figure dans `admin_emails`,
 le back-office affiche « Compte non autorisé » et le tableau de bord reste vide.
+
+### 2.7 Marque, page « À propos » & SEO (nouveau)
+
+| Ajout | Détail |
+|---|---|
+| **`a-propos.html`** | page publique de la marque **LeStudioViral** : le fondateur **Salaou Souleyman** (développeur d'applications web & mobile, créateur de contenu), ses savoir-faire, et le studio LSV.ai — design cohérent avec l'app, responsive |
+| **Lien dans le studio** | sidebar → pied de page : « À propos · LeStudioViral » → `a-propos.html` |
+| **SEO de l'app** | `index.html` : `meta description` / `keywords` / `author` / `canonical` + Open Graph + Twitter Card + **JSON-LD** (`WebSite` → `Organization` LeStudioViral → `Person` Salaou Souleyman) |
+| **SEO de la page** | titre + description + canonical + `og:profile` + **JSON-LD** `Person` / `Organization` / `WebSite` (le fondateur est ainsi exposé aux moteurs de recherche) |
+| **`robots.txt` + `sitemap.xml`** | indexés par Google/Bing sur GitHub Pages ; le back-office `/admin/` est interdit aux robots |
+| **Site officiel de la marque** | 2 liens `https://lestudioviral.com` dans `a-propos.html`, repérables par le commentaire `SITE_OFFICIEL` : les remplacer par l'URL réelle du site officiel quand il sera en ligne |
 
 ---
 
@@ -623,7 +638,7 @@ dans le back-office elle n'apparaît masquée que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 290 assertions (302 avec ORIG=… voir plus bas)
+npm test        # 307 assertions (319 avec ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (41 assertions, **53 avec `ORIG`**) — non-régression
@@ -639,7 +654,7 @@ npm test        # 290 assertions (302 avec ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (128 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (145 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -669,7 +684,10 @@ npm test        # 290 assertions (302 avec ORIG=… voir plus bas)
   traduits en messages clairs, sans détail technique ;
 - **retour des liens Supabase** : confirmation (`?code=`) → toast « E-mail
   confirmé », lien expiré → « Lien invalide ou expiré », URL nettoyée, modale
-  fermée, aucune fuite de détail technique.
+  fermée, aucune fuite de détail technique ;
+- **marque & SEO** : lien « À propos » dans le studio, `a-propos.html` (LeStudioViral,
+  Salaou Souleyman, métiers, JSON-LD Person/Organization), meta/canonical/OG de
+  l'app, `robots.txt` (admin interdit) et `sitemap.xml`.
 
 **`tests/gateway.test.mjs`** (49 assertions) — passerelle
 

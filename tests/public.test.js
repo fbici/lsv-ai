@@ -395,6 +395,35 @@ async function load(html, url) {
     const plain = await load(prepare());
     check('chargement normal : aucun toast de retour', !/E-mail confirmé|Lien invalide/i.test(plain.dom.window.document.getElementById('toast-text').textContent), plain.dom.window.document.getElementById('toast-text').textContent);
 
+    console.log('\n=== 9. À PROPOS & SEO (LeStudioViral · Salaou Souleyman) ===');
+    const aboutLink = doc.getElementById('site-about');
+    const aboutA = aboutLink ? aboutLink.querySelector('a') : null;
+    check('lien « À propos » présent dans le studio', !!aboutA && aboutA.getAttribute('href') === './a-propos.html', aboutA && aboutA.getAttribute('href'));
+    check('lien À propos vers la seule page a-propos', !/admin/i.test(aboutA ? aboutA.getAttribute('href') : ''), aboutA && aboutA.getAttribute('href'));
+    check('meta description du studio citant la marque', /LeStudioViral/.test(source) && /Salaou Souleyman/.test(source) && /<meta name="description"/.test(source));
+    check('SEO : canonical + Open Graph + Twitter', /rel="canonical"/.test(source) && /og:title/.test(source) && /twitter:card/.test(source));
+    check('SEO : données structurées (WebSite + fondateur)', /application\/ld\+json/.test(source) && /Salaou Souleyman/.test(source));
+
+    const aboutPath = path.join(PROJECT, 'a-propos.html');
+    const aboutSrc = fs.existsSync(aboutPath) ? fs.readFileSync(aboutPath, 'utf8') : '';
+    check('page a-propos.html existe', !!aboutSrc, aboutSrc.length + ' octets');
+    check('page à propos en français', /<html lang="fr">/.test(aboutSrc));
+    check('fondateur nommé (Salaou Souleyman)', /Salaou Souleyman/.test(aboutSrc));
+    check('marque nommée (LeStudioViral)', /LeStudioViral/.test(aboutSrc));
+    check('métiers mentionnés (web + mobile + contenu)', /applications web/i.test(aboutSrc) && /mobile/i.test(aboutSrc) && /contenu/i.test(aboutSrc));
+    check('accès au studio depuis la page', /fbici\.github\.io\/lsv-ai\//.test(aboutSrc));
+    check('SEO : titre + description + canonical sur la page', /<title>[^<]*Salaou Souleyman/.test(aboutSrc) && /meta name="description"/.test(aboutSrc) && /rel="canonical"/.test(aboutSrc));
+    check('SEO : JSON-LD Person + Organization', /"@type": "Person"/.test(aboutSrc) && /"@type": "Organization"/.test(aboutSrc) && /"founder"/.test(aboutSrc));
+    check('emplacement prévu pour le site officiel', /SITE_OFFICIEL/.test(aboutSrc) && /lestudioviral\.com/.test(aboutSrc));
+    check('aucun secret dans la page à propos', !/sk-[A-Za-z0-9]{10,}|service_role|password\s*[:=]/.test(aboutSrc));
+
+    const robotsPath = path.join(PROJECT, 'robots.txt');
+    const robotsSrc = fs.existsSync(robotsPath) ? fs.readFileSync(robotsPath, 'utf8') : '';
+    check('robots.txt présent et admin interdit', /Disallow:\s*\/admin\//.test(robotsSrc) && /Sitemap:/.test(robotsSrc), robotsSrc.slice(0, 40));
+    const sitemapPath = path.join(PROJECT, 'sitemap.xml');
+    const sitemapSrc = fs.existsSync(sitemapPath) ? fs.readFileSync(sitemapPath, 'utf8') : '';
+    check('sitemap.xml contient studio + à propos', /fbici\.github\.io\/lsv-ai\//.test(sitemapSrc) && /a-propos\.html/.test(sitemapSrc));
+
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');
     console.log((results.length - failed.length) + '/' + results.length + ' tests interface/sécurité OK');

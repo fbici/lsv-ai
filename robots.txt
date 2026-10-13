@@ -1,0 +1,6 @@
+# LSV.ai — Le Studio Viral (LeStudioViral · Salaou Souleyman)
+User-agent: *
+Allow: /
+Disallow: /admin/
+
+Sitemap: https://fbici.github.io/lsv-ai/sitemap.xml
