@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" role="img" aria-label="Clip vertical généré par IA">
+  <defs>
+    <linearGradient id="bg4" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#042f2e"/>
+      <stop offset="0.5" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="frame4" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5eead4"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="1000" fill="url(#bg4)"/>
+  <rect x="250" y="170" width="300" height="560" rx="36" fill="#0b1220" stroke="url(#frame4)" stroke-width="6"/>
+  <rect x="272" y="200" width="256" height="500" rx="22" fill="#0d9488" opacity="0.18"/>
+  <circle cx="400" cy="430" r="64" fill="#ffffff" opacity="0.95"/>
+  <path d="M382 396l52 34-52 34z" fill="#0f766e"/>
+  <g stroke="#5eead4" stroke-width="4" fill="none" opacity="0.6">
+    <path d="M180 800c60-40 120-40 180 0s120 40 180 0 120-40 180 0"/>
+    <path d="M180 850c60-40 120-40 180 0s120 40 180 0 120-40 180 0" opacity="0.55"/>
+    <path d="M180 900c60-40 120-40 180 0s120 40 180 0 120-40 180 0" opacity="0.3"/>
+  </g>
+  <g fill="#99f6e4" opacity="0.75">
+    <rect x="300" y="760" width="8" height="40" rx="4"/>
+    <rect x="330" y="740" width="8" height="60" rx="4"/>
+    <rect x="360" y="770" width="8" height="30" rx="4"/>
+    <rect x="390" y="730" width="8" height="70" rx="4"/>
+    <rect x="420" y="755" width="8" height="45" rx="4"/>
+    <rect x="450" y="742" width="8" height="58" rx="4"/>
+  </g>
+</svg>

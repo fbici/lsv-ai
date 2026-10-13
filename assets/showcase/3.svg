@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" role="img" aria-label="Produit premium généré par IA">
+  <defs>
+    <linearGradient id="bg3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2e1065"/>
+      <stop offset="0.6" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#020617"/>
+    </linearGradient>
+    <radialGradient id="orb3" cx="0.38" cy="0.32" r="0.75">
+      <stop offset="0" stop-color="#e9d5ff"/>
+      <stop offset="0.45" stop-color="#a78bfa"/>
+      <stop offset="1" stop-color="#6d28d9"/>
+    </radialGradient>
+    <linearGradient id="ped3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#312e81"/>
+      <stop offset="1" stop-color="#0b1220"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="1000" fill="url(#bg3)"/>
+  <ellipse cx="400" cy="820" rx="260" ry="60" fill="#4c1d95" opacity="0.55"/>
+  <rect x="230" y="700" width="340" height="120" rx="18" fill="url(#ped3)"/>
+  <circle cx="400" cy="470" r="190" fill="url(#orb3)"/>
+  <ellipse cx="335" cy="400" rx="70" ry="46" fill="#ffffff" opacity="0.5"/>
+  <circle cx="400" cy="470" r="190" fill="none" stroke="#c4b5fd" stroke-width="3" opacity="0.6"/>
+  <g stroke="#a78bfa" stroke-width="2" opacity="0.5" fill="none">
+    <path d="M170 470c60-40 110-40 170 0"/>
+    <path d="M460 470c60 40 110 40 170 0"/>
+  </g>
+  <g fill="#ddd6fe" opacity="0.8">
+    <circle cx="140" cy="220" r="3"/><circle cx="660" cy="180" r="2.5"/><circle cx="700" cy="560" r="3"/>
+    <circle cx="120" cy="620" r="2"/><circle cx="560" cy="180" r="2"/>
+  </g>
+</svg>

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" role="img" aria-label="Vagues cosmiques générées par IA">
+  <defs>
+    <linearGradient id="bg5" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#020617"/>
+      <stop offset="1" stop-color="#0c4a6e"/>
+    </linearGradient>
+    <linearGradient id="w1" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#38bdf8" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#818cf8" stop-opacity="0.9"/>
+    </linearGradient>
+    <linearGradient id="w2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#6366f1" stop-opacity="0.75"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="1000" fill="url(#bg5)"/>
+  <g fill="#e0f2fe" opacity="0.85">
+    <circle cx="110" cy="120" r="2.5"/><circle cx="240" cy="80" r="2"/><circle cx="420" cy="140" r="3"/>
+    <circle cx="580" cy="90" r="2"/><circle cx="700" cy="170" r="2.5"/><circle cx="90" cy="300" r="2"/>
+    <circle cx="760" cy="330" r="2"/><circle cx="330" cy="220" r="1.8"/><circle cx="640" cy="260" r="2.2"/>
+  </g>
+  <path d="M0 520c140-90 260 60 400-10s260-140 400-60v550H0z" fill="url(#w1)" opacity="0.55"/>
+  <path d="M0 620c160-80 280 70 420-5s240-120 380-50v435H0z" fill="url(#w2)" opacity="0.6"/>
+  <path d="M0 740c150-70 270 60 410-5s250-110 390-45v310H0z" fill="#0ea5e9" opacity="0.45"/>
+  <circle cx="600" cy="380" r="80" fill="#e0f2fe" opacity="0.14"/>
+  <circle cx="600" cy="380" r="50" fill="#e0f2fe" opacity="0.2"/>
+</svg>

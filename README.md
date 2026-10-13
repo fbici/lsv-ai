@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.5.0
+# LSV.ai — Studio Viral v3.6.0
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
 
@@ -86,7 +86,7 @@ lsv-ai/
 │
 ├── a-propos/                 # Page « À propos » (URL propre : /a-propos/)
 │   └── index.html            #   LeStudioViral · Salaou Souleyman · boutiques
-├── assets/showcase/          # (optionnel) 1.jpg…4.jpg → gallerie de l'accueil
+├── assets/showcase/          # 1.jpg…6.jpg (tes créations) + 1.svg…6.svg (démo)
 ├── lsv.jpg                   # Logo officiel de la marque
 ├── robots.txt               # SEO : robots autorisés, /admin/ interdit, sitemap
 ├── sitemap.xml              # SEO : plan du site (studio + à propos)
@@ -251,12 +251,13 @@ le back-office affiche « Compte non autorisé » et le tableau de bord reste vi
 
 | Ajout | Détail |
 |---|---|
-| **Page d'accueil** | premier écran à l'ouverture de l'app (première visite) : logo officiel `lsv.jpg`, présentation du studio, gallerie de créations, points forts, bouton **Continuer** |
-| **Première visite → compte** | « Continuer » sans compte ouvre l'inscription ; le compte doit être créé **avant** d'entrer dans le dashboard de création (drapeau `localStorage.lsv4_welcome`) |
-| **Gallerie d'exemples** | 4 vignettes en dégradé ; dépose tes images générées dans `assets/showcase/1.jpg`…`4.jpg` : elles s'affichent automatiquement |
-| **Emplacements boutiques** | 2 liens placeholders sur l'accueil **et** sur la page À propos : `SHOP_1_URL` (Boutique LeStudioViral — produits digitaux IA / TikTok / trading) et `SHOP_2_URL` (Académie Digital — ebooks éducation) |
-| **URL propres** | la page À propos vit dans `a-propos/index.html` → `…/lsv-ai/a-propos/` (plus de `.html` dans l'adresse ; le back-office reste `…/admin/`) |
-| **Onglets du navigateur** | titres de pages explicites (studio, à propos, back-office) + favicon `lsv.jpg` |
+| **Page d'accueil** | premier écran à l'ouverture de l'app (première visite), inspiré des grandes plateformes : barre de marque, héros avec logo officiel `lsv.jpg`, titre géant, double CTA (Commencer / J'ai déjà un compte) |
+| **Galerie « Créé avec LSV.ai »** | 6 visuels (prompts + tags) — visuels SVG livrés, et dépose de **tes** images générées dans `assets/showcase/1.jpg`…`6.jpg` qui les remplacent automatiquement (repli SVG) |
+| **Sections complètes** | fonctionnalités (6 cartes), « Comment ça marche » (3 étapes), bandeau de stats, **boutiques**, CTA final, pied de marque |
+| **Première visite → compte** | « Commencer » sans compte ouvre l'inscription ; le dashboard de création n'apparaît qu'une fois le compte créé (drapeau `localStorage.lsv4_welcome`) |
+| **Boutiques en ligne** | liens réels sur l'accueil **et** sur la page À propos : [Boutique LeStudioViral](https://rxorzera.mychariow.shop) (`SHOP_1_URL`) et [Académie Digital](https://blgbiwds.mychariow.shop) (`SHOP_2_URL`) |
+| **URL propres** | plus aucun lien interne vers `index.html` : accueil `…/lsv-ai/`, à propos `…/a-propos/`, back-office `…/admin/` |
+| **Onglets du navigateur** | titres de pages explicites + favicon `lsv.jpg` |
 | **Texte sous les formulaires retiré** | la mention « Les mots de passe sont vérifiés… » sous la page de connexion a été supprimée |
 | **Erreurs d'inscription plus claires** | échec d'envoi de l'e-mail de confirmation (SMTP non configuré) ou limite d'envoi : messages explicites au lieu de « Opération impossible » |
 
@@ -654,7 +655,7 @@ dans le back-office elle n'apparaît masquée que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 329 assertions (341 avec ORIG=… voir plus bas)
+npm test        # 334 assertions (346 avec ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (41 assertions, **53 avec `ORIG`**) — non-régression
@@ -670,7 +671,7 @@ npm test        # 329 assertions (341 avec ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (167 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (172 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -704,10 +705,11 @@ npm test        # 329 assertions (341 avec ORIG=… voir plus bas)
 - **marque & SEO** : lien « À propos » dans le studio, `a-propos/` (LeStudioViral,
   Salaou Souleyman, métiers, boutiques, JSON-LD Person/Organization), meta/canonical/OG de
   l'app, `robots.txt` (admin interdit) et `sitemap.xml` ;
-- **page d'accueil & boutiques** : accueil de première visite (logo, gallerie,
-  Continuer), inscription obligatoire avant le dashboard, emplacements
-  `SHOP_1_URL` / `SHOP_2_URL`, texte sous les formulaires supprimé, erreurs
-  SMTP traduites.
+- **page d'accueil & boutiques** : accueil de première visite (héros, galerie
+  6 visuels, fonctionnalités, étapes, stats, boutiques, CTA), inscription
+  obligatoire avant le dashboard, liens réels des boutiques
+  (`rxorzera` / `blgbiwds`), aucun lien interne `index.html`, texte sous les
+  formulaires supprimé, erreurs SMTP traduites.
 
 **`tests/gateway.test.mjs`** (49 assertions) — passerelle
 

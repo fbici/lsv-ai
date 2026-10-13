@@ -429,14 +429,19 @@ async function load(html, url) {
 
     console.log('\n=== 10. PAGE D\'ACCUEIL & BOUTIQUES ===');
     check('logo officiel sur l accueil', !!doc.getElementById('welcome-logo') && doc.getElementById('welcome-logo').getAttribute('src') === './lsv.jpg');
-    check('bouton Continuer présent', !!doc.getElementById('welcome-continue'));
-    check('gallerie d exemples (4 vignettes)', doc.querySelectorAll('#welcome-gallery .welcome-shot').length === 4, doc.querySelectorAll('#welcome-gallery .welcome-shot').length);
-    check('vignettes prêtes pour assets/showcase', doc.querySelectorAll('#welcome-gallery img[data-src^="./assets/showcase/"]').length === 4);
+    check('bouton Commencer présent', !!doc.getElementById('welcome-continue'));
+    check('second bouton Commencer (bas de page)', !!doc.getElementById('welcome-continue-2'));
+    check('lien connexion pour comptes existants', !!doc.getElementById('welcome-login'));
+    check('gallerie d exemples (6 vignettes)', doc.querySelectorAll('#welcome-gallery .w-shot').length === 6, doc.querySelectorAll('#welcome-gallery .w-shot').length);
+    check('vignettes jpg + repli svg', doc.querySelectorAll('#welcome-gallery img[data-src^="./assets/showcase/"]').length === 6 && doc.querySelectorAll('#welcome-gallery img[data-fallback$=".svg"]').length === 6);
+    check('sections accueil (créations, fonctions, boutiques, final)', !!doc.getElementById('w-showcase') && !!doc.getElementById('w-features') && !!doc.getElementById('w-shops') && !!doc.querySelector('.w-final'));
+    check('étapes & stats présentes', doc.querySelectorAll('.w-step').length === 3 && doc.querySelectorAll('.w-stat').length === 4);
     const shopA = doc.getElementById('shop-boutique');
     const shopB = doc.getElementById('shop-academie');
-    check('emplacement boutique LeStudioViral (SHOP_1_URL)', !!shopA && shopA.getAttribute('href') === '#' && /Boutique LeStudioViral/.test(shopA.textContent), shopA && shopA.getAttribute('href'));
-    check('emplacement Académie Digital (SHOP_2_URL)', !!shopB && shopB.getAttribute('href') === '#' && /Académie Digital/.test(shopB.textContent), shopB && shopB.getAttribute('href'));
+    check('boutique LeStudioViral en ligne (SHOP_1_URL)', !!shopA && shopA.getAttribute('href') === 'https://rxorzera.mychariow.shop', shopA && shopA.getAttribute('href'));
+    check('Académie Digital en ligne (SHOP_2_URL)', !!shopB && shopB.getAttribute('href') === 'https://blgbiwds.mychariow.shop', shopB && shopB.getAttribute('href'));
     check('texte sous les formulaires supprimé', !/Les mots de passe sont vérifiés/.test(source));
+    check('aucun lien interne vers index.html', !/href="[^"]*index\.html/.test(source) && !/href="[^"]*index\.html/.test(aboutSrc));
 
     doc.getElementById('welcome-continue').click();
     await new Promise(r => setTimeout(r, 200));

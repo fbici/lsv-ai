@@ -2168,43 +2168,104 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
     z-index: 520;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    background:
-        radial-gradient(900px 480px at 82% -8%, rgba(13, 148, 136, 0.3), transparent 60%),
-        radial-gradient(700px 420px at 8% 112%, rgba(20, 184, 166, 0.18), transparent 60%),
-        #0b0e0e;
+    background: #07100f;
+    background-image:
+        radial-gradient(1000px 520px at 78% -6%, rgba(13, 148, 136, 0.34), transparent 62%),
+        radial-gradient(760px 460px at 12% 26%, rgba(37, 99, 235, 0.18), transparent 60%),
+        radial-gradient(900px 520px at 50% 115%, rgba(124, 58, 237, 0.16), transparent 62%);
     color: #e7e7e4;
     font-family: var(--font);
 }
-.welcome-inner { max-width: 980px; margin: 0 auto; padding: 3rem 1.4rem 3.4rem; text-align: center; }
-.welcome-logo { width: 92px; height: 92px; object-fit: contain; border-radius: 22px; background: #ffffff; border: 1px solid rgba(255, 255, 255, 0.14); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45); }
-.welcome-mark { font-family: var(--font-display); font-size: 2.4rem; font-weight: 700; color: #ffffff; }
-.welcome-mark span { color: #2dd4bf; }
-.welcome-eyebrow { display: inline-block; margin: 1.4rem 0 0.9rem; padding: 0.4rem 0.9rem; border: 1px solid rgba(20, 184, 166, 0.45); background: rgba(13, 148, 136, 0.12); color: #5eead4; border-radius: 999px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
-.welcome-title { font-family: var(--font-display); font-size: clamp(1.7rem, 4.6vw, 2.9rem); line-height: 1.12; letter-spacing: -0.03em; color: #ffffff; max-width: 22ch; margin: 0 auto 0.9rem; }
-.welcome-title em { font-style: normal; color: #2dd4bf; }
-.welcome-lead { max-width: 58ch; margin: 0 auto 1.6rem; color: #a1a1aa; font-size: 0.98rem; line-height: 1.65; }
-.welcome-gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; margin: 0 auto 1.5rem; max-width: 860px; }
-@media (max-width: 760px) { .welcome-gallery { grid-template-columns: repeat(2, 1fr); } }
-.welcome-shot { position: relative; aspect-ratio: 3 / 4; border-radius: 14px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); background: linear-gradient(150deg, #134e4a, #0f766e 45%, #18181b); box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35); }
-.welcome-shot:nth-child(2) { background: linear-gradient(150deg, #1e3a8a, #2563eb 45%, #18181b); }
-.welcome-shot:nth-child(3) { background: linear-gradient(150deg, #4c1d95, #7c3aed 45%, #18181b); }
-.welcome-shot:nth-child(4) { background: linear-gradient(150deg, #7c2d12, #ea580c 45%, #18181b); }
-.welcome-shot img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity 0.4s; }
-.welcome-shot.has-img img { opacity: 1; }
-.welcome-shot figcaption { position: absolute; left: 0; right: 0; bottom: 0; padding: 0.55rem 0.65rem; font-size: 0.66rem; color: #e4e4e7; background: linear-gradient(transparent, rgba(0, 0, 0, 0.8)); text-align: left; }
-.welcome-shot .shot-icon { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
-.welcome-shot .shot-icon .ms { font-size: 1.5rem; color: rgba(255, 255, 255, 0.55); }
-.welcome-points { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.55rem; list-style: none; margin: 0 0 1.6rem; padding: 0; }
-.welcome-points li { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.85rem; border-radius: 999px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: #d4d4d8; font-size: 0.8rem; }
-.welcome-points .ms { font-size: 1rem; color: #2dd4bf; }
-.welcome-cta { display: inline-flex; align-items: center; gap: 0.5rem; background: var(--accent); color: #ffffff; border: none; padding: 0.95rem 1.9rem; border-radius: 12px; font-family: var(--font); font-size: 1rem; font-weight: 700; cursor: pointer; box-shadow: 0 12px 26px rgba(13, 148, 136, 0.35); }
-.welcome-cta:hover { background: #14b8a6; }
-.welcome-shops { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; margin-top: 1.4rem; }
-.welcome-shop { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.6rem 1rem; border-radius: 10px; border: 1px dashed rgba(255, 255, 255, 0.24); color: #a1a1aa; font-size: 0.78rem; text-decoration: none; }
-.welcome-shop:hover { color: #ffffff; border-color: #2dd4bf; }
-.welcome-foot { margin-top: 2rem; font-size: 0.72rem; color: #71717a; }
-.welcome-foot a { color: #5eead4; text-decoration: none; }
-.welcome-foot a:hover { text-decoration: underline; }
+.welcome * { box-sizing: border-box; }
+.welcome-inner { max-width: 1120px; margin: 0 auto; padding: 0 1.4rem 3.5rem; }
+.welcome-top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.15rem 0; }
+.welcome-top-brand { display: inline-flex; align-items: center; gap: 0.6rem; }
+.welcome-top-brand img { width: 38px; height: 38px; object-fit: contain; border-radius: 10px; background: #fff; border: 1px solid rgba(255, 255, 255, 0.16); }
+.welcome-top-brand span { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; color: #fff; letter-spacing: -0.02em; }
+.welcome-top-brand span i { font-style: normal; color: #2dd4bf; }
+.welcome-top nav { display: flex; align-items: center; gap: 0.35rem; }
+.welcome-top nav a { color: #a1a1aa; text-decoration: none; font-size: 0.82rem; font-weight: 600; padding: 0.5rem 0.8rem; border-radius: 999px; }
+.welcome-top nav a:hover { color: #fff; background: rgba(255, 255, 255, 0.07); }
+.welcome-top nav a.w-top-cta { background: #ffffff; color: #0b0e0e; }
+.welcome-top nav a.w-top-cta:hover { background: #2dd4bf; }
+
+.w-hero { text-align: center; padding: 3.2rem 0 2.6rem; }
+.w-logo { width: 118px; height: 118px; object-fit: contain; border-radius: 28px; background: #ffffff; border: 1px solid rgba(255, 255, 255, 0.14); box-shadow: 0 26px 60px rgba(0, 0, 0, 0.55), 0 0 0 8px rgba(13, 148, 136, 0.12); margin-bottom: 1.5rem; }
+.w-mark { font-family: var(--font-display); font-size: 3rem; font-weight: 700; color: #fff; margin-bottom: 1.5rem; }
+.w-mark i { font-style: normal; color: #2dd4bf; }
+.w-eyebrow { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.45rem 1rem; border: 1px solid rgba(45, 212, 191, 0.4); background: rgba(13, 148, 136, 0.12); color: #5eead4; border-radius: 999px; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 1.2rem; }
+.w-title { font-family: var(--font-display); font-size: clamp(2.1rem, 6vw, 4rem); line-height: 1.06; letter-spacing: -0.035em; color: #ffffff; max-width: 18ch; margin: 0 auto 1.1rem; }
+.w-title em { font-style: normal; background: linear-gradient(92deg, #2dd4bf, #38bdf8 55%, #a78bfa); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.w-lead { max-width: 62ch; margin: 0 auto 1.9rem; color: #a1a1aa; font-size: 1.05rem; line-height: 1.7; }
+.w-lead strong { color: #e4e4e7; }
+.w-cta-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; margin-bottom: 1rem; }
+.w-btn { display: inline-flex; align-items: center; gap: 0.5rem; border: none; cursor: pointer; padding: 1.05rem 2.1rem; border-radius: 999px; font-family: var(--font); font-size: 1rem; font-weight: 700; text-decoration: none; transition: transform .15s ease, background .15s ease; }
+.w-btn:hover { transform: translateY(-1px); }
+.w-btn-primary { background: #2dd4bf; color: #04211d; box-shadow: 0 16px 34px rgba(45, 212, 191, 0.32); }
+.w-btn-primary:hover { background: #5eead4; }
+.w-btn-ghost { background: rgba(255, 255, 255, 0.08); color: #fff; border: 1px solid rgba(255, 255, 255, 0.18); }
+.w-btn-ghost:hover { background: rgba(255, 255, 255, 0.14); }
+.w-micro { font-size: 0.78rem; color: #71717a; }
+
+.w-section-title { font-family: var(--font-display); font-size: clamp(1.5rem, 3.4vw, 2.2rem); letter-spacing: -0.03em; color: #fff; text-align: center; margin-bottom: 0.5rem; }
+.w-section-sub { text-align: center; color: #8b8b93; font-size: 0.95rem; max-width: 60ch; margin: 0 auto 1.8rem; }
+
+.w-showcase { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 2.4rem 0 3.2rem; }
+@media (max-width: 900px) { .w-showcase { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .w-showcase { grid-template-columns: 1fr; } }
+.w-shot { position: relative; aspect-ratio: 4 / 5; border-radius: 18px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.09); background: linear-gradient(155deg, #134e4a, #0f766e 40%, #0b1220); box-shadow: 0 22px 44px rgba(0, 0, 0, 0.4); margin: 0; }
+.w-shot:nth-child(2) { background: linear-gradient(155deg, #1e3a8a, #2563eb 42%, #0b1220); }
+.w-shot:nth-child(3) { background: linear-gradient(155deg, #4c1d95, #7c3aed 42%, #0b1220); }
+.w-shot:nth-child(4) { background: linear-gradient(155deg, #7c2d12, #ea580c 42%, #0b1220); }
+.w-shot:nth-child(5) { background: linear-gradient(155deg, #0c4a6e, #06b6d4 42%, #0b1220); }
+.w-shot:nth-child(6) { background: linear-gradient(155deg, #831843, #db2777 42%, #0b1220); }
+.w-shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .5s ease, transform .5s ease; }
+.w-shot.has-img img { opacity: 1; }
+.w-shot:hover img { transform: scale(1.04); }
+.w-shot figcaption { position: absolute; left: 0; right: 0; bottom: 0; padding: 1.9rem 0.9rem 0.85rem; background: linear-gradient(transparent, rgba(4, 8, 8, 0.92)); }
+.w-shot .w-prompt { display: block; font-size: 0.84rem; font-weight: 600; color: #f4f4f5; line-height: 1.35; }
+.w-shot .w-tag { display: inline-block; margin-top: 0.4rem; padding: 0.22rem 0.6rem; border-radius: 999px; background: rgba(45, 212, 191, 0.16); border: 1px solid rgba(45, 212, 191, 0.4); color: #5eead4; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.w-shot .w-badge { position: absolute; top: 0.8rem; left: 0.8rem; padding: 0.28rem 0.65rem; border-radius: 999px; background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(6px); color: #d4d4d8; font-size: 0.68rem; font-weight: 600; }
+
+.w-features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 1.4rem 0 3rem; }
+@media (max-width: 900px) { .w-features { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .w-features { grid-template-columns: 1fr; } }
+.w-feature { background: rgba(255, 255, 255, 0.045); border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 16px; padding: 1.3rem 1.25rem; transition: border-color .2s ease, transform .2s ease; }
+.w-feature:hover { border-color: rgba(45, 212, 191, 0.45); transform: translateY(-2px); }
+.w-feature .w-ico { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: rgba(45, 212, 191, 0.14); color: #2dd4bf; margin-bottom: 0.8rem; }
+.w-feature h3 { font-family: var(--font-display); font-size: 1.02rem; color: #fff; margin-bottom: 0.35rem; letter-spacing: -0.01em; }
+.w-feature p { font-size: 0.86rem; color: #9b9ba3; line-height: 1.55; margin: 0; }
+
+.w-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 1.4rem 0 3rem; counter-reset: step; }
+@media (max-width: 760px) { .w-steps { grid-template-columns: 1fr; } }
+.w-step { position: relative; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 1.5rem 1.25rem 1.3rem; }
+.w-step::before { counter-increment: step; content: counter(step, decimal-leading-zero); position: absolute; top: 1.1rem; right: 1.15rem; font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; color: rgba(45, 212, 191, 0.35); }
+.w-step h3 { font-family: var(--font-display); font-size: 1.02rem; color: #fff; margin-bottom: 0.35rem; }
+.w-step p { font-size: 0.86rem; color: #9b9ba3; margin: 0; line-height: 1.55; }
+
+.w-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; margin: 0 0 3rem; }
+@media (max-width: 760px) { .w-stats { grid-template-columns: repeat(2, 1fr); } }
+.w-stat { text-align: center; padding: 1.2rem 0.8rem; border-radius: 14px; background: linear-gradient(180deg, rgba(45, 212, 191, 0.09), rgba(255, 255, 255, 0.02)); border: 1px solid rgba(45, 212, 191, 0.18); }
+.w-stat b { display: block; font-family: var(--font-display); font-size: 1.7rem; color: #2dd4bf; letter-spacing: -0.03em; }
+.w-stat span { font-size: 0.78rem; color: #9b9ba3; }
+
+.w-shops { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin: 0 0 3rem; }
+@media (max-width: 760px) { .w-shops { grid-template-columns: 1fr; } }
+.w-shop { display: block; text-decoration: none; border-radius: 18px; padding: 1.6rem 1.4rem; background: rgba(255, 255, 255, 0.045); border: 1px solid rgba(255, 255, 255, 0.1); transition: border-color .2s ease, transform .2s ease; }
+.w-shop:hover { border-color: rgba(45, 212, 191, 0.5); transform: translateY(-2px); }
+.w-shop .w-shop-ico { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: rgba(45, 212, 191, 0.14); color: #2dd4bf; margin-bottom: 0.85rem; }
+.w-shop h3 { font-family: var(--font-display); font-size: 1.1rem; color: #fff; margin-bottom: 0.35rem; }
+.w-shop p { font-size: 0.88rem; color: #9b9ba3; margin: 0 0 0.9rem; line-height: 1.55; }
+.w-shop .w-shop-go { font-size: 0.84rem; font-weight: 700; color: #2dd4bf; }
+.w-shop .w-shop-go .ms { font-size: 1rem; vertical-align: -2px; }
+
+.w-final { text-align: center; padding: 2.4rem 1.6rem; border-radius: 22px; background: linear-gradient(135deg, rgba(13, 148, 136, 0.22), rgba(37, 99, 235, 0.14)); border: 1px solid rgba(45, 212, 191, 0.28); margin-bottom: 2.6rem; }
+.w-final h2 { font-family: var(--font-display); font-size: clamp(1.5rem, 3.6vw, 2.3rem); color: #fff; letter-spacing: -0.03em; margin-bottom: 0.6rem; }
+.w-final p { color: #a1a1aa; max-width: 52ch; margin: 0 auto 1.4rem; font-size: 0.95rem; }
+
+.w-foot { display: flex; flex-wrap: wrap; gap: 0.6rem 1.2rem; align-items: center; justify-content: space-between; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 1.4rem; font-size: 0.76rem; color: #71717a; }
+.w-foot a { color: #5eead4; text-decoration: none; }
+.w-foot a:hover { text-decoration: underline; }
 
 /* EMPTY / PROJECTS / LIBRARY / HISTORY */
 .empty-state {
@@ -2468,62 +2529,176 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
 <body>
 
 <!-- ══ PAGE D'ACCUEIL (première visite) ══
-     Gallerie d'exemples : dépose tes images générées dans
-     assets/showcase/1.jpg … 4.jpg — elles remplacent automatiquement
-     les vignettes de démonstration. -->
+     Gallerie d'exemples : tes images générées déposées dans
+     assets/showcase/1.jpg … 6.jpg remplacent automatiquement les visuels. -->
 <div class="welcome" id="welcome" role="dialog" aria-label="Bienvenue sur LSV.ai">
     <div class="welcome-inner">
-        <img src="./lsv.jpg" alt="Logo LeStudioViral" class="welcome-logo" id="welcome-logo" width="92" height="92">
-        <div class="welcome-mark" id="welcome-mark" hidden>LSV<span>.ai</span></div>
 
-        <span class="welcome-eyebrow">LeStudioViral · Studio de création IA</span>
-        <h1 class="welcome-title">Crée des <em>images</em>, des <em>vidéos</em> et des <em>discussions IA</em> en quelques secondes.</h1>
-        <p class="welcome-lead">LSV.ai est le studio de création de contenu propulsé par l'intelligence artificielle,
-        fondé par <strong>Salaou Souleyman</strong>. Un simple texte suffit pour obtenir des visuels
-        prêts à publier — sans installation, depuis n'importe quel appareil.</p>
-
-        <div class="welcome-gallery" id="welcome-gallery" aria-label="Exemples de créations">
-            <figure class="welcome-shot" id="shot-1">
-                <div class="shot-icon" aria-hidden="true"><span class="ms">image</span></div>
-                <img data-src="./assets/showcase/1.jpg" alt="Création IA — portrait">
-                <figcaption>« Portrait cinématique, lumière néon »</figcaption>
-            </figure>
-            <figure class="welcome-shot" id="shot-2">
-                <div class="shot-icon" aria-hidden="true"><span class="ms">movie</span></div>
-                <img data-src="./assets/showcase/2.jpg" alt="Création IA — scène">
-                <figcaption>« Scène urbaine au coucher du soleil »</figcaption>
-            </figure>
-            <figure class="welcome-shot" id="shot-3">
-                <div class="shot-icon" aria-hidden="true"><span class="ms">auto_awesome</span></div>
-                <img data-src="./assets/showcase/3.jpg" alt="Création IA — illustration">
-                <figcaption>« Illustration publicitaire, produit premium »</figcaption>
-            </figure>
-            <figure class="welcome-shot" id="shot-4">
-                <div class="shot-icon" aria-hidden="true"><span class="ms">play_circle</span></div>
-                <img data-src="./assets/showcase/4.jpg" alt="Création IA — vidéo">
-                <figcaption>« Vidéo virale, format vertical »</figcaption>
-            </figure>
+        <div class="welcome-top">
+            <div class="welcome-top-brand">
+                <img src="./lsv.jpg" alt="Logo LeStudioViral" id="welcome-logo" width="38" height="38">
+                <span>LSV<i>.ai</i></span>
+            </div>
+            <nav>
+                <a href="#w-showcase">Créations</a>
+                <a href="#w-features">Fonctionnalités</a>
+                <a href="#w-shops">Boutiques</a>
+                <a class="w-top-cta" href="#w-start">Commencer</a>
+            </nav>
         </div>
 
-        <ul class="welcome-points">
-            <li><span class="ms">image</span> Images IA</li>
-            <li><span class="ms">movie</span> Vidéos IA</li>
-            <li><span class="ms">forum</span> Chat IA</li>
-            <li><span class="ms">auto_fix_high</span> Enhancer de prompts</li>
-            <li><span class="ms">movie_filter</span> Storyboards</li>
-            <li><span class="ms">folder</span> Projets</li>
-        </ul>
+        <section class="w-hero" id="w-start">
+            <img src="./lsv.jpg" alt="Logo officiel LeStudioViral" class="w-logo" width="118" height="118">
+            <div class="w-mark" id="welcome-mark" hidden>LSV<i>.ai</i></div>
+            <span class="w-eyebrow"><span class="ms" style="font-size:15px">auto_awesome</span> LeStudioViral · Studio de création IA</span>
+            <h1 class="w-title">Transforme une simple idée en <em>contenu viral</em>.</h1>
+            <p class="w-lead">Images époustouflantes, vidéos prêtes à publier, chat IA et amélioration de prompts —
+            <strong>LSV.ai</strong> réunit toute une boîte à outils de création dans un seul studio,
+            fondé par <strong>Salaou Souleyman</strong>. Gratuit, sans installation, depuis ton téléphone comme ton ordinateur.</p>
+            <div class="w-cta-row">
+                <button type="button" class="w-btn w-btn-primary" id="welcome-continue">Commencer gratuitement <span class="ms">arrow_forward</span></button>
+                <button type="button" class="w-btn w-btn-ghost" id="welcome-login">J'ai déjà un compte</button>
+            </div>
+            <p class="w-micro">Compte gratuit · aucune carte bancaire · tes mots de passe restent chez Supabase</p>
+        </section>
 
-        <button type="button" class="welcome-cta" id="welcome-continue">Continuer <span class="ms">arrow_forward</span></button>
+        <section id="w-showcase">
+            <h2 class="w-section-title">Créé avec LSV.ai</h2>
+            <p class="w-section-sub">Des visuels générés en quelques secondes à partir d'un simple texte —
+            dépose tes propres créations dans <code>assets/showcase/</code> pour les afficher ici.</p>
+            <div class="w-showcase" id="welcome-gallery">
+                <figure class="w-shot">
+                    <span class="w-badge">Image IA</span>
+                    <img data-src="./assets/showcase/1.jpg" data-fallback="./assets/showcase/1.svg" alt="Portrait cinématique généré par IA">
+                    <figcaption><span class="w-prompt">« Portrait cinématique, lumière néon, regard intense »</span><span class="w-tag">Portrait</span></figcaption>
+                </figure>
+                <figure class="w-shot">
+                    <span class="w-badge">Image IA</span>
+                    <img data-src="./assets/showcase/2.jpg" data-fallback="./assets/showcase/2.svg" alt="Scène urbaine générée par IA">
+                    <figcaption><span class="w-prompt">« Ville au coucher du soleil, ambiance cyberpunk »</span><span class="w-tag">Scène</span></figcaption>
+                </figure>
+                <figure class="w-shot">
+                    <span class="w-badge">Image IA</span>
+                    <img data-src="./assets/showcase/3.jpg" data-fallback="./assets/showcase/3.svg" alt="Produit premium généré par IA">
+                    <figcaption><span class="w-prompt">« Produit premium, studio photo, reflets doux »</span><span class="w-tag">Produit</span></figcaption>
+                </figure>
+                <figure class="w-shot">
+                    <span class="w-badge">Vidéo IA</span>
+                    <img data-src="./assets/showcase/4.jpg" data-fallback="./assets/showcase/4.svg" alt="Visuel vidéo vertical généré par IA">
+                    <figcaption><span class="w-prompt">« Clip vertical, mouvement fluide, format viral »</span><span class="w-tag">Vidéo</span></figcaption>
+                </figure>
+                <figure class="w-shot">
+                    <span class="w-badge">Image IA</span>
+                    <img data-src="./assets/showcase/5.jpg" data-fallback="./assets/showcase/5.svg" alt="Fond abstrait généré par IA">
+                    <figcaption><span class="w-prompt">« Vagues cosmiques, dégradés profonds, 8K »</span><span class="w-tag">Fond</span></figcaption>
+                </figure>
+                <figure class="w-shot">
+                    <span class="w-badge">Image IA</span>
+                    <img data-src="./assets/showcase/6.jpg" data-fallback="./assets/showcase/6.svg" alt="Illustration fluide générée par IA">
+                    <figcaption><span class="w-prompt">« Composition fluide, couleurs vives, énergie »</span><span class="w-tag">Illustration</span></figcaption>
+                </figure>
+            </div>
+        </section>
 
-        <div class="welcome-shops">
-            <!-- SHOP_1_URL : remplace href="#" par le lien de ta boutique LeStudioViral -->
-            <a class="welcome-shop" href="#" id="shop-boutique"><span class="ms">storefront</span> Boutique LeStudioViral — produits digitaux (IA, TikTok, trading)</a>
-            <!-- SHOP_2_URL : remplace href="#" par le lien de ta boutique Académie Digital -->
-            <a class="welcome-shop" href="#" id="shop-academie"><span class="ms">school</span> Académie Digital — ebooks &amp; éducation</a>
+        <section id="w-features">
+            <h2 class="w-section-title">Tout un studio dans un seul onglet</h2>
+            <p class="w-section-sub">Chaque outil est pensé pour aller vite : tu décris, l'IA crée, tu publies.</p>
+            <div class="w-features">
+                <div class="w-feature">
+                    <div class="w-ico"><span class="ms">image</span></div>
+                    <h3>Images IA</h3>
+                    <p>Photoréalistes ou illustrées, tous styles, toutes résolutions — en quelques secondes.</p>
+                </div>
+                <div class="w-feature">
+                    <div class="w-ico"><span class="ms">movie</span></div>
+                    <h3>Vidéos IA</h3>
+                    <p>Des vidéos générées à partir d'un simple texte, prêtes pour TikTok, Reels et Shorts.</p>
+                </div>
+                <div class="w-feature">
+                    <div class="w-ico"><span class="ms">forum</span></div>
+                    <h3>Chat IA</h3>
+                    <p>Un assistant pour brainstormer, écrire et débloquer tes idées de contenu, à toute heure.</p>
+                </div>
+                <div class="w-feature">
+                    <div class="w-ico"><span class="ms">auto_fix_high</span></div>
+                    <h3>Enhancer de prompts</h3>
+                    <p>Ta phrase devient un prompt professionnel : plus de détails, plus de cohérence, plus de impact.</p>
+                </div>
+                <div class="w-feature">
+                    <div class="w-ico"><span class="ms">movie_filter</span></div>
+                    <h3>Storyboards</h3>
+                    <p>Plan par plan, construis tes vidéos comme un réalisateur — dialogues et visuels inclus.</p>
+                </div>
+                <div class="w-feature">
+                    <div class="w-ico"><span class="ms">burst_mode</span></div>
+                    <h3>Batch &amp; projets</h3>
+                    <p>Génère des séries complètes d'un coup et retrouve tout classé dans tes projets.</p>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <h2 class="w-section-title">Comment ça marche</h2>
+            <p class="w-section-sub">Trois étapes, et tu es en train de créer.</p>
+            <div class="w-steps">
+                <div class="w-step">
+                    <h3>Crée ton compte</h3>
+                    <p>Nom, e-mail, mot de passe — ton compte gratuit est prêt en dix secondes.</p>
+                </div>
+                <div class="w-step">
+                    <h3>Décris ton idée</h3>
+                    <p>Un prompt, un style, un format : l'enhancer affine automatiquement ta demande.</p>
+                </div>
+                <div class="w-step">
+                    <h3>Génère &amp; publie</h3>
+                    <p>Images, vidéos ou réponses du chat — télécharge et partage immédiatement.</p>
+                </div>
+            </div>
+        </section>
+
+        <div class="w-stats">
+            <div class="w-stat"><b>6</b><span>outils de création</span></div>
+            <div class="w-stat"><b>300+</b><span>tests automatisés</span></div>
+            <div class="w-stat"><b>0</b><span>réglage technique à faire</span></div>
+            <div class="w-stat"><b>100%</b><span>gratuit pour créer</span></div>
         </div>
 
-        <p class="welcome-foot">© LeStudioViral — créé par Salaou Souleyman · <a href="./a-propos/">À propos</a></p>
+        <section id="w-shops">
+            <h2 class="w-section-title">Les boutiques LeStudioViral</h2>
+            <p class="w-section-sub">Au-delà du studio : des produits digitaux et une académie pour aller plus loin.</p>
+            <div class="w-shops">
+                <a class="w-shop" href="https://rxorzera.mychariow.shop" id="shop-boutique" target="_blank" rel="noopener">
+                    <div class="w-shop-ico"><span class="ms">storefront</span></div>
+                    <h3>Boutique LeStudioViral</h3>
+                    <p>Produits digitaux aux couleurs de la marque : IA, TikTok, trading, création de contenu —
+                    des ressources prêtes à l'emploi pour accélérer ta progression.</p>
+                    <span class="w-shop-go">Découvrir la boutique <span class="ms">arrow_forward</span></span>
+                </a>
+                <a class="w-shop" href="https://blgbiwds.mychariow.shop" id="shop-academie" target="_blank" rel="noopener">
+                    <div class="w-shop-ico"><span class="ms">school</span></div>
+                    <h3>Académie Digital</h3>
+                    <p>Ebooks et ressources pédagogiques pour l'éducation des élèves : clairs, pratiques,
+                    pensés pour apprendre à son rythme.</p>
+                    <span class="w-shop-go">Découvrir l'Académie <span class="ms">arrow_forward</span></span>
+                </a>
+            </div>
+        </section>
+
+        <section class="w-final">
+            <h2>Prêt à créer ton prochain contenu viral ?</h2>
+            <p>Rejoins le studio et transforme tes idées en images et vidéos qui marquent les esprits.</p>
+            <button type="button" class="w-btn w-btn-primary" id="welcome-continue-2">Commencer maintenant <span class="ms">rocket_launch</span></button>
+        </section>
+
+        <div class="w-foot">
+            <span>© <span id="welcome-year">2026</span> <strong>LeStudioViral</strong> — créé par Salaou Souleyman</span>
+            <span>
+                <a href="./a-propos/">À propos</a> ·
+                <a href="https://rxorzera.mychariow.shop" target="_blank" rel="noopener">Boutique</a> ·
+                <a href="https://blgbiwds.mychariow.shop" target="_blank" rel="noopener">Académie Digital</a>
+            </span>
+        </div>
+
     </div>
 </div>
 
@@ -4256,7 +4431,7 @@ const AccountView = {
             if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') this.submit(); });
         });
         this.$('account-logout').addEventListener('click', () => this.logout());
-        this.$('account-admin').addEventListener('click', () => { window.location.href = 'admin/index.html'; });
+        this.$('account-admin').addEventListener('click', () => { window.location.href = 'admin/'; });
         this.setMode(this.mode);
         const modal = this.$('auth-modal');
         if (modal) {
@@ -4487,14 +4662,24 @@ const WelcomeView = {
     hide() { const el = this.$('welcome'); if (el) el.classList.add('hidden'); },
     open() { const el = this.$('welcome'); if (el) el.classList.remove('hidden'); this.loadGallery(); },
     init() {
-        const logo = this.$('welcome-logo');
-        if (logo) logo.addEventListener('error', () => {
-            logo.classList.add('hidden');
-            const mark = this.$('welcome-mark');
-            if (mark) mark.hidden = false;
+        document.querySelectorAll('#welcome-logo, .w-logo').forEach(logo => {
+            logo.addEventListener('error', () => {
+                logo.classList.add('hidden');
+                const mark = this.$('welcome-mark');
+                if (mark) mark.hidden = false;
+            });
         });
-        const btn = this.$('welcome-continue');
-        if (btn) btn.addEventListener('click', () => this.continue());
+        const yr = this.$('welcome-year');
+        if (yr) yr.textContent = new Date().getFullYear();
+        ['welcome-continue', 'welcome-continue-2'].forEach(id => {
+            const b = this.$(id);
+            if (b) b.addEventListener('click', () => this.continue());
+        });
+        const login = this.$('welcome-login');
+        if (login) login.addEventListener('click', () => {
+            AccountView.setMode('login');
+            AccountView.open();
+        });
         if (AccountService.signedIn() || this.done()) this.hide();
         else this.open();
     },
@@ -4503,10 +4688,15 @@ const WelcomeView = {
             if (img.dataset.loaded) return;
             img.dataset.loaded = '1';
             img.addEventListener('load', () => {
-                const shot = img.closest('.welcome-shot');
+                const shot = img.closest('.w-shot');
                 if (shot) shot.classList.add('has-img');
             });
-            img.addEventListener('error', () => {});
+            img.addEventListener('error', () => {
+                if (img.dataset.fallback && !img.dataset.fallbackTried) {
+                    img.dataset.fallbackTried = '1';
+                    img.src = img.dataset.fallback;
+                }
+            });
             img.src = img.dataset.src;
         });
     },
