@@ -327,19 +327,23 @@ Les comptes et leurs e-mails restent visibles uniquement dans
 publique ni dans Git.
 
 > ⚠️ **E-mail de confirmation jamais reçu** (message « confirme ton e-mail »
-> puis « Identifiants incorrects ») : l'option *Confirm email* est active mais
-> l'envoi échoue (SMTP, spam, quota). Solution rapide : **Authentication →
-> Sign In / Providers → Email → Confirm email = OFF**, puis confirmer à la main
-> les comptes déjà bloqués :
+> puis « Identifiants incorrects ») : le serveur d'e-mail **intégré** de
+> Supabase n'envoie **qu'aux membres de l'équipe du projet** (2 e-mails/heure) —
+> un visiteur ne reçoit donc jamais rien, et son compte reste non confirmé.
+> Vraie solution : **brancher un SMTP gratuit** (Brevo / Resend) et coller les
+> modèles aux couleurs de LSV.ai → voir **§4.6** (cela déverrouille aussi
+> l'édition des modèles).
+>
+> En attendant, débloquer un compte déjà bloqué : **Authentication → Sign In /
+> Providers → Email → Confirm email = OFF**, puis confirmer à la main :
 >
 > ```sql
 > update auth.users set email_confirmed_at = now(), confirmation_token = null
 > where email_confirmed_at is null;
 > ```
 >
-> Vérifier ensuite dans **Utilisateurs** (back-office) que le compte y apparaît.
-> Modèle d'e-mail aux couleurs de LSV.ai + lien de retour vers l'app en ligne :
-> voir **§4.6**.
+> Vérifier ensuite dans **Utilisateurs** (back-office) que le compte y apparaît,
+> puis **réactiver** *Confirm email* une fois le SMTP en place.
 
 ### 4.4 Récupérer les identifiants publics
 
@@ -371,6 +375,27 @@ window.LSV_CONFIG = {
 Deux réglages Supabase (une seule fois) pour que l'e-mail de confirmation
 porte le nom **LSV.ai** et que le lien de confirmation revienne sur l'app
 en ligne (et non sur `localhost`) :
+
+> ⚙️ **Prérequis : SMTP personnalisé.** L'édition des modèles est **verrouillée**
+> par Supabase tant qu'aucun SMTP n'est configuré (« Set up custom SMTP to edit
+> templates »). C'est aussi la cause des e-mails jamais reçus : le serveur
+> intégré de Supabase n'envoie **qu'aux membres de l'équipe du projet**
+> (2 e-mails/heure). Solution gratuite sans domaine à acheter :
+> [Brevo](https://www.brevo.com) (300 e-mails/jour) ou
+> [Resend](https://resend.com/docs/send-with-supabase-smtp).
+>
+> 1. Brevo → *Settings → Senders & IP → Add* : valider ton adresse d'expéditeur
+>    (un lien de confirmation t'est envoyé).
+> 2. Brevo → *Settings → SMTP & API → onglet SMTP* → *Generate a new SMTP key*
+>    (le mot de passe, **pas** l'API key).
+> 3. Supabase → [Authentication → SMTP settings](https://supabase.com/dashboard/project/_/auth/smtp)
+>    → *Enable custom SMTP* → `smtp-relay.brevo.com`, port `587` (secours
+>    `2525` ou `465`+SSL), SMTP login + SMTP key de Brevo, e-mail validé comme
+>    expéditeur, nom d'expéditeur `LSV.ai` → Save.
+> 4. Optionnel : *Authentication → Rate Limits → Email sending* (départ à
+>    30 e-mails/heure) → relever si besoin.
+> 5. Puis **réactiver** *Confirm email* (Authentication → Sign In / Providers)
+>    : les e-mails arrivent maintenant réellement.
 
 1. **Modèles d'e-mails** — Dashboard → **Authentication → Emails** :
    - *Confirm signup* → coller le contenu de `supabase/email-confirm-signup.html`
