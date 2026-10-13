@@ -2211,6 +2211,8 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
 @media (max-width: 900px) { .w-showcase { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 560px) { .w-showcase { grid-template-columns: 1fr; } }
 .w-shot { position: relative; aspect-ratio: 4 / 5; border-radius: 18px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.09); background: linear-gradient(155deg, #134e4a, #0f766e 40%, #0b1220); box-shadow: 0 22px 44px rgba(0, 0, 0, 0.4); margin: 0; }
+.w-shot-video { grid-column: 1 / -1; aspect-ratio: 16 / 7; background: #0b1220; }
+.w-shot video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .w-shot:nth-child(2) { background: linear-gradient(155deg, #1e3a8a, #2563eb 42%, #0b1220); }
 .w-shot:nth-child(3) { background: linear-gradient(155deg, #4c1d95, #7c3aed 42%, #0b1220); }
 .w-shot:nth-child(4) { background: linear-gradient(155deg, #7c2d12, #ea580c 42%, #0b1220); }
@@ -2559,9 +2561,15 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
 
         <section id="w-showcase">
             <h2 class="w-section-title">Créé avec LSV.ai</h2>
-            <p class="w-section-sub">Des visuels générés en quelques secondes à partir d'un simple texte —
-            dépose tes propres créations dans <code>assets/showcase/</code> pour les afficher ici.</p>
+            <p class="w-section-sub">Des images et des vidéos générées en quelques secondes à partir d'un simple texte.</p>
             <div class="w-showcase" id="welcome-gallery">
+                <figure class="w-shot w-shot-video">
+                    <span class="w-badge">Vidéo IA</span>
+                    <video autoplay muted loop playsinline preload="metadata" poster="./assets/showcase/4.jpg" aria-label="Vidéo générée par IA">
+                        <source src="./assets/showcase/video.mp4" type="video/mp4">
+                    </video>
+                    <figcaption><span class="w-prompt">« Clip généré par IA, prêt à publier »</span><span class="w-tag">Vidéo</span></figcaption>
+                </figure>
                 <figure class="w-shot">
                     <span class="w-badge">Image IA</span>
                     <img data-src="./assets/showcase/1.jpg" data-fallback="./assets/showcase/1.svg" alt="Portrait cinématique généré par IA">
@@ -4641,6 +4649,7 @@ const AccountView = {
         this.renderGuest();
         this.status('Déconnecté.', 'ok');
         UI.showToast('Déconnecté de ton compte.', 'success', 2400);
+        if (typeof WelcomeView !== 'undefined') WelcomeView.open();
     }
 };
 

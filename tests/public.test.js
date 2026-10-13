@@ -415,7 +415,7 @@ async function load(html, url) {
     check('SEO : titre + description + canonical sur la page', /<title>[^<]*Salaou Souleyman/.test(aboutSrc) && /meta name="description"/.test(aboutSrc) && /canonical" href="https:\/\/fbici\.github\.io\/lsv-ai\/a-propos\/"/.test(aboutSrc));
     check('SEO : JSON-LD Person + Organization', /"@type": "Person"/.test(aboutSrc) && /"@type": "Organization"/.test(aboutSrc) && /"founder"/.test(aboutSrc));
     check('emplacement prévu pour le site officiel', /SITE_OFFICIEL/.test(aboutSrc) && /lestudioviral\.com/.test(aboutSrc));
-    check('logo officiel affiché sur la page', /src="\.\.\/lsv\.jpg"/.test(aboutSrc));
+    check('logo officiel affiché (header uniquement) sur la page', (aboutSrc.match(/src="\.\.\/lsv\.jpg"/g) || []).length === 1, (aboutSrc.match(/src="\.\.\/lsv\.jpg"/g) || []).length);
     check('deux boutiques prévues (LeStudioViral + Académie)', /SHOP_1_URL/.test(aboutSrc) && /SHOP_2_URL/.test(aboutSrc) && /Boutique LeStudioViral/.test(aboutSrc) && /Académie Digital/.test(aboutSrc));
     check('produits digitaux mentionnés (IA, TikTok, trading, ebooks)', /IA/i.test(aboutSrc) && /TikTok/.test(aboutSrc) && /trading/i.test(aboutSrc) && /ebooks/i.test(aboutSrc));
     check('aucun secret dans la page à propos', !/sk-[A-Za-z0-9]{10,}|service_role|password\s*[:=]/.test(aboutSrc));
@@ -432,8 +432,10 @@ async function load(html, url) {
     check('bouton Commencer présent', !!doc.getElementById('welcome-continue'));
     check('second bouton Commencer (bas de page)', !!doc.getElementById('welcome-continue-2'));
     check('lien connexion pour comptes existants', !!doc.getElementById('welcome-login'));
-    check('gallerie d exemples (6 vignettes)', doc.querySelectorAll('#welcome-gallery .w-shot').length === 6, doc.querySelectorAll('#welcome-gallery .w-shot').length);
+    check('gallerie d exemples (6 images + 1 vidéo)', doc.querySelectorAll('#welcome-gallery .w-shot').length === 7 && doc.querySelectorAll('#welcome-gallery img[data-src^="./assets/showcase/"]').length === 6, doc.querySelectorAll('#welcome-gallery .w-shot').length);
     check('vignettes jpg + repli svg', doc.querySelectorAll('#welcome-gallery img[data-src^="./assets/showcase/"]').length === 6 && doc.querySelectorAll('#welcome-gallery img[data-fallback$=".svg"]').length === 6);
+    check('vidéo générée intégrée à la gallerie', !!doc.querySelector('#welcome-gallery video source[src="./assets/showcase/video.mp4"]'));
+    check('aucune phrase technique de dépôt sur l accueil', !/dépose|assets\/showcase|repli|SVG/i.test(doc.getElementById('welcome-gallery').textContent));
     check('sections accueil (créations, fonctions, boutiques, final)', !!doc.getElementById('w-showcase') && !!doc.getElementById('w-features') && !!doc.getElementById('w-shops') && !!doc.querySelector('.w-final'));
     check('étapes & stats présentes', doc.querySelectorAll('.w-step').length === 3 && doc.querySelectorAll('.w-stat').length === 4);
     const shopA = doc.getElementById('shop-boutique');
@@ -447,6 +449,10 @@ async function load(html, url) {
     await new Promise(r => setTimeout(r, 200));
     check('Continuer avec un compte : accueil masqué', doc.getElementById('welcome').classList.contains('hidden'));
     check('Continuer avec un compte : accueil marqué comme vu', wb.localStorage.getItem('lsv4_welcome') === 'done', wb.localStorage.getItem('lsv4_welcome'));
+
+    doc.getElementById('account-logout').click();
+    await new Promise(r => setTimeout(r, 200));
+    check('déconnexion : renvoi automatique vers l accueil', !doc.getElementById('welcome').classList.contains('hidden'));
 
     const first = await load(prepare());
     const wf = first.dom.window;
