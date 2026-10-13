@@ -84,6 +84,8 @@ function normalizePublic(doc) {
     // Lien « À propos » (page séparée, testée par public.test) : ajouté au
     // footer du sidebar, retiré ici pour garder l'égalité structurelle ORIG.
     drop('#site-about');
+    // Page d'accueil de première visite : testée par public.test, retirée ici.
+    drop('#welcome');
     const w = doc.defaultView;
     if (w && w.LSV && w.LSV.services && w.LSV.services.account) delete w.LSV.services.account;
     const keyInput = doc.getElementById('api-input');

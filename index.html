@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#fafaf9">
+<link rel="icon" type="image/jpeg" href="./lsv.jpg">
 <title>LSV.ai — Le Studio Viral · Images, vidéos et chat IA | LeStudioViral</title>
 <meta name="description" content="LSV.ai, le Studio Viral de création de contenu propulsé par l'IA : génère des images, des vidéos et discute avec un chat IA en quelques secondes. Un studio créé par LeStudioViral, fondé par Salaou Souleyman, développeur web et mobile.">
 <meta name="keywords" content="LSV.ai, LeStudioViral, Le Studio Viral, images IA, vidéos IA, chat IA, création de contenu, Salaou Souleyman, studio IA">
@@ -33,12 +34,12 @@
       "publisher": {
         "@type": "Organization",
         "name": "LeStudioViral",
-        "url": "https://fbici.github.io/lsv-ai/a-propos.html",
+        "url": "https://fbici.github.io/lsv-ai/a-propos/",
         "founder": {
           "@type": "Person",
           "name": "Salaou Souleyman",
           "jobTitle": "Développeur d'applications web et mobile",
-          "url": "https://fbici.github.io/lsv-ai/a-propos.html"
+          "url": "https://fbici.github.io/lsv-ai/a-propos/"
         }
       }
     }
@@ -2159,15 +2160,51 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
 }
 .auth-forgot:hover { color: var(--accent); }
 .auth-submit { margin-top: 1rem; padding: 0.82rem; font-size: 0.9rem; }
-.auth-foot {
-    margin-top: 1.15rem;
-    padding-top: 0.95rem;
-    border-top: 1px solid var(--border);
-    font-size: 0.68rem;
-    line-height: 1.55;
-    color: var(--ink-4);
-    text-align: center;
+
+/* ── PAGE D'ACCUEIL (première visite) ─────────────────────────────── */
+.welcome {
+    position: fixed;
+    inset: 0;
+    z-index: 520;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    background:
+        radial-gradient(900px 480px at 82% -8%, rgba(13, 148, 136, 0.3), transparent 60%),
+        radial-gradient(700px 420px at 8% 112%, rgba(20, 184, 166, 0.18), transparent 60%),
+        #0b0e0e;
+    color: #e7e7e4;
+    font-family: var(--font);
 }
+.welcome-inner { max-width: 980px; margin: 0 auto; padding: 3rem 1.4rem 3.4rem; text-align: center; }
+.welcome-logo { width: 92px; height: 92px; object-fit: contain; border-radius: 22px; background: #ffffff; border: 1px solid rgba(255, 255, 255, 0.14); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45); }
+.welcome-mark { font-family: var(--font-display); font-size: 2.4rem; font-weight: 700; color: #ffffff; }
+.welcome-mark span { color: #2dd4bf; }
+.welcome-eyebrow { display: inline-block; margin: 1.4rem 0 0.9rem; padding: 0.4rem 0.9rem; border: 1px solid rgba(20, 184, 166, 0.45); background: rgba(13, 148, 136, 0.12); color: #5eead4; border-radius: 999px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+.welcome-title { font-family: var(--font-display); font-size: clamp(1.7rem, 4.6vw, 2.9rem); line-height: 1.12; letter-spacing: -0.03em; color: #ffffff; max-width: 22ch; margin: 0 auto 0.9rem; }
+.welcome-title em { font-style: normal; color: #2dd4bf; }
+.welcome-lead { max-width: 58ch; margin: 0 auto 1.6rem; color: #a1a1aa; font-size: 0.98rem; line-height: 1.65; }
+.welcome-gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; margin: 0 auto 1.5rem; max-width: 860px; }
+@media (max-width: 760px) { .welcome-gallery { grid-template-columns: repeat(2, 1fr); } }
+.welcome-shot { position: relative; aspect-ratio: 3 / 4; border-radius: 14px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); background: linear-gradient(150deg, #134e4a, #0f766e 45%, #18181b); box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35); }
+.welcome-shot:nth-child(2) { background: linear-gradient(150deg, #1e3a8a, #2563eb 45%, #18181b); }
+.welcome-shot:nth-child(3) { background: linear-gradient(150deg, #4c1d95, #7c3aed 45%, #18181b); }
+.welcome-shot:nth-child(4) { background: linear-gradient(150deg, #7c2d12, #ea580c 45%, #18181b); }
+.welcome-shot img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity 0.4s; }
+.welcome-shot.has-img img { opacity: 1; }
+.welcome-shot figcaption { position: absolute; left: 0; right: 0; bottom: 0; padding: 0.55rem 0.65rem; font-size: 0.66rem; color: #e4e4e7; background: linear-gradient(transparent, rgba(0, 0, 0, 0.8)); text-align: left; }
+.welcome-shot .shot-icon { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.welcome-shot .shot-icon .ms { font-size: 1.5rem; color: rgba(255, 255, 255, 0.55); }
+.welcome-points { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.55rem; list-style: none; margin: 0 0 1.6rem; padding: 0; }
+.welcome-points li { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.85rem; border-radius: 999px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: #d4d4d8; font-size: 0.8rem; }
+.welcome-points .ms { font-size: 1rem; color: #2dd4bf; }
+.welcome-cta { display: inline-flex; align-items: center; gap: 0.5rem; background: var(--accent); color: #ffffff; border: none; padding: 0.95rem 1.9rem; border-radius: 12px; font-family: var(--font); font-size: 1rem; font-weight: 700; cursor: pointer; box-shadow: 0 12px 26px rgba(13, 148, 136, 0.35); }
+.welcome-cta:hover { background: #14b8a6; }
+.welcome-shops { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; margin-top: 1.4rem; }
+.welcome-shop { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.6rem 1rem; border-radius: 10px; border: 1px dashed rgba(255, 255, 255, 0.24); color: #a1a1aa; font-size: 0.78rem; text-decoration: none; }
+.welcome-shop:hover { color: #ffffff; border-color: #2dd4bf; }
+.welcome-foot { margin-top: 2rem; font-size: 0.72rem; color: #71717a; }
+.welcome-foot a { color: #5eead4; text-decoration: none; }
+.welcome-foot a:hover { text-decoration: underline; }
 
 /* EMPTY / PROJECTS / LIBRARY / HISTORY */
 .empty-state {
@@ -2430,6 +2467,66 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
 </head>
 <body>
 
+<!-- ══ PAGE D'ACCUEIL (première visite) ══
+     Gallerie d'exemples : dépose tes images générées dans
+     assets/showcase/1.jpg … 4.jpg — elles remplacent automatiquement
+     les vignettes de démonstration. -->
+<div class="welcome" id="welcome" role="dialog" aria-label="Bienvenue sur LSV.ai">
+    <div class="welcome-inner">
+        <img src="./lsv.jpg" alt="Logo LeStudioViral" class="welcome-logo" id="welcome-logo" width="92" height="92">
+        <div class="welcome-mark" id="welcome-mark" hidden>LSV<span>.ai</span></div>
+
+        <span class="welcome-eyebrow">LeStudioViral · Studio de création IA</span>
+        <h1 class="welcome-title">Crée des <em>images</em>, des <em>vidéos</em> et des <em>discussions IA</em> en quelques secondes.</h1>
+        <p class="welcome-lead">LSV.ai est le studio de création de contenu propulsé par l'intelligence artificielle,
+        fondé par <strong>Salaou Souleyman</strong>. Un simple texte suffit pour obtenir des visuels
+        prêts à publier — sans installation, depuis n'importe quel appareil.</p>
+
+        <div class="welcome-gallery" id="welcome-gallery" aria-label="Exemples de créations">
+            <figure class="welcome-shot" id="shot-1">
+                <div class="shot-icon" aria-hidden="true"><span class="ms">image</span></div>
+                <img data-src="./assets/showcase/1.jpg" alt="Création IA — portrait">
+                <figcaption>« Portrait cinématique, lumière néon »</figcaption>
+            </figure>
+            <figure class="welcome-shot" id="shot-2">
+                <div class="shot-icon" aria-hidden="true"><span class="ms">movie</span></div>
+                <img data-src="./assets/showcase/2.jpg" alt="Création IA — scène">
+                <figcaption>« Scène urbaine au coucher du soleil »</figcaption>
+            </figure>
+            <figure class="welcome-shot" id="shot-3">
+                <div class="shot-icon" aria-hidden="true"><span class="ms">auto_awesome</span></div>
+                <img data-src="./assets/showcase/3.jpg" alt="Création IA — illustration">
+                <figcaption>« Illustration publicitaire, produit premium »</figcaption>
+            </figure>
+            <figure class="welcome-shot" id="shot-4">
+                <div class="shot-icon" aria-hidden="true"><span class="ms">play_circle</span></div>
+                <img data-src="./assets/showcase/4.jpg" alt="Création IA — vidéo">
+                <figcaption>« Vidéo virale, format vertical »</figcaption>
+            </figure>
+        </div>
+
+        <ul class="welcome-points">
+            <li><span class="ms">image</span> Images IA</li>
+            <li><span class="ms">movie</span> Vidéos IA</li>
+            <li><span class="ms">forum</span> Chat IA</li>
+            <li><span class="ms">auto_fix_high</span> Enhancer de prompts</li>
+            <li><span class="ms">movie_filter</span> Storyboards</li>
+            <li><span class="ms">folder</span> Projets</li>
+        </ul>
+
+        <button type="button" class="welcome-cta" id="welcome-continue">Continuer <span class="ms">arrow_forward</span></button>
+
+        <div class="welcome-shops">
+            <!-- SHOP_1_URL : remplace href="#" par le lien de ta boutique LeStudioViral -->
+            <a class="welcome-shop" href="#" id="shop-boutique"><span class="ms">storefront</span> Boutique LeStudioViral — produits digitaux (IA, TikTok, trading)</a>
+            <!-- SHOP_2_URL : remplace href="#" par le lien de ta boutique Académie Digital -->
+            <a class="welcome-shop" href="#" id="shop-academie"><span class="ms">school</span> Académie Digital — ebooks &amp; éducation</a>
+        </div>
+
+        <p class="welcome-foot">© LeStudioViral — créé par Salaou Souleyman · <a href="./a-propos/">À propos</a></p>
+    </div>
+</div>
+
 <div class="app" id="app">
 
     <!-- SIDEBAR -->
@@ -2524,7 +2621,7 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
                 <span class="stat-value" id="sidebar-video-count">0</span>
             </div>
             <div class="sidebar-about" id="site-about">
-                <a href="./a-propos.html" title="À propos de LeStudioViral et de son fondateur Salaou Souleyman"><span class="ms">info</span>À propos · LeStudioViral</a>
+                <a href="./a-propos/" title="À propos de LeStudioViral et de son fondateur Salaou Souleyman"><span class="ms">info</span>À propos · LeStudioViral</a>
             </div>
         </div>
     </aside>
@@ -3372,8 +3469,6 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
                 <button type="button" class="account-switch" id="account-cancel">Annuler</button>
             </div>
         </div>
-
-        <p class="auth-foot">Les mots de passe sont vérifiés et chiffrés par Supabase : ils ne transitent jamais par LSV.ai et ne sont jamais gardés sur cet appareil.</p>
     </div>
 </div>
 
@@ -4134,6 +4229,10 @@ const AccountService = {
             m.indexOf('weak password') !== -1) return 'Mot de passe : 6 caractères minimum.';
         if (m.indexOf('email not confirmed') !== -1 || m.indexOf('email not verified') !== -1) return 'E-mail non confirmé : clique sur le lien reçu (ou réinitialise ton mot de passe).';
         if (m.indexOf('signup') !== -1 && (m.indexOf('disabled') !== -1 || m.indexOf('not allowed') !== -1)) return 'Inscriptions fermées pour le moment.';
+        if (m.indexOf('sending') !== -1 || m.indexOf('send email') !== -1 || m.indexOf('send confirmation') !== -1 ||
+            m.indexOf('error sending') !== -1 || m.indexOf('failed to send') !== -1 || m.indexOf('confirmation email') !== -1 ||
+            m.indexOf('email address not authorized') !== -1) return 'Envoi de l\'e-mail de confirmation impossible : configure un SMTP dans Supabase (Authentication → SMTP) ou désactive la confirmation d\'e-mail.';
+        if (m.indexOf('over email') !== -1 || m.indexOf('email rate') !== -1 || m.indexOf('mailer rate') !== -1) return 'Trop d\'e-mails envoyés par le serveur : réessaie dans une heure.';
         if (m.indexOf('rate limit') !== -1 || m.indexOf('too many') !== -1 || m.indexOf('rate limit exceeded') !== -1) return 'Trop de tentatives, réessaie plus tard.';
         if (m.indexOf('fetch') !== -1 || m.indexOf('network') !== -1 || m.indexOf('http') !== -1) return 'Connexion réseau impossible.';
         return 'Opération impossible pour le moment.';
@@ -4343,6 +4442,7 @@ const AccountView = {
                     this.$('account-password').value = '';
                     await this.refresh();
                     this.close();
+                    WelcomeView.finish();
                     UI.showToast('Compte créé : bienvenue sur LSV.ai.', 'success', 3500);
                 } else {
                     this.setMode('login');
@@ -4355,6 +4455,7 @@ const AccountView = {
                 this.status('Connexion réussie.', 'ok');
                 await this.refresh();
                 this.close();
+                WelcomeView.finish();
                 UI.showToast('Connexion réussie.', 'success', 2600);
             }
         } catch (e) {
@@ -4370,6 +4471,51 @@ const AccountView = {
         this.renderGuest();
         this.status('Déconnecté.', 'ok');
         UI.showToast('Déconnecté de ton compte.', 'success', 2400);
+    }
+};
+
+/* ── Page d'accueil (première visite) ──────────────────────────────
+   Belle page de présentation du studio + gallerie d'exemples.
+   Première visite : le visiteur crée un compte (ou se connecte)
+   avant d'entrer dans le dashboard de création. */
+const WelcomeView = {
+    $(id) { return document.getElementById(id); },
+    done() { try { return localStorage.getItem('lsv4_welcome') === 'done'; } catch (e) { return false; } },
+    markDone() { try { localStorage.setItem('lsv4_welcome', 'done'); } catch (e) {} },
+    isOpen() { const el = this.$('welcome'); return !!el && !el.classList.contains('hidden'); },
+    finish() { this.markDone(); this.hide(); },
+    hide() { const el = this.$('welcome'); if (el) el.classList.add('hidden'); },
+    open() { const el = this.$('welcome'); if (el) el.classList.remove('hidden'); this.loadGallery(); },
+    init() {
+        const logo = this.$('welcome-logo');
+        if (logo) logo.addEventListener('error', () => {
+            logo.classList.add('hidden');
+            const mark = this.$('welcome-mark');
+            if (mark) mark.hidden = false;
+        });
+        const btn = this.$('welcome-continue');
+        if (btn) btn.addEventListener('click', () => this.continue());
+        if (AccountService.signedIn() || this.done()) this.hide();
+        else this.open();
+    },
+    loadGallery() {
+        document.querySelectorAll('#welcome-gallery img[data-src]').forEach(img => {
+            if (img.dataset.loaded) return;
+            img.dataset.loaded = '1';
+            img.addEventListener('load', () => {
+                const shot = img.closest('.welcome-shot');
+                if (shot) shot.classList.add('has-img');
+            });
+            img.addEventListener('error', () => {});
+            img.src = img.dataset.src;
+        });
+    },
+    async continue() {
+        const t = await AccountService.token();
+        if (t) { this.finish(); return; }
+        AccountView.setMode('signup');
+        AccountView.open();
+        AccountView.status('Crée ton compte pour accéder au studio.', 'err');
     }
 };
 
@@ -6571,6 +6717,7 @@ function init() {
     AdvancedView.refresh();
     RightPanel.refresh();
     AccountView.init();
+    WelcomeView.init();
 
     // Restaurer les résultats depuis la bibliothèque
     restoreResultsFromLibrary();

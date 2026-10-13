@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.4.5
+# LSV.ai — Studio Viral v3.5.0
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
 
@@ -84,7 +84,10 @@ lsv-ai/
 │   ├── admin.css              # Design admin (identité LSV.ai)
 │   └── admin.js               # Auth, chargement, agrégats, graphiques
 │
-├── a-propos.html            # Page « À propos » : LeStudioViral · Salaou Souleyman
+├── a-propos/                 # Page « À propos » (URL propre : /a-propos/)
+│   └── index.html            #   LeStudioViral · Salaou Souleyman · boutiques
+├── assets/showcase/          # (optionnel) 1.jpg…4.jpg → gallerie de l'accueil
+├── lsv.jpg                   # Logo officiel de la marque
 ├── robots.txt               # SEO : robots autorisés, /admin/ interdit, sitemap
 ├── sitemap.xml              # SEO : plan du site (studio + à propos)
 │
@@ -237,12 +240,25 @@ le back-office affiche « Compte non autorisé » et le tableau de bord reste vi
 
 | Ajout | Détail |
 |---|---|
-| **`a-propos.html`** | page publique de la marque **LeStudioViral** : le fondateur **Salaou Souleyman** (développeur d'applications web & mobile, créateur de contenu), ses savoir-faire, et le studio LSV.ai — design cohérent avec l'app, responsive |
-| **Lien dans le studio** | sidebar → pied de page : « À propos · LeStudioViral » → `a-propos.html` |
+| **`a-propos/`** | page publique de la marque **LeStudioViral** (URL propre `…/a-propos/`) : le fondateur **Salaou Souleyman** (développeur d'applications web & mobile, créateur de contenu), ses savoir-faire, ses boutiques et le studio LSV.ai — design cohérent avec l'app, responsive |
+| **Lien dans le studio** | sidebar → pied de page : « À propos · LeStudioViral » → `a-propos/` |
 | **SEO de l'app** | `index.html` : `meta description` / `keywords` / `author` / `canonical` + Open Graph + Twitter Card + **JSON-LD** (`WebSite` → `Organization` LeStudioViral → `Person` Salaou Souleyman) |
 | **SEO de la page** | titre + description + canonical + `og:profile` + **JSON-LD** `Person` / `Organization` / `WebSite` (le fondateur est ainsi exposé aux moteurs de recherche) |
 | **`robots.txt` + `sitemap.xml`** | indexés par Google/Bing sur GitHub Pages ; le back-office `/admin/` est interdit aux robots |
-| **Site officiel de la marque** | 2 liens `https://lestudioviral.com` dans `a-propos.html`, repérables par le commentaire `SITE_OFFICIEL` : les remplacer par l'URL réelle du site officiel quand il sera en ligne |
+| **Site officiel de la marque** | 2 liens `https://lestudioviral.com` dans `a-propos/`, repérables par le commentaire `SITE_OFFICIEL` : les remplacer par l'URL réelle du site officiel quand il sera en ligne |
+
+### 2.8 Page d'accueil, URL propres & boutiques (nouveau)
+
+| Ajout | Détail |
+|---|---|
+| **Page d'accueil** | premier écran à l'ouverture de l'app (première visite) : logo officiel `lsv.jpg`, présentation du studio, gallerie de créations, points forts, bouton **Continuer** |
+| **Première visite → compte** | « Continuer » sans compte ouvre l'inscription ; le compte doit être créé **avant** d'entrer dans le dashboard de création (drapeau `localStorage.lsv4_welcome`) |
+| **Gallerie d'exemples** | 4 vignettes en dégradé ; dépose tes images générées dans `assets/showcase/1.jpg`…`4.jpg` : elles s'affichent automatiquement |
+| **Emplacements boutiques** | 2 liens placeholders sur l'accueil **et** sur la page À propos : `SHOP_1_URL` (Boutique LeStudioViral — produits digitaux IA / TikTok / trading) et `SHOP_2_URL` (Académie Digital — ebooks éducation) |
+| **URL propres** | la page À propos vit dans `a-propos/index.html` → `…/lsv-ai/a-propos/` (plus de `.html` dans l'adresse ; le back-office reste `…/admin/`) |
+| **Onglets du navigateur** | titres de pages explicites (studio, à propos, back-office) + favicon `lsv.jpg` |
+| **Texte sous les formulaires retiré** | la mention « Les mots de passe sont vérifiés… » sous la page de connexion a été supprimée |
+| **Erreurs d'inscription plus claires** | échec d'envoi de l'e-mail de confirmation (SMTP non configuré) ou limite d'envoi : messages explicites au lieu de « Opération impossible » |
 
 ---
 
@@ -638,7 +654,7 @@ dans le back-office elle n'apparaît masquée que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 307 assertions (319 avec ORIG=… voir plus bas)
+npm test        # 329 assertions (341 avec ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (41 assertions, **53 avec `ORIG`**) — non-régression
@@ -654,7 +670,7 @@ npm test        # 307 assertions (319 avec ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (145 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (167 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -685,9 +701,13 @@ npm test        # 307 assertions (319 avec ORIG=… voir plus bas)
 - **retour des liens Supabase** : confirmation (`?code=`) → toast « E-mail
   confirmé », lien expiré → « Lien invalide ou expiré », URL nettoyée, modale
   fermée, aucune fuite de détail technique ;
-- **marque & SEO** : lien « À propos » dans le studio, `a-propos.html` (LeStudioViral,
-  Salaou Souleyman, métiers, JSON-LD Person/Organization), meta/canonical/OG de
-  l'app, `robots.txt` (admin interdit) et `sitemap.xml`.
+- **marque & SEO** : lien « À propos » dans le studio, `a-propos/` (LeStudioViral,
+  Salaou Souleyman, métiers, boutiques, JSON-LD Person/Organization), meta/canonical/OG de
+  l'app, `robots.txt` (admin interdit) et `sitemap.xml` ;
+- **page d'accueil & boutiques** : accueil de première visite (logo, gallerie,
+  Continuer), inscription obligatoire avant le dashboard, emplacements
+  `SHOP_1_URL` / `SHOP_2_URL`, texte sous les formulaires supprimé, erreurs
+  SMTP traduites.
 
 **`tests/gateway.test.mjs`** (49 assertions) — passerelle
 

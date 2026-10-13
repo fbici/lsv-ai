@@ -4,23 +4,26 @@
 <!-- ═══════════════════════════════════════════════════════════════════════════
      LSV.ai — page « À propos » (LeStudioViral · Salaou Souleyman)
      ───────────────────────────────────────────────────────────────────────────
-     ⚙️ SITE OFFICIEL DE LA MARQUE : dès que ton site officiel est en ligne,
-        remplace les 2 occurrences de https://lestudioviral.com (cherche
-        « SITE_OFFICIEL » ci-dessous) par l'URL réelle. Rien d'autre à toucher.
+     ⚙️ SITE OFFICIEL DE LA MARQUE : cherche « SITE_OFFICIEL » (2 occurrences)
+        et remplace https://lestudioviral.com par l'URL réelle.
+     🛍️ BOUTIQUES : cherche « SHOP_1_URL » (Boutique LeStudioViral) et
+        « SHOP_2_URL » (Académie Digital) — remplace href="#" par les vrais
+        liens de tes boutiques. Rien d'autre à toucher.
      ═══════════════════════════════════════════════════════════════════════════ -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#fafaf9">
+<link rel="icon" type="image/jpeg" href="../lsv.jpg">
 <title>À propos — LeStudioViral · Salaou Souleyman, développeur web &amp; mobile</title>
-<meta name="description" content="LeStudioViral, studio de création de contenu propulsé par l'IA, fondé par Salaou Souleyman — développeur d'applications web et mobile et créateur de contenu. Découvre LSV.ai, son studio d'images, de vidéos et de chat IA.">
-<meta name="keywords" content="LeStudioViral, Salaou Souleyman, développeur web, développeur mobile, créateur de contenu, studio IA, LSV.ai, images IA, vidéos IA, chat IA">
+<meta name="description" content="LeStudioViral, studio de création de contenu propulsé par l'IA, fondé par Salaou Souleyman — développeur d'applications web et mobile et créateur de contenu. Découvre LSV.ai, son studio d'images, de vidéos et de chat IA, et ses boutiques de produits digitaux.">
+<meta name="keywords" content="LeStudioViral, Salaou Souleyman, développeur web, développeur mobile, créateur de contenu, studio IA, LSV.ai, images IA, vidéos IA, chat IA, produits digitaux, Académie Digital, ebooks">
 <meta name="author" content="Salaou Souleyman — LeStudioViral">
-<link rel="canonical" href="https://fbici.github.io/lsv-ai/a-propos.html">
+<link rel="canonical" href="https://fbici.github.io/lsv-ai/a-propos/">
 <meta property="og:type" content="profile">
 <meta property="og:site_name" content="LSV.ai">
 <meta property="og:title" content="À propos — LeStudioViral · Salaou Souleyman">
 <meta property="og:description" content="LeStudioViral, studio de création de contenu IA fondé par Salaou Souleyman, développeur d'applications web et mobile.">
-<meta property="og:url" content="https://fbici.github.io/lsv-ai/a-propos.html">
+<meta property="og:url" content="https://fbici.github.io/lsv-ai/a-propos/">
 <meta property="profile:first_name" content="Salaou">
 <meta property="profile:last_name" content="Souleyman">
 <meta name="twitter:card" content="summary">
@@ -50,6 +53,10 @@ body {
 }
 .ms { font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; font-size: 20px; line-height: 1; letter-spacing: normal; text-transform: none; display: inline-block; white-space: nowrap; word-wrap: normal; direction: ltr; -webkit-font-feature-settings: 'liga'; font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
 .wrap { max-width: 860px; margin: 0 auto; padding: 0 20px; }
+.hidden { display: none !important; }
+.brand-logo { width: 28px; height: 28px; object-fit: cover; border-radius: 7px; vertical-align: middle; margin-right: 5px; }
+.shop-link { display: inline-block; margin-top: 12px; font-size: 14px; font-weight: 600; color: var(--accent); text-decoration: none; }
+.shop-link:hover { text-decoration: underline; }
 
 /* Barre supérieure */
 .topbar { position: sticky; top: 0; z-index: 10; background: rgba(250,250,249,.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
@@ -77,7 +84,11 @@ p strong { color: var(--ink); }
 
 /* Fiche fondateur */
 .founder { display: flex; gap: 20px; align-items: flex-start; background: var(--bg-2); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: var(--shadow); }
-.avatar { flex: none; width: 76px; height: 76px; border-radius: 18px; background: linear-gradient(135deg, #0d9488, #14b8a6); color: #fff; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; }
+.avatar { flex: none; width: 76px; height: 76px; border-radius: 18px; background: linear-gradient(135deg, #0d9488, #14b8a6); color: #fff; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; overflow: hidden; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.hero-logo { width: 84px; height: 84px; object-fit: contain; border-radius: 20px; background: #fff; border: 1px solid var(--border); box-shadow: var(--shadow-md); margin-bottom: 18px; display: block; }
+.hero-mark { font-family: 'Space Grotesk', sans-serif; font-size: 2.2rem; font-weight: 700; color: var(--ink); margin-bottom: 18px; display: block; }
+.hero-mark span { color: var(--accent); }
 .founder h3 { font-family: 'Space Grotesk', sans-serif; font-size: 20px; margin-bottom: 2px; }
 .founder .role { color: var(--accent); font-weight: 600; font-size: 14px; margin-bottom: 8px; }
 
@@ -117,7 +128,7 @@ footer a:hover { text-decoration: underline; }
       "familyName": "Souleyman",
       "jobTitle": "Développeur d'applications web et mobile",
       "description": "Développeur d'applications web et mobile, créateur de contenu et fondateur du studio LeStudioViral, auteur de LSV.ai (studio IA d'images, de vidéos et de chat).",
-      "url": "https://fbici.github.io/lsv-ai/a-propos.html",
+      "url": "https://fbici.github.io/lsv-ai/a-propos/",
       "worksFor": {
         "@type": "Organization",
         "name": "LeStudioViral",
@@ -131,13 +142,13 @@ footer a:hover { text-decoration: underline; }
       "alternateName": "Le Studio Viral",
       "url": "https://fbici.github.io/lsv-ai/",
       "description": "Studio de création de contenu propulsé par l'intelligence artificielle : images, vidéos et chat IA. Fondé par Salaou Souleyman.",
-      "founder": { "@id": "https://fbici.github.io/lsv-ai/a-propos.html" }
+      "founder": { "@id": "https://fbici.github.io/lsv-ai/a-propos/" }
     },
     {
       "@type": "WebSite",
       "name": "LSV.ai — Le Studio Viral",
       "url": "https://fbici.github.io/lsv-ai/",
-      "publisher": { "@id": "https://fbici.github.io/lsv-ai/a-propos.html" }
+      "publisher": { "@id": "https://fbici.github.io/lsv-ai/a-propos/" }
     }
   ]
 }
@@ -147,10 +158,10 @@ footer a:hover { text-decoration: underline; }
 
 <header class="topbar">
     <div class="wrap">
-        <a class="brand" href="./index.html">LSV<span>.ai</span></a>
+        <a class="brand" href="../index.html"><img src="../lsv.jpg" alt="" class="brand-logo" width="28" height="28" onerror="this.remove()"> LSV<span>.ai</span></a>
         <nav>
-            <a class="navlink" href="./index.html">Studio</a>
-            <a class="btn" href="./index.html">Ouvrir le studio</a>
+            <a class="navlink" href="../index.html">Studio</a>
+            <a class="btn" href="../index.html">Ouvrir le studio</a>
         </nav>
     </div>
 </header>
@@ -158,6 +169,8 @@ footer a:hover { text-decoration: underline; }
 <main class="wrap">
 
     <div class="hero">
+        <img src="../lsv.jpg" alt="Logo officiel LeStudioViral" class="hero-logo" id="about-logo" width="84" height="84">
+        <div class="hero-mark" id="about-mark" hidden>LSV<span>.ai</span></div>
         <span class="eyebrow"><span class="ms" style="font-size:16px">auto_awesome</span> À propos</span>
         <h1>LeStudioViral — le studio qui transforme les idées en <em>contenus viraux</em>.</h1>
         <p class="lead">Derrière LSV.ai, il y a une marque et une personne : <strong>LeStudioViral</strong>,
@@ -169,7 +182,7 @@ footer a:hover { text-decoration: underline; }
     <section aria-labelledby="fondateur">
         <h2 id="fondateur">Le fondateur</h2>
         <div class="founder">
-            <div class="avatar" aria-hidden="true">SS</div>
+            <div class="avatar" aria-hidden="true">SS<img src="../lsv.jpg" alt="" onerror="this.remove()"></div>
             <div>
                 <h3>Salaou Souleyman</h3>
                 <p class="role">Développeur web &amp; mobile · Créateur de contenu · Fondateur de LeStudioViral</p>
@@ -215,6 +228,32 @@ footer a:hover { text-decoration: underline; }
         </div>
     </section>
 
+    <section aria-labelledby="boutiques">
+        <h2 id="boutiques">Mes boutiques en ligne</h2>
+        <p>Je crée aussi des <strong>produits digitaux</strong> : guides, ressources et formations
+        autour de l'intelligence artificielle, des réseaux sociaux et des tendances —
+        et une <strong>académie</strong> dédiée à l'éducation.</p>
+        <div class="grid">
+            <div class="card">
+                <div class="icon"><span class="ms">storefront</span></div>
+                <h4>Boutique LeStudioViral</h4>
+                <p>Produits digitaux aux couleurs de la marque : IA, TikTok, trading,
+                création de contenu — des ressources prêtes à l'emploi pour accélérer
+                ta progression.</p>
+                <!-- SHOP_1_URL : remplace href="#" par le lien de ta boutique LeStudioViral -->
+                <a class="shop-link" href="#" id="shop-boutique">Visiter la boutique →</a>
+            </div>
+            <div class="card">
+                <div class="icon"><span class="ms">school</span></div>
+                <h4>Académie Digital</h4>
+                <p>Ebooks et ressources pédagogiques pour l'éducation des élèves :
+                clairs, pratiques, pensés pour apprendre à son rythme.</p>
+                <!-- SHOP_2_URL : remplace href="#" par le lien de ta boutique Académie Digital -->
+                <a class="shop-link" href="#" id="shop-academie">Visiter l'Académie →</a>
+            </div>
+        </div>
+    </section>
+
     <section aria-labelledby="studio">
         <div class="studio">
             <h2 id="studio">LSV.ai — mon studio IA</h2>
@@ -242,8 +281,8 @@ footer a:hover { text-decoration: underline; }
 <footer>
     <div class="wrap">
         <p>© <span id="year">2026</span> <strong>LeStudioViral</strong> — Studio de création de contenu IA.
-        Fondé par <a href="./a-propos.html">Salaou Souleyman</a>, développeur web &amp; mobile.
-        · <a href="./index.html">LSV.ai</a> ·
+        Fondé par <strong>Salaou Souleyman</strong>, développeur web &amp; mobile.
+        · <a href="../index.html">LSV.ai</a> ·
         <!-- SITE_OFFICIEL : idem, remplace cette URL quand le site officiel est en ligne -->
         <a href="https://lestudioviral.com" rel="noopener">Site officiel</a></p>
     </div>
@@ -251,6 +290,14 @@ footer a:hover { text-decoration: underline; }
 
 <script>
 document.getElementById('year').textContent = new Date().getFullYear();
+(function () {
+    var logo = document.getElementById('about-logo');
+    if (logo) logo.addEventListener('error', function () {
+        logo.classList.add('hidden');
+        var mark = document.getElementById('about-mark');
+        if (mark) mark.hidden = false;
+    });
+})();
 </script>
 
 </body>

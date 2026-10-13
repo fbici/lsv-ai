@@ -398,23 +398,26 @@ async function load(html, url) {
     console.log('\n=== 9. À PROPOS & SEO (LeStudioViral · Salaou Souleyman) ===');
     const aboutLink = doc.getElementById('site-about');
     const aboutA = aboutLink ? aboutLink.querySelector('a') : null;
-    check('lien « À propos » présent dans le studio', !!aboutA && aboutA.getAttribute('href') === './a-propos.html', aboutA && aboutA.getAttribute('href'));
+    check('lien « À propos » présent dans le studio', !!aboutA && aboutA.getAttribute('href') === './a-propos/', aboutA && aboutA.getAttribute('href'));
     check('lien À propos vers la seule page a-propos', !/admin/i.test(aboutA ? aboutA.getAttribute('href') : ''), aboutA && aboutA.getAttribute('href'));
     check('meta description du studio citant la marque', /LeStudioViral/.test(source) && /Salaou Souleyman/.test(source) && /<meta name="description"/.test(source));
     check('SEO : canonical + Open Graph + Twitter', /rel="canonical"/.test(source) && /og:title/.test(source) && /twitter:card/.test(source));
     check('SEO : données structurées (WebSite + fondateur)', /application\/ld\+json/.test(source) && /Salaou Souleyman/.test(source));
 
-    const aboutPath = path.join(PROJECT, 'a-propos.html');
+    const aboutPath = path.join(PROJECT, 'a-propos', 'index.html');
     const aboutSrc = fs.existsSync(aboutPath) ? fs.readFileSync(aboutPath, 'utf8') : '';
-    check('page a-propos.html existe', !!aboutSrc, aboutSrc.length + ' octets');
+    check('page a-propos/index.html existe (URL sans .html)', !!aboutSrc, aboutSrc.length + ' octets');
     check('page à propos en français', /<html lang="fr">/.test(aboutSrc));
     check('fondateur nommé (Salaou Souleyman)', /Salaou Souleyman/.test(aboutSrc));
     check('marque nommée (LeStudioViral)', /LeStudioViral/.test(aboutSrc));
     check('métiers mentionnés (web + mobile + contenu)', /applications web/i.test(aboutSrc) && /mobile/i.test(aboutSrc) && /contenu/i.test(aboutSrc));
     check('accès au studio depuis la page', /fbici\.github\.io\/lsv-ai\//.test(aboutSrc));
-    check('SEO : titre + description + canonical sur la page', /<title>[^<]*Salaou Souleyman/.test(aboutSrc) && /meta name="description"/.test(aboutSrc) && /rel="canonical"/.test(aboutSrc));
+    check('SEO : titre + description + canonical sur la page', /<title>[^<]*Salaou Souleyman/.test(aboutSrc) && /meta name="description"/.test(aboutSrc) && /canonical" href="https:\/\/fbici\.github\.io\/lsv-ai\/a-propos\/"/.test(aboutSrc));
     check('SEO : JSON-LD Person + Organization', /"@type": "Person"/.test(aboutSrc) && /"@type": "Organization"/.test(aboutSrc) && /"founder"/.test(aboutSrc));
     check('emplacement prévu pour le site officiel', /SITE_OFFICIEL/.test(aboutSrc) && /lestudioviral\.com/.test(aboutSrc));
+    check('logo officiel affiché sur la page', /src="\.\.\/lsv\.jpg"/.test(aboutSrc));
+    check('deux boutiques prévues (LeStudioViral + Académie)', /SHOP_1_URL/.test(aboutSrc) && /SHOP_2_URL/.test(aboutSrc) && /Boutique LeStudioViral/.test(aboutSrc) && /Académie Digital/.test(aboutSrc));
+    check('produits digitaux mentionnés (IA, TikTok, trading, ebooks)', /IA/i.test(aboutSrc) && /TikTok/.test(aboutSrc) && /trading/i.test(aboutSrc) && /ebooks/i.test(aboutSrc));
     check('aucun secret dans la page à propos', !/sk-[A-Za-z0-9]{10,}|service_role|password\s*[:=]/.test(aboutSrc));
 
     const robotsPath = path.join(PROJECT, 'robots.txt');
@@ -422,7 +425,56 @@ async function load(html, url) {
     check('robots.txt présent et admin interdit', /Disallow:\s*\/admin\//.test(robotsSrc) && /Sitemap:/.test(robotsSrc), robotsSrc.slice(0, 40));
     const sitemapPath = path.join(PROJECT, 'sitemap.xml');
     const sitemapSrc = fs.existsSync(sitemapPath) ? fs.readFileSync(sitemapPath, 'utf8') : '';
-    check('sitemap.xml contient studio + à propos', /fbici\.github\.io\/lsv-ai\//.test(sitemapSrc) && /a-propos\.html/.test(sitemapSrc));
+    check('sitemap.xml contient studio + à propos', /fbici\.github\.io\/lsv-ai\//.test(sitemapSrc) && /a-propos\//.test(sitemapSrc) && !/a-propos\.html/.test(sitemapSrc));
+
+    console.log('\n=== 10. PAGE D\'ACCUEIL & BOUTIQUES ===');
+    check('logo officiel sur l accueil', !!doc.getElementById('welcome-logo') && doc.getElementById('welcome-logo').getAttribute('src') === './lsv.jpg');
+    check('bouton Continuer présent', !!doc.getElementById('welcome-continue'));
+    check('gallerie d exemples (4 vignettes)', doc.querySelectorAll('#welcome-gallery .welcome-shot').length === 4, doc.querySelectorAll('#welcome-gallery .welcome-shot').length);
+    check('vignettes prêtes pour assets/showcase', doc.querySelectorAll('#welcome-gallery img[data-src^="./assets/showcase/"]').length === 4);
+    const shopA = doc.getElementById('shop-boutique');
+    const shopB = doc.getElementById('shop-academie');
+    check('emplacement boutique LeStudioViral (SHOP_1_URL)', !!shopA && shopA.getAttribute('href') === '#' && /Boutique LeStudioViral/.test(shopA.textContent), shopA && shopA.getAttribute('href'));
+    check('emplacement Académie Digital (SHOP_2_URL)', !!shopB && shopB.getAttribute('href') === '#' && /Académie Digital/.test(shopB.textContent), shopB && shopB.getAttribute('href'));
+    check('texte sous les formulaires supprimé', !/Les mots de passe sont vérifiés/.test(source));
+
+    doc.getElementById('welcome-continue').click();
+    await new Promise(r => setTimeout(r, 200));
+    check('Continuer avec un compte : accueil masqué', doc.getElementById('welcome').classList.contains('hidden'));
+    check('Continuer avec un compte : accueil marqué comme vu', wb.localStorage.getItem('lsv4_welcome') === 'done', wb.localStorage.getItem('lsv4_welcome'));
+
+    const first = await load(prepare());
+    const wf = first.dom.window;
+    const df = wf.document;
+    check('première visite sans compte : accueil visible', !df.getElementById('welcome').classList.contains('hidden'));
+    df.getElementById('welcome-continue').click();
+    await new Promise(r => setTimeout(r, 200));
+    check('Continuer sans compte : modale d inscription ouverte', !df.getElementById('auth-modal').classList.contains('hidden'));
+    check('Continuer sans compte : mode inscription', df.getElementById('account-submit').textContent === 'Créer le compte', df.getElementById('account-submit').textContent);
+    check('Continuer sans compte : accueil reste visible derrière', !df.getElementById('welcome').classList.contains('hidden'));
+    wf.fetch = function (url, options) {
+        if (String(url).includes('/auth/v1/signup')) {
+            return Promise.resolve({
+                ok: true, status: 200,
+                json: async () => ({ access_token: 'jwt-test', refresh_token: 'rfr-test', expires_in: 3600, token_type: 'bearer', user: { id: 'u1', email: 'nouveau@lsv.ai', user_metadata: { full_name: 'Ada Lovelace' } } }),
+                text: async () => ''
+            });
+        }
+        if (String(url).includes('/rest/v1/rpc/is_admin')) return Promise.resolve({ ok: true, status: 200, json: async () => false, text: async () => '' });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    df.getElementById('account-name').value = 'Ada Lovelace';
+    df.getElementById('account-email').value = 'nouveau@lsv.ai';
+    df.getElementById('account-password').value = 'mot-de-passe-test';
+    df.getElementById('account-submit').click();
+    await new Promise(r => setTimeout(r, 450));
+    check('inscription depuis l accueil : bienvenue', df.getElementById('welcome').classList.contains('hidden'));
+    check('inscription depuis l accueil : accueil marqué comme vu', wf.localStorage.getItem('lsv4_welcome') === 'done', wf.localStorage.getItem('lsv4_welcome'));
+    check('inscription depuis l accueil : aucune erreur console', first.errors.length === 0, first.errors.join('|'));
+
+    check('erreur SMTP traduite (e-mail de confirmation)', /SMTP/.test(wb.LSV.services.account.friendly('Error sending confirmation email')), wb.LSV.services.account.friendly('Error sending confirmation email'));
+    check('erreur SMTP sans détail technique', !/sk-|HTTP|apihub/i.test(wb.LSV.services.account.friendly('Email address not authorized')));
+    check('limite d e-mails traduite', /réessaie dans une heure/i.test(wb.LSV.services.account.friendly('over_email_send_rate_limit')), wb.LSV.services.account.friendly('over_email_send_rate_limit'));
 
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');
