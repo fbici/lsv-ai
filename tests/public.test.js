@@ -477,9 +477,9 @@ async function load(html, url) {
     check('inscription depuis l accueil : accueil marqué comme vu', wf.localStorage.getItem('lsv4_welcome') === 'done', wf.localStorage.getItem('lsv4_welcome'));
     check('inscription depuis l accueil : aucune erreur console', first.errors.length === 0, first.errors.join('|'));
 
-    check('erreur SMTP traduite (e-mail de confirmation)', /SMTP/.test(wb.LSV.services.account.friendly('Error sending confirmation email')), wb.LSV.services.account.friendly('Error sending confirmation email'));
-    check('erreur SMTP sans détail technique', !/sk-|HTTP|apihub/i.test(wb.LSV.services.account.friendly('Email address not authorized')));
-    check('limite d e-mails traduite', /réessaie dans une heure/i.test(wb.LSV.services.account.friendly('over_email_send_rate_limit')), wb.LSV.services.account.friendly('over_email_send_rate_limit'));
+    check('erreur d envoi masquée à l utilisateur', /réessaie dans quelques instants/i.test(wb.LSV.services.account.friendly('Error sending confirmation email')), wb.LSV.services.account.friendly('Error sending confirmation email'));
+    check('aucune mention technique dans les messages', !/SMTP|Supabase|Authentication|HTTP|sk-/i.test(wb.LSV.services.account.friendly('Error sending confirmation email') + ' ' + wb.LSV.services.account.friendly('Email address not authorized')));
+    check('limite d inscriptions traduite', /réessaie dans une heure/i.test(wb.LSV.services.account.friendly('over_email_send_rate_limit')), wb.LSV.services.account.friendly('over_email_send_rate_limit'));
 
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');

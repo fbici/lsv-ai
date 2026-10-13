@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.6.0
+# LSV.ai — Studio Viral v3.6.1
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
 
@@ -259,7 +259,7 @@ le back-office affiche « Compte non autorisé » et le tableau de bord reste vi
 | **URL propres** | plus aucun lien interne vers `index.html` : accueil `…/lsv-ai/`, à propos `…/a-propos/`, back-office `…/admin/` |
 | **Onglets du navigateur** | titres de pages explicites + favicon `lsv.jpg` |
 | **Texte sous les formulaires retiré** | la mention « Les mots de passe sont vérifiés… » sous la page de connexion a été supprimée |
-| **Erreurs d'inscription plus claires** | échec d'envoi de l'e-mail de confirmation (SMTP non configuré) ou limite d'envoi : messages explicites au lieu de « Opération impossible » |
+| **Erreurs d'inscription plus claires** | échec d'envoi de la confirmation ou limite d'inscription : messages **génériques** pour l'utilisateur (« réessaie dans quelques instants ») — aucun détail de configuration n'est jamais affiché |
 
 ---
 
@@ -421,9 +421,19 @@ en ligne (et non sur `localhost`) :
 > 2. Brevo → *Settings → SMTP & API → onglet SMTP* → *Generate a new SMTP key*
 >    (le mot de passe, **pas** l'API key).
 > 3. Supabase → [Authentication → SMTP settings](https://supabase.com/dashboard/project/_/auth/smtp)
->    → *Enable custom SMTP* → `smtp-relay.brevo.com`, port `587` (secours
->    `2525` ou `465`+SSL), SMTP login + SMTP key de Brevo, e-mail validé comme
->    expéditeur, nom d'expéditeur `LSV.ai` → Save.
+>    → *Enable custom SMTP* puis remplir **champ par champ** :
+>
+>    | Champ Supabase | Valeur |
+>    |---|---|
+>    | Sender Email | l'adresse d'expéditeur **validée** dans Brevo (étape 1) |
+>    | Sender Name | `LSV.ai` |
+>    | Host | `smtp-relay.brevo.com` |
+>    | Port | `587` (secours `2525`, ou `465` + SSL) |
+>    | User | le **SMTP login** affiché sur la page SMTP de Brevo |
+>    | Password | la **SMTP key** générée dans Brevo — c'est elle qui va dans « Password » (ni le mot de passe du compte Brevo, ni l'API key) |
+>    | Admin Email | ton adresse (alertes Supabase) |
+>
+>    → Save.
 > 4. Optionnel : *Authentication → Rate Limits → Email sending* (départ à
 >    30 e-mails/heure) → relever si besoin.
 > 5. Puis **réactiver** *Confirm email* (Authentication → Sign In / Providers)

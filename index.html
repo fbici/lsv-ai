@@ -2190,9 +2190,6 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
 .welcome-top nav a.w-top-cta:hover { background: #2dd4bf; }
 
 .w-hero { text-align: center; padding: 3.2rem 0 2.6rem; }
-.w-logo { width: 118px; height: 118px; object-fit: contain; border-radius: 28px; background: #ffffff; border: 1px solid rgba(255, 255, 255, 0.14); box-shadow: 0 26px 60px rgba(0, 0, 0, 0.55), 0 0 0 8px rgba(13, 148, 136, 0.12); margin-bottom: 1.5rem; }
-.w-mark { font-family: var(--font-display); font-size: 3rem; font-weight: 700; color: #fff; margin-bottom: 1.5rem; }
-.w-mark i { font-style: normal; color: #2dd4bf; }
 .w-eyebrow { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.45rem 1rem; border: 1px solid rgba(45, 212, 191, 0.4); background: rgba(13, 148, 136, 0.12); color: #5eead4; border-radius: 999px; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 1.2rem; }
 .w-title { font-family: var(--font-display); font-size: clamp(2.1rem, 6vw, 4rem); line-height: 1.06; letter-spacing: -0.035em; color: #ffffff; max-width: 18ch; margin: 0 auto 1.1rem; }
 .w-title em { font-style: normal; background: linear-gradient(92deg, #2dd4bf, #38bdf8 55%, #a78bfa); -webkit-background-clip: text; background-clip: text; color: transparent; }
@@ -2548,8 +2545,6 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
         </div>
 
         <section class="w-hero" id="w-start">
-            <img src="./lsv.jpg" alt="Logo officiel LeStudioViral" class="w-logo" width="118" height="118">
-            <div class="w-mark" id="welcome-mark" hidden>LSV<i>.ai</i></div>
             <span class="w-eyebrow"><span class="ms" style="font-size:15px">auto_awesome</span> LeStudioViral · Studio de création IA</span>
             <h1 class="w-title">Transforme une simple idée en <em>contenu viral</em>.</h1>
             <p class="w-lead">Images époustouflantes, vidéos prêtes à publier, chat IA et amélioration de prompts —
@@ -4406,8 +4401,8 @@ const AccountService = {
         if (m.indexOf('signup') !== -1 && (m.indexOf('disabled') !== -1 || m.indexOf('not allowed') !== -1)) return 'Inscriptions fermées pour le moment.';
         if (m.indexOf('sending') !== -1 || m.indexOf('send email') !== -1 || m.indexOf('send confirmation') !== -1 ||
             m.indexOf('error sending') !== -1 || m.indexOf('failed to send') !== -1 || m.indexOf('confirmation email') !== -1 ||
-            m.indexOf('email address not authorized') !== -1) return 'Envoi de l\'e-mail de confirmation impossible : configure un SMTP dans Supabase (Authentication → SMTP) ou désactive la confirmation d\'e-mail.';
-        if (m.indexOf('over email') !== -1 || m.indexOf('email rate') !== -1 || m.indexOf('mailer rate') !== -1) return 'Trop d\'e-mails envoyés par le serveur : réessaie dans une heure.';
+            m.indexOf('email address not authorized') !== -1) return 'Inscription momentanément indisponible : réessaie dans quelques instants.';
+        if (m.indexOf('over email') !== -1 || m.indexOf('email rate') !== -1 || m.indexOf('mailer rate') !== -1) return 'Trop d\'inscriptions récemment : réessaie dans une heure.';
         if (m.indexOf('rate limit') !== -1 || m.indexOf('too many') !== -1 || m.indexOf('rate limit exceeded') !== -1) return 'Trop de tentatives, réessaie plus tard.';
         if (m.indexOf('fetch') !== -1 || m.indexOf('network') !== -1 || m.indexOf('http') !== -1) return 'Connexion réseau impossible.';
         return 'Opération impossible pour le moment.';
@@ -4662,13 +4657,8 @@ const WelcomeView = {
     hide() { const el = this.$('welcome'); if (el) el.classList.add('hidden'); },
     open() { const el = this.$('welcome'); if (el) el.classList.remove('hidden'); this.loadGallery(); },
     init() {
-        document.querySelectorAll('#welcome-logo, .w-logo').forEach(logo => {
-            logo.addEventListener('error', () => {
-                logo.classList.add('hidden');
-                const mark = this.$('welcome-mark');
-                if (mark) mark.hidden = false;
-            });
-        });
+        const logo = this.$('welcome-logo');
+        if (logo) logo.addEventListener('error', () => logo.classList.add('hidden'));
         const yr = this.$('welcome-year');
         if (yr) yr.textContent = new Date().getFullYear();
         ['welcome-continue', 'welcome-continue-2'].forEach(id => {
