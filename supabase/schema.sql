@@ -22,6 +22,10 @@ create table if not exists public.analytics_events (
     created_at  timestamptz not null default now(),
     visitor_id  text not null check (char_length(visitor_id) between 1 and 64),
     session_id  text not null check (char_length(session_id) between 1 and 64),
+    -- Compte Supabase ayant produit l'événement (null = visiteur anonyme).
+    -- Permet au back-office le détail « par utilisateur ». RLS : ne peut être
+    -- renseigné que pour soi-même (voir policy plus bas).
+    user_id     uuid,
     event       text not null check (event in (
                     'page_view',
                     'tab_view',
@@ -47,6 +51,8 @@ create index if not exists analytics_events_event_idx
     on public.analytics_events (event, created_at desc);
 create index if not exists analytics_events_visitor_idx
     on public.analytics_events (visitor_id, created_at desc);
+create index if not exists analytics_events_user_idx
+    on public.analytics_events (user_id, created_at desc);
 
 -- ── Row Level Security ─────────────────────────────────────────────────────
 alter table public.analytics_events enable row level security;
@@ -81,7 +87,10 @@ create policy "anon_insert_events"
     on public.analytics_events
     for insert
     to anon, authenticated
-    with check (true);
+    -- user_id ne peut être renseigné que pour soi-même : un visiteur (anon,
+    -- sans jeton utilisateur) ne peut jamais rattacher un événement à un
+    -- compte existant. C'est ce contrôle qui rend la page « Actions » fiable.
+    with check (user_id is null or user_id = auth.uid());
 
 drop policy if exists "authenticated_select_events" on public.analytics_events;
 create policy "authenticated_select_events"
@@ -144,6 +153,74 @@ create policy "admin_delete_settings"
 
 -- insert into public.app_settings (key, value) values ('provider_api_key', '...')
 --     on conflict (key) do update set value = excluded.value, updated_at = now();
+
+-- ── Journal d'audit du back-office ─────────────────────────────────────────
+-- Trace QUI a fait QUOI et QUAND, pour que plusieurs administrateurs puissent
+-- se rendre compte entre eux (et pour garder une trace en cas d'incident).
+--
+-- Sécurité :
+--   • actor_id / actor_email sont REMPLIS PAR UN TRIGGER à partir du JWT — le
+--     client ne peut pas se faire passer pour un autre administrateur ;
+--   • INSERT réservé à la liste blanche (is_admin()) ;
+--   • SELECT réservé à la liste blanche ;
+--   • AUCUN UPDATE ni DELETE : le journal est en écriture seule, on n'efface
+--     pas l'historique de ce qui a été fait.
+create table if not exists public.admin_logs (
+    id          uuid primary key default gen_random_uuid(),
+    created_at  timestamptz not null default now(),
+    actor_id    uuid,
+    actor_email text,
+    action      text not null check (char_length(action) between 1 and 60),
+    target      text check (target is null or char_length(target) between 1 and 160),
+    detail      jsonb not null default '{}'::jsonb,
+    constraint admin_logs_detail_size_ok check (coalesce(pg_column_size(detail), 0) < 2048)
+);
+alter table public.admin_logs enable row level security;
+revoke all on public.admin_logs from anon;
+revoke all on public.admin_logs from authenticated;
+grant insert, select on public.admin_logs to authenticated;
+grant all on public.admin_logs to service_role;
+
+create index if not exists admin_logs_created_at_idx
+    on public.admin_logs (created_at desc);
+create index if not exists admin_logs_actor_idx
+    on public.admin_logs (actor_email, created_at desc);
+create index if not exists admin_logs_action_idx
+    on public.admin_logs (action, created_at desc);
+
+-- Le client n'écrit QUE son action ; l'identité de l'auteur est forcée ici.
+create or replace function public.set_log_actor() returns trigger
+    language plpgsql security definer
+    set search_path = public
+    as $$
+    begin
+        new.actor_id    := auth.uid();
+        new.actor_email := lower(coalesce(auth.jwt() ->> 'email', ''));
+        if new.actor_email = '' then
+            raise exception 'journal d audit : compte non authentifié';
+        end if;
+        return new;
+    end;
+    $$;
+
+drop trigger if exists admin_logs_set_actor on public.admin_logs;
+create trigger admin_logs_set_actor
+    before insert on public.admin_logs
+    for each row execute function public.set_log_actor();
+
+drop policy if exists "admin_insert_logs" on public.admin_logs;
+create policy "admin_insert_logs"
+    on public.admin_logs
+    for insert
+    to authenticated
+    with check (public.is_admin());
+
+drop policy if exists "admin_select_logs" on public.admin_logs;
+create policy "admin_select_logs"
+    on public.admin_logs
+    for select
+    to authenticated
+    using (public.is_admin());
 
 -- ── Profils : le nom complet de chaque compte, en SQL ──────────────────────
 -- Supabase Auth garde le compte (e-mail, mot de passe) dans auth.users.

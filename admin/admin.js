@@ -27,6 +27,10 @@
         checking: false,
         rows: [],
         users: [],
+        actions: [],
+        logs: [],
+        loadingActions: false,
+        loadingLogs: false,
         priorVisitors: [],
         range: 'today',
         page: 'overview',
@@ -47,6 +51,8 @@
         chat: { title: 'Chat IA', sub: 'Usage du chat intégré' },
         motion: { title: 'Motion', sub: 'Module Motion Control' },
         users: { title: 'Utilisateurs', sub: 'Comptes créés sur LSV.ai (nom, e-mail, connexion)' },
+        actions: { title: 'Actions', sub: 'Détail de l\'activité de chaque compte (images, vidéos, chat, projets)' },
+        logs: { title: 'Journal', sub: 'Qui a fait quoi, quand — trace d\'audit du back-office' },
         settings: { title: 'Paramètres', sub: 'Connexion, session et actualisation' }
     };
 
@@ -929,6 +935,8 @@
                     if (res && res.error) { toast('Enregistrement impossible : ' + friendlyAuthError(res.error.message), 'error'); return; }
                     input.value = '';
                     toast('Clé enregistrée — prise en compte sous une minute.', 'success');
+                    /* On journalise l'action SANS la valeur de la clé. */
+                    logAdmin('cle_fournisseur_modifiee', 'provider_api_key', { longueur: v.length });
                     renderKeyCard();
                 })
                 .catch(function (e) {
@@ -944,6 +952,7 @@
                 .then(function (res) {
                     if (res && res.error) { toast('Retrait impossible : ' + friendlyAuthError(res.error.message), 'error'); return; }
                     toast('Clé retirée : la passerelle utilise le secret serveur.', 'success');
+                    logAdmin('cle_fournisseur_retiree', 'provider_api_key', {});
                     renderKeyCard();
                 })
                 .catch(function (e) {
@@ -1034,6 +1043,191 @@
         );
     }
 
+    /* ── Actions par utilisateur ─────────────────────────────────────────────
+       Source : analytics_events, filtrées sur user_id NOT NULL — seuls les
+       événements produits par un compte connecté apparaissent. Agrégation
+       côté client (les volumes restent faibles : MAX_ROWS lignes max).
+       Les noms viennent de profiles (lecture admin). */
+    var ACTION_EVENTS = {
+        image_generated: 'images',
+        video_generated: 'videos',
+        chat_used: 'chats',
+        project_created: 'projects',
+        enhancer_used: 'enhancers',
+        batch_completed: 'batches'
+    };
+
+    function loadActions(showToast) {
+        if (!State.client || !State.user || State.loadingActions) return Promise.resolve();
+        State.loadingActions = true;
+        var start = rangeStart(State.range);
+        var q = State.client.from('analytics_events')
+            .select('user_id, event, created_at')
+            .not('user_id', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(MAX_ROWS);
+        if (start) q = q.gte('created_at', start.toISOString());
+
+        return Promise.resolve(q).then(function (res) {
+            State.loadingActions = false;
+            if (res && res.error) {
+                State.actions = [];
+                renderActions();
+                if (showToast) toast('Actions illisibles : ' + friendlyAuthError(res.error.message), 'error');
+                return;
+            }
+            var events = (res && res.data) || [];
+            return loadProfiles().then(function (byId) {
+                var agg = {};
+                events.forEach(function (e) {
+                    if (!e.user_id) return;
+                    var a = agg[e.user_id] || (agg[e.user_id] = {
+                        user_id: e.user_id, images: 0, videos: 0, chats: 0,
+                        projects: 0, enhancers: 0, batches: 0, errors: 0, last: null
+                    });
+                    var key = ACTION_EVENTS[e.event];
+                    if (key) a[key]++;
+                    else if (e.event === 'generation_error') a.errors++;
+                    if (!a.last || e.created_at > a.last) a.last = e.created_at;
+                });
+                State.actions = Object.keys(agg).map(function (id) {
+                    var a = agg[id];
+                    var p = byId[id] || {};
+                    a.full_name = p.full_name || '';
+                    a.email = p.email || '';
+                    a.total = a.images + a.videos + a.chats + a.projects + a.enhancers + a.batches;
+                    return a;
+                }).sort(function (x, y) { return y.total - x.total || (y.last || '').localeCompare(x.last || ''); });
+                renderActions();
+                if (showToast) toast(num(State.actions.length) + ' compte(s) actif(s)', 'success');
+            });
+        }).catch(function (e) {
+            State.loadingActions = false;
+            State.actions = [];
+            renderActions();
+            if (showToast) toast('Erreur réseau : ' + ((e && e.message) || ''), 'error');
+        });
+    }
+
+    /* noms + e-mails des comptes (une seule lecture, mise en cache par page) */
+    var profilesCache = null;
+    function loadProfiles() {
+        if (profilesCache) return Promise.resolve(profilesCache);
+        try {
+            return Promise.resolve(
+                State.client.from('profiles').select('id,email,full_name').limit(1000)
+            ).then(function (res) {
+                var byId = {};
+                ((res && res.data) || []).forEach(function (p) { byId[p.id] = p; });
+                profilesCache = byId;
+                return byId;
+            }).catch(function () { return {}; });
+        } catch (e) { return Promise.resolve({}); }
+    }
+
+    function renderActions() {
+        if (!$('kpi-actions')) return;
+        var rows = State.actions || [];
+        var images = 0, videos = 0, chats = 0, projects = 0;
+        rows.forEach(function (a) { images += a.images; videos += a.videos; chats += a.chats; projects += a.projects; });
+        $('kpi-actions').innerHTML =
+            kpi('Comptes actifs', num(rows.length), rows.length ? 'avec au moins une action' : 'aucune action sur la période', 'insights', COLORS.chat) +
+            kpi('Images', num(images), 'générées par des comptes', 'image', COLORS.image) +
+            kpi('Vidéos', num(videos), 'générées par des comptes', 'movie', COLORS.video) +
+            kpi('Projets', num(projects), 'créés par des comptes', 'folder', COLORS.project);
+        $('actions-table').innerHTML = tableHTML(
+            [{ label: 'Nom complet' }, { label: 'E-mail' }, { label: 'Images' }, { label: 'Vidéos' },
+             { label: 'Chat' }, { label: 'Projets' }, { label: 'Autres' }, { label: 'Erreurs' }, { label: 'Dernière action' }],
+            rows.map(function (a) {
+                return [
+                    esc(a.full_name || '—'),
+                    esc(a.email || '—'),
+                    num(a.images),
+                    num(a.videos),
+                    num(a.chats),
+                    num(a.projects),
+                    num((a.enhancers || 0) + (a.batches || 0)),
+                    a.errors ? '<span class="badge err">' + num(a.errors) + '</span>' : '0',
+                    a.last ? esc(fmtDateTime(a.last)) : '—'
+                ];
+            })
+        );
+    }
+
+    /* ── Journal d'audit ───────────────────────────────────────────────────
+       Table admin_logs, écrite par les actions sensibles du back-office et
+       lue ici. L'auteur est forcé côté serveur (trigger) : impossible de se
+       faire passer pour un autre administrateur. */
+    function logAdmin(action, target, detail) {
+        if (!State.client || !State.isAdmin) return Promise.resolve();
+        try {
+            return Promise.resolve(
+                State.client.from('admin_logs').insert({
+                    action: String(action).slice(0, 60),
+                    target: target ? String(target).slice(0, 160) : null,
+                    detail: detail || {}
+                })
+            ).catch(function () {});
+        } catch (e) { return Promise.resolve(); }
+    }
+
+    function loadLogs(showToast) {
+        if (!State.client || !State.user || State.loadingLogs) return Promise.resolve();
+        State.loadingLogs = true;
+        var start = rangeStart(State.range);
+        var q = State.client.from('admin_logs')
+            .select('created_at, actor_email, action, target, detail')
+            .order('created_at', { ascending: false })
+            .limit(1000);
+        if (start) q = q.gte('created_at', start.toISOString());
+
+        return Promise.resolve(q).then(function (res) {
+            State.loadingLogs = false;
+            if (res && res.error) {
+                State.logs = [];
+                renderLogs();
+                if (showToast) toast('Journal illisible : ' + friendlyAuthError(res.error.message), 'error');
+                return;
+            }
+            State.logs = (res && res.data) || [];
+            renderLogs();
+            if (showToast) toast(num(State.logs.length) + ' entrée(s)', 'success');
+        }).catch(function (e) {
+            State.loadingLogs = false;
+            State.logs = [];
+            renderLogs();
+            if (showToast) toast('Erreur réseau : ' + ((e && e.message) || ''), 'error');
+        });
+    }
+
+    function renderLogs() {
+        if (!$('kpi-logs')) return;
+        var rows = State.logs || [];
+        var actors = {};
+        rows.forEach(function (r) { if (r.actor_email) actors[r.actor_email] = true; });
+        var today = dayStart(new Date()).getTime();
+        var todayCount = rows.filter(function (r) { return r.created_at && new Date(r.created_at).getTime() >= today; }).length;
+        $('kpi-logs').innerHTML =
+            kpi('Entrées', num(rows.length), 'sur la période choisie', 'history', COLORS.chat) +
+            kpi('Aujourd\'hui', num(todayCount), 'actions enregistrées', 'today', COLORS.image) +
+            kpi('Administrateurs', num(Object.keys(actors).length), 'actifs sur la période', 'admin_panel_settings', COLORS.video) +
+            kpi('Écriture seule', 'ON', 'le journal n\'est jamais modifiable', 'lock', COLORS.project);
+        $('logs-table').innerHTML = tableHTML(
+            [{ label: 'Quand' }, { label: 'Administrateur' }, { label: 'Action' }, { label: 'Cible' }, { label: 'Détail' }],
+            rows.map(function (r) {
+                var d = r.detail || {};
+                var detailTxt = Object.keys(d).map(function (k) { return k + '=' + d[k]; }).join(', ');
+                return [
+                    r.created_at ? esc(fmtDateTime(r.created_at)) : '—',
+                    esc(r.actor_email || '—'),
+                    '<span class="badge">' + esc(r.action || '—') + '</span>',
+                    esc(r.target || '—'),
+                    detailTxt ? esc(detailTxt.slice(0, 120)) : '—'
+                ];
+            })
+        );
+    }
+
     function renderAll() {
         try {
         if (State.page === 'overview') renderOverview();
@@ -1043,6 +1237,8 @@
         else if (State.page === 'activity') renderActivity();
         else if (State.page === 'errors') renderErrors();
         else if (State.page === 'users') renderUsers();
+        else if (State.page === 'actions') renderActions();
+        else if (State.page === 'logs') renderLogs();
         else if (State.page === 'settings') renderSettings();
         } catch (e) { if (window.console) console.error(e); toast('Erreur de rendu : ' + e.message, 'error'); }
     }
@@ -1062,6 +1258,8 @@
         if (window.innerWidth <= 860) $('sidebar').classList.remove('open');
         renderAll();
         if (page === 'users') loadUsers(false);
+        if (page === 'actions') loadActions(false);
+        if (page === 'logs') loadLogs(false);
     }
 
     function setRange(range) {
@@ -1097,6 +1295,10 @@
         $('refresh-btn').addEventListener('click', function () { load(true); });
         var usersBtn = $('users-refresh');
         if (usersBtn) usersBtn.addEventListener('click', function () { loadUsers(true); });
+        var actionsBtn = $('actions-refresh');
+        if (actionsBtn) actionsBtn.addEventListener('click', function () { loadActions(true); });
+        var logsBtn = $('logs-refresh');
+        if (logsBtn) logsBtn.addEventListener('click', function () { loadLogs(true); });
         $('sidebar-toggle').addEventListener('click', function () { $('sidebar').classList.toggle('open'); });
 
         document.querySelectorAll('#activity-filters .chip').forEach(function (c) {

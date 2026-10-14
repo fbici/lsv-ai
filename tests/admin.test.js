@@ -7,13 +7,19 @@ const PROJECT = path.resolve(__dirname, '..');
 const ADMIN_HTML = path.join(PROJECT, 'admin/index.html');
 
 const EVENTS = [
-    { created_at: new Date().toISOString(), visitor_id: 'v1', session_id: 's1', event: 'page_view', props: { path: '/' } },
-    { created_at: new Date().toISOString(), visitor_id: 'v1', session_id: 's1', event: 'image_generated', props: { model: 'agnes-image-2.1-flash', ratio: '16:9', size: '1312x736', style: 'cinematic' } },
-    { created_at: new Date().toISOString(), visitor_id: 'v2', session_id: 's2', event: 'video_generated', props: { model: 'agnes-video-v2.0', mode: 'text-to-video', duration: 5, segments: 2 } },
-    { created_at: new Date().toISOString(), visitor_id: 'v2', session_id: 's2', event: 'chat_used', props: { status: 'success' } },
-    { created_at: new Date().toISOString(), visitor_id: 'v1', session_id: 's1', event: 'generation_error', props: { feature: 'video', detail: 'HTTP 500 — Internal error' } },
-    { created_at: new Date().toISOString(), visitor_id: 'v3', session_id: 's3', event: 'project_created', props: { type: 'pub' } },
-    { created_at: new Date().toISOString(), visitor_id: 'v3', session_id: 's3', event: 'tab_view', props: { tab: 'motion' } }
+    { created_at: new Date().toISOString(), visitor_id: 'v1', session_id: 's1', user_id: null, event: 'page_view', props: { path: '/' } },
+    { created_at: new Date().toISOString(), visitor_id: 'v1', session_id: 's1', user_id: 'u1', event: 'image_generated', props: { model: 'agnes-image-2.1-flash', ratio: '16:9', size: '1312x736', style: 'cinematic' } },
+    { created_at: new Date().toISOString(), visitor_id: 'v2', session_id: 's2', user_id: 'u2', event: 'video_generated', props: { model: 'agnes-video-v2.0', mode: 'text-to-video', duration: 5, segments: 2 } },
+    { created_at: new Date().toISOString(), visitor_id: 'v2', session_id: 's2', user_id: 'u2', event: 'chat_used', props: { status: 'success' } },
+    { created_at: new Date().toISOString(), visitor_id: 'v1', session_id: 's1', user_id: 'u1', event: 'generation_error', props: { feature: 'video', detail: 'HTTP 500 — Internal error' } },
+    { created_at: new Date().toISOString(), visitor_id: 'v3', session_id: 's3', user_id: 'u1', event: 'project_created', props: { type: 'pub' } },
+    { created_at: new Date().toISOString(), visitor_id: 'v3', session_id: 's3', user_id: null, event: 'tab_view', props: { tab: 'motion' } }
+];
+
+// Table public.admin_logs (journal d'audit du back-office, écriture seule)
+const LOGS = [
+    { created_at: new Date(Date.now() - 3600000).toISOString(), actor_email: 'admin@test.com', action: 'cle_fournisseur_modifiee', target: 'provider_api_key', detail: { longueur: 32 } },
+    { created_at: new Date(Date.now() - 7200000).toISOString(), actor_email: 'admin@test.com', action: 'connexion', target: null, detail: {} }
 ];
 
 // Table public.profiles (noms + e-mails des comptes, remplie par trigger SQL)
@@ -122,9 +128,10 @@ async function login(dom, email, password) {
     const fake = function makeFakeSupabase() {
         function builder(rowsForRequest, table) {
             const b = {
-                _table: table, _upsert: null, _isDelete: false,
+                _table: table, _upsert: null, _isDelete: false, _insert: null,
                 select() { return b; }, gte() { return b; }, lt() { return b; },
-                order() { return b; }, limit() { return b; }, eq() { return b; },
+                order() { return b; }, limit() { return b; }, eq() { return b; }, not() { return b; },
+                insert(row) { b._insert = row; return b; },
                 upsert(row) { b._upsert = row; return b; },
                 delete() { b._isDelete = true; return b; },
                 then(resolve, reject) {
@@ -133,6 +140,10 @@ async function login(dom, email, password) {
                     let result;
                     if (window.__rlsEnabled && !listed) {
                         result = { data: null, error: { message: 'permission denied for table ' + (b._table || 'analytics_events') } };
+                    } else if (b._table === 'admin_logs' && b._insert) {
+                        window.__LOGS = window.__LOGS || [];
+                        window.__LOGS.unshift(Object.assign({ id: 'log-' + window.__LOGS.length }, b._insert));
+                        result = { data: null, error: null };
                     } else if (b._table === 'app_settings') {
                         const store = window.__SETTINGS || {};
                         if (b._upsert) {
@@ -182,7 +193,11 @@ async function login(dom, email, password) {
                 signOut() { api._session = null; api._listeners.forEach(cb => cb('SIGNED_OUT', null)); return Promise.resolve({ error: null }); },
                 onAuthStateChange(cb) { api._listeners.push(cb); return { data: { subscription: {} } }; }
             },
-            from(table) { return builder(table === 'profiles' ? (window.__PROFILES || []) : window.__EVENTS, table); },
+            from(table) {
+                if (table === 'profiles') return builder(window.__PROFILES || [], table);
+                if (table === 'admin_logs') return builder(window.__LOGS || [], table);
+                return builder(window.__EVENTS, table);
+            },
             rpc(name) {
                 if (name !== 'is_admin') return Promise.resolve({ data: null, error: { message: 'unknown function' } });
                 const s = api._session;
@@ -205,7 +220,8 @@ async function login(dom, email, password) {
                 '";window.__USER_EMAIL="' + OTHER_EMAIL + '";window.__CONFIRM_EMAIL="' + CONFIRM_EMAIL +
                 '";window.__WHITELIST=' + JSON.stringify(WHITELIST) +
                 ';window.__SETTINGS={};window.__EVENTS=' + JSON.stringify(EVENTS) +
-                ';window.__PROFILES=' + JSON.stringify(PROFILES) + ';window.supabase=(' + fake.toString() + ')();</script>')
+                ';window.__PROFILES=' + JSON.stringify(PROFILES) +
+                ';window.__LOGS=' + JSON.stringify(LOGS) + ';window.supabase=(' + fake.toString() + ')();</script>')
             .replace('<script src="../shared/config.js"></script>', '<script>window.LSV_CONFIG=' + JSON.stringify(config) + ';</script>')
             .replace('<script src="./admin.js"></script>', '<script>' + fs.readFileSync(path.join(PROJECT, 'admin/admin.js'), 'utf8') + '</script>');
     }
@@ -386,6 +402,8 @@ async function login(dom, email, password) {
     await login(t, GOOD_EMAIL, GOOD_PASSWORD);
     await sleep(500);
     check('entrée de nav « Utilisateurs »', !!wu.document.querySelector('.nav-item[data-page="users"]'));
+    check('entrée de nav « Actions »', !!wu.document.querySelector('.nav-item[data-page="actions"]'));
+    check('entrée de nav « Journal »', !!wu.document.querySelector('.nav-item[data-page="logs"]'));
     wu.document.querySelector('.nav-item[data-page="users"]').dispatchEvent(new wu.Event('click', { bubbles: true }));
     await sleep(350);
     const activePage = wu.document.querySelector('.page.active');
@@ -401,6 +419,34 @@ async function login(dom, email, password) {
     wu.document.getElementById('users-refresh').dispatchEvent(new wu.Event('click', { bubbles: true }));
     await sleep(250);
     check('actualisation des comptes sans erreur', t.errors.length === 0, t.errors.join('|'));
+
+    console.log('\n=== N. PAGE ACTIONS PAR UTILISATEUR ===');
+    wu.document.querySelector('.nav-item[data-page="actions"]').dispatchEvent(new wu.Event('click', { bubbles: true }));
+    await sleep(450);
+    const activeActions = wu.document.querySelector('.page.active');
+    check('page Actions active', !!activeActions && activeActions.id === 'page-actions', activeActions && activeActions.id);
+    check('titre Actions', wu.document.getElementById('page-title').textContent === 'Actions', wu.document.getElementById('page-title').textContent);
+    const actionsText = wu.document.getElementById('actions-table').textContent.replace(/\s+/g, ' ');
+    check('table Actions remplie (Ada Lovelace)', /Ada Lovelace/.test(actionsText), actionsText.slice(0, 160));
+    check('compte u1 agrégé : images + erreur', /1/.test(actionsText) && /1/.test(actionsText), actionsText.slice(0, 200));
+    const actionsKpi = wu.document.getElementById('kpi-actions').textContent.replace(/\s+/g, ' ');
+    check('KPI comptes actifs ≥ 2', /Comptes actifs\s*[2-9]/.test(actionsKpi), actionsKpi.slice(0, 140));
+    wu.document.getElementById('actions-refresh').dispatchEvent(new wu.Event('click', { bubbles: true }));
+    await sleep(250);
+    check('actualisation Actions sans erreur', t.errors.length === 0, t.errors.join('|'));
+
+    console.log('\n=== O. PAGE JOURNAL D\'AUDIT ===');
+    wu.document.querySelector('.nav-item[data-page="logs"]').dispatchEvent(new wu.Event('click', { bubbles: true }));
+    await sleep(450);
+    const activeLogs = wu.document.querySelector('.page.active');
+    check('page Journal active', !!activeLogs && activeLogs.id === 'page-logs', activeLogs && activeLogs.id);
+    check('titre Journal', wu.document.getElementById('page-title').textContent === 'Journal', wu.document.getElementById('page-title').textContent);
+    const logsText = wu.document.getElementById('logs-table').textContent.replace(/\s+/g, ' ');
+    check('table Journal remplie', /cle_fournisseur_modifiee/.test(logsText), logsText.slice(0, 160));
+    check('auteur visible', /admin@test\.com/.test(logsText), logsText.slice(0, 160));
+    wu.document.getElementById('logs-refresh').dispatchEvent(new wu.Event('click', { bubbles: true }));
+    await sleep(250);
+    check('actualisation Journal sans erreur', t.errors.length === 0, t.errors.join('|'));
 
     console.log('\n=== K. SANITÉ ===');
     check('aucune erreur console globale', t.errors.length === 0, t.errors.join('|'));

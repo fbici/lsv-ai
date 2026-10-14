@@ -79,6 +79,8 @@
 
             <div class="nav-section">Système</div>
             <button class="nav-item" data-page="users"><span class="ms">group</span> Utilisateurs</button>
+            <button class="nav-item" data-page="actions"><span class="ms">insights</span> Actions</button>
+            <button class="nav-item" data-page="logs"><span class="ms">history</span> Journal</button>
             <button class="nav-item" data-page="settings"><span class="ms">settings</span> Paramètres</button>
         </nav>
 
@@ -269,6 +271,55 @@
                         n'y figure.
                     </div>
                     <div class="table-wrap" id="users-table"></div>
+                </div>
+            </section>
+
+            <!-- ACTIONS PAR UTILISATEUR -->
+            <section class="page" id="page-actions">
+                <div class="kpi-grid" id="kpi-actions"></div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="ms">insights</span> Actions par compte</div>
+                        <div class="range-group">
+                            <button class="range-btn" data-range="today" type="button">Aujourd'hui</button>
+                            <button class="range-btn active" data-range="7d" type="button">7 jours</button>
+                            <button class="range-btn" data-range="30d" type="button">30 jours</button>
+                            <button class="range-btn" data-range="all" type="button">Tout</button>
+                        </div>
+                        <button class="btn btn-ghost btn-sm" id="actions-refresh" type="button"><span class="ms">refresh</span> Actualiser</button>
+                    </div>
+                    <div class="info-block">
+                        Détail de l'activité <strong>par compte</strong> : combien d'images, de vidéos, de
+                        messages de chat et de projets chaque utilisateur a créés sur la période choisie.
+                        Un visiteur non connecté n'apparaît pas ici (ses événements n'ont pas de compte
+                        rattaché). Lecture réservée à la liste blanche.
+                    </div>
+                    <div class="table-wrap" id="actions-table"></div>
+                </div>
+            </section>
+
+            <!-- JOURNAL D'AUDIT -->
+            <section class="page" id="page-logs">
+                <div class="kpi-grid" id="kpi-logs"></div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="ms">history</span> Journal d'audit</div>
+                        <div class="range-group">
+                            <button class="range-btn" data-range="today" type="button">Aujourd'hui</button>
+                            <button class="range-btn active" data-range="7d" type="button">7 jours</button>
+                            <button class="range-btn" data-range="30d" type="button">30 jours</button>
+                            <button class="range-btn" data-range="all" type="button">Tout</button>
+                        </div>
+                        <button class="btn btn-ghost btn-sm" id="logs-refresh" type="button"><span class="ms">refresh</span> Actualiser</button>
+                    </div>
+                    <div class="info-block">
+                        Trace de chaque action effectuée dans ce back-office : <strong>qui</strong> a fait
+                        <strong>quoi</strong>, <strong>quand</strong>. En écriture seule — le journal ne peut
+                        ni être modifié ni être effacé depuis l'interface. L'auteur est renseigné par le
+                        serveur à partir du jeton de connexion : il est impossible de se faire passer pour
+                        un autre administrateur.
+                    </div>
+                    <div class="table-wrap" id="logs-table"></div>
                 </div>
             </section>
 

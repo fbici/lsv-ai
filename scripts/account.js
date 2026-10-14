@@ -69,6 +69,12 @@ const AccountService = {
         const s = this.session();
         return (s && s.email) || '';
     },
+    /* Identifiant Supabase du compte connecté (uuid). Vide pour un visiteur.
+       Sert aux statistiques d'usage par compte côté back-office. */
+    userId() {
+        const s = this.session();
+        return (s && s.id) || '';
+    },
     name() {
         const s = this.session();
         return (s && s.name) || '';
@@ -101,7 +107,8 @@ const AccountService = {
             refresh_token: data.refresh_token,
             expires_at: Math.floor(Date.now() / 1000) + (Number(data.expires_in) || 3600),
             email: u.email || fallbackEmail || '',
-            name: meta.full_name || meta.name || ''
+            name: meta.full_name || meta.name || '',
+            id: u.id || ''
         });
     },
 

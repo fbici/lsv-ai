@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.7.0
+# LSV.ai — Studio Viral v3.8.0
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
 
@@ -335,6 +335,40 @@ Les scans de sécurité (§5) portent désormais sur **tout le bundle**
 seulement sur le HTML — la couverture sécurité n'a donc pas été réduite par la
 modularisation.
 
+### 2.10 Actions par utilisateur & Journal d'audit (nouveau)
+
+Deux pages s'ajoutent au back-office, côté section **Système** :
+
+| page | objectif |
+|---|---|
+| **Actions** | Détail de l'activité **de chaque compte** (images, vidéos, chat, projets, autres, erreurs, dernière action) pour la période sélectionnée |
+| **Journal** | Qui a fait quoi et quand dans le back-office lui-même — trace d'audit **écriture seule** |
+
+**Actions** lit la table `analytics_events` en ne gardant que les événements
+portés par un `user_id` (donc émis par un compte connecté), les agrège par
+compte et croise les identifiants avec `profiles` (e-mail + nom complet). Les
+piles horaires (jour / 7 j / 30 j / tout) fonctionnent comme ailleurs.
+
+**Journal** lit et écrit la table `admin_logs`. Chaque action sensible du
+back-office (modification / retrait de la clé fournisseur, etc.) y dépose une
+ligne : `action`, `cible`, `détail` (JSON, **jamais la valeur de la clé**) et
+l'auteur. L'auteur est **forcé côté serveur** par un trigger PostgreSQL à
+partir du jeton JWT — un administrateur ne peut donc pas se faire passer pour
+un autre. La table est en **insert + select uniquement** (pas d'update, pas de
+delete) via les policies RLS.
+
+**Migration à exécuter** (une seule fois, dans le SQL Editor Supabase) :
+
+```bash
+# Dashboard Supabase → SQL Editor → New query → coller le contenu de :
+supabase/upgrade-activity-logs.sql
+```
+
+Ce fichier est idempotent : il ajoute la colonne `user_id` à
+`analytics_events` (si absente), crée la table `admin_logs`, le trigger
+`set_log_actor()`, les policies RLS et les grants. Le schéma complet de
+référence reste `supabase/schema.sql`.
+
 ---
 
 ## 3. Installation locale
@@ -602,6 +636,14 @@ Comportements attendus :
   e-mail, date d'inscription, dernière connexion + compteurs (total, avec nom,
   déjà connectés, créés cette semaine). Source = trigger Supabase ; lecture
   réservée à la liste blanche, aucun mot de passe ni secret affiché.
+- **Actions** — activité **par compte** : agrège `analytics_events` (images,
+  vidéos, chat, projets, enhancer, batch, erreurs) pour chaque `user_id`,
+  croise avec `profiles` pour afficher nom et e-mail, indique la dernière
+  action. Ne voit que les événements produits par un compte connecté.
+- **Journal** — trace d'audit du back-office (`public.admin_logs`) : date,
+  administrateur (auteur forcé côté serveur par trigger), action, cible,
+  détail. Insert + select uniquement ; la modification / retrait de clé
+  y laisse automatiquement une entrée, **jamais la valeur de la clé**.
 - **Paramètres** — état de la connexion, session, fréquence d'actualisation,
   déconnexion, et **Clé du fournisseur** (état « aucune clé / configurée »
   masquée `••••1234`, champ pour enregistrer une nouvelle clé, bouton
@@ -822,7 +864,7 @@ npm test        # 353 assertions (406 avec ORIG=… voir plus bas)
   → 503 ; clé de service lue dans `SUPABASE_SERVICE_ROLE_KEY` ou
   `SUPABASE_SECRET_KEYS`.
 
-**`tests/admin.test.js`** (72 assertions)
+**`tests/admin.test.js`** (85 assertions)
 
 - configuration absente / non authentifié → dashboard inaccessible ;
 - mauvais identifiants → accès refusé ;

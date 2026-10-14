@@ -119,6 +119,31 @@
         return out;
     }
 
+    /* ── Session (reliée au compte, si connecté) ──────────────────────────
+       Les statistiques d'usage par compte exigent que l'événement soit
+       rattaché à l'utilisateur réel. On lit la session locale (stockée par le
+       module Compte) : si un jeton valide existe, il est utilisé comme
+       Authorization — Supabase valorise alors auth.uid() et la RLS accepte
+       user_id. Sans session, on garde le comportement anonyme d'origine. */
+    function storedSession() {
+        try {
+            var raw = safeGet(window.localStorage, 'lsv4_account');
+            var s = raw ? JSON.parse(raw) : null;
+            if (s && s.access_token && s.expires_at && s.expires_at > (Date.now() / 1000) - 30) return s;
+        } catch (e) {}
+        return null;
+    }
+
+    function currentUserId() {
+        var s = storedSession();
+        return (s && s.id) ? String(s.id).slice(0, 64) : null;
+    }
+
+    function authToken() {
+        var s = storedSession();
+        return (s && s.access_token) ? s.access_token : cfg.key;
+    }
+
     /* ── File d'attente locale (survit si le réseau tombe) ──────────────── */
     function loadQueue() {
         try {
@@ -170,7 +195,7 @@
                 method: 'POST',
                 headers: {
                     'apikey': cfg.key,
-                    'Authorization': 'Bearer ' + cfg.key,
+                    'Authorization': 'Bearer ' + authToken(),
                     'Content-Type': 'application/json',
                     'Prefer': 'return=minimal'
                 },
@@ -195,6 +220,8 @@
                 created_at: new Date().toISOString(),
                 props: cleanProps(props, 0)
             };
+            var uid = currentUserId();
+            if (uid) row.user_id = uid;
             queue.push({ row: row, tries: 0 });
             if (queue.length > MAX_QUEUE) queue = queue.slice(queue.length - MAX_QUEUE);
             saveQueue(queue);
