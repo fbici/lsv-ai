@@ -1,0 +1,145 @@
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+:root {
+    --bg: #fafaf9;
+    --bg-2: #ffffff;
+    --bg-3: #f4f4f2;
+    --bg-4: #ebebe8;
+    --bg-hover: #f7f7f5;
+    --border: #e8e8e4;
+    --border-2: #dcdcd7;
+    --border-3: #c8c8c2;
+    --ink: #18181b;
+    --ink-2: #52525b;
+    --ink-3: #8a8a94;
+    --ink-4: #b8b8c0;
+    --accent: #0d9488;
+    --accent-hover: #0f766e;
+    --accent-light: #ccfbf1;
+    --accent-soft: #f0fdfa;
+    --blue: #2563eb;
+    --blue-hover: #1d4ed8;
+    --blue-light: #dbeafe;
+    --violet: #7c3aed;
+    --violet-hover: #6d28d9;
+    --violet-light: #ede9fe;
+    --pink: #db2777;
+    --pink-hover: #be185d;
+    --pink-light: #fce7f3;
+    --orange: #ea580c;
+    --orange-hover: #c2410c;
+    --orange-light: #ffedd5;
+    --amber: #d97706;
+    --amber-light: #fef3c7;
+    --green: #16a34a;
+    --green-hover: #15803d;
+    --green-light: #dcfce7;
+    --red: #dc2626;
+    --red-hover: #b91c1c;
+    --red-light: #fee2e2;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.03);
+    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.06), 0 4px 6px rgba(0, 0, 0, 0.04);
+    --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.08), 0 10px 10px rgba(0, 0, 0, 0.04);
+    --radius-xs: 6px;
+    --radius-sm: 8px;
+    --radius: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --sidebar-w: 240px;
+    --sidebar-collapsed-w: 64px;
+    --panel-w: 340px;
+}
+
+body.dark {
+    --bg: #1a1a1e;
+    --bg-2: #232328;
+    --bg-3: #2c2c32;
+    --bg-4: #38383f;
+    --bg-hover: #2a2a30;
+    --border: #333340;
+    --border-2: #42424e;
+    --border-3: #52525e;
+    --ink: #f4f4f5;
+    --ink-2: #b8b8bc;
+    --ink-3: #8a8a90;
+    --ink-4: #5a5a62;
+    --accent: #2dd4bf;
+    --accent-hover: #5eead4;
+    --accent-light: rgba(45, 212, 191, 0.15);
+    --accent-soft: rgba(45, 212, 191, 0.08);
+    --blue: #60a5fa;
+    --blue-hover: #93c5fd;
+    --blue-light: rgba(96, 165, 250, 0.15);
+    --violet: #a78bfa;
+    --violet-hover: #c4b5fd;
+    --violet-light: rgba(167, 139, 250, 0.15);
+    --pink: #f472b6;
+    --pink-hover: #f9a8d4;
+    --pink-light: rgba(244, 114, 182, 0.15);
+    --orange: #fb923c;
+    --orange-hover: #fdba74;
+    --orange-light: rgba(251, 146, 60, 0.15);
+    --amber: #fbbf24;
+    --amber-light: rgba(251, 191, 36, 0.15);
+    --green: #4ade80;
+    --green-hover: #86efac;
+    --green-light: rgba(74, 222, 128, 0.15);
+    --red: #f87171;
+    --red-hover: #fca5a5;
+    --red-light: rgba(248, 113, 113, 0.15);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.25);
+    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.4), 0 4px 6px rgba(0, 0, 0, 0.3);
+    --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.45), 0 10px 10px rgba(0, 0, 0, 0.3);
+}
+
+html { background: var(--bg); }
+body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.55;
+    letter-spacing: -0.005em;
+    -webkit-font-smoothing: antialiased;
+    transition: background 0.2s, color 0.2s;
+}
+
+.ms {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    font-size: 20px;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    direction: ltr;
+    -webkit-font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased;
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    vertical-align: middle;
+    user-select: none;
+}
+.ms-sm { font-size: 16px; }
+.ms-lg { font-size: 24px; }
+.ms-fill { font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24; }
+
+.app {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) 1fr var(--panel-w);
+    min-height: 100vh;
+    transition: grid-template-columns 0.25s ease;
+}
+.app.sidebar-collapsed {
+    grid-template-columns: var(--sidebar-collapsed-w) 1fr var(--panel-w);
+}
+

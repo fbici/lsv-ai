@@ -17,17 +17,25 @@ const PROJECT = path.resolve(__dirname, '..');
 const ORIG = process.env.ORIG || '';
 const MOD = path.join(PROJECT, 'index.html');
 
+/* inlineShared=true : tous les scripts externes sont inlinés (jsdom ne
+   télécharge pas les ressources sans resource loader).
+   inlineShared=false : la configuration partagée et le module Analytics sont
+   retirés, mais l'application (scripts/) reste chargée — c'est le scénario
+   « module Analytics absent, LSV.ai doit continuer de fonctionner ».
+   Les CSS externes et les fonts sont toujours retirés. */
 function prepare(file, inlineShared) {
     let html = fs.readFileSync(file, 'utf8');
     html = html.replace(/<link[^>]*fonts\.(googleapis|gstatic)[^>]*>/g, '');
-    if (inlineShared) {
-        const cfg = fs.readFileSync(path.join(PROJECT, 'shared/config.js'), 'utf8');
-        const ana = fs.readFileSync(path.join(PROJECT, 'analytics/analytics.js'), 'utf8');
-        html = html.replace('<script src="./shared/config.js"></script>', '<script>' + cfg + '</script>');
-        html = html.replace('<script src="./analytics/analytics.js"></script>', '<script>' + ana + '</script>');
-    } else {
+    html = html.replace(/<link[^>]*Material\+Symbols[^>]*>/g, '');
+    html = html.replace(/<link rel="stylesheet" href="\.\/styles\/[^"]*">/g, '');
+    html = html.replace(/<link rel="preload"[^>]*>/g, '');
+    if (!inlineShared) {
         html = html.replace(/<script src="\.\/(shared\/config|analytics\/analytics)\.js"><\/script>/g, '');
     }
+    html = html.replace(/<script src="\.\/([^"]+)"[^>]*><\/script>/g, (m, rel) => {
+        const p = path.join(PROJECT, rel);
+        return fs.existsSync(p) ? '<script>' + fs.readFileSync(p, 'utf8') + '</script>' : '';
+    });
     return html;
 }
 

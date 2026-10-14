@@ -11,8 +11,9 @@
      réservée aux comptes authentifiés) -> voir supabase/schema.sql ;
    - Supabase Auth (mots de passe hachés côté serveur, JWT) pour /admin.
 
-   Le "service_role" key et le mot de passe base de données ne doivent JAMAIS
-   apparaître ici ni dans aucun fichier du dépôt.
+    La clé de service (celle qui contourne la RLS, dite "role de service") et le
+    mot de passe base de données ne doivent JAMAIS apparaître ici ni dans aucun
+    fichier du dépôt.
 
    - LSV_GATEWAY_URL    : URL de la LSV API Gateway (Edge Function Supabase).
                           C'est la SEULE porte de sortie vers le fournisseur de

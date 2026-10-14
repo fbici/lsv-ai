@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.6.3
+# LSV.ai — Studio Viral v3.7.0
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
 
@@ -71,7 +71,32 @@ Navigateur (GitHub Pages — statique, aucun secret)
 ```text
 lsv-ai/
 │
-├── index.html                 # Application LSV.ai (Gateway + UI publique)
+├── index.html                 # SQUELETTE HTML uniquement (~1 200 lignes) :
+│                              #   head (SEO) + markup accueil/dashboard + liens
+│                              #   vers styles/ et scripts/ — aucun CSS ni JS
+│                              #   applicatif en dur dedans
+│
+├── styles/                    # Feuilles de style (une responsabilité chacune)
+│   ├── base.css               #   reset, variables CSS, barre haute
+│   ├── sidebar.css            #   navigation latérale + responsive
+│   ├── studio.css             #   dashboard de création (chat, cards, fields…)
+│   ├── account.css            #   modale de connexion / inscription
+│   ├── welcome.css            #   page d'accueil des visiteurs
+│   └── views.css              #   projets, bibliothèque, historique, mobile-nav
+│
+├── scripts/                   # Application JS (scripts classiques, dans l'ordre)
+│   ├── constants.js           #   GATEWAY_URL + styles d'enhancer
+│   ├── core.js                #   Utils, Storage, Projects, Assets, History,
+│   │                          #   Conversation, Lock, Debug, Timing, WakeLock
+│   ├── account.js             #   Gateway, AccountService, AccountView, WelcomeView
+│   ├── media.js               #   Provider, Prompt, Image, Video, File, Runtime,
+│   │                          #   UIState, Enhancer
+│   ├── ui.js                  #   contrôleur UI (toasts, panneaux, rendu global)
+│   ├── chat.js                #   ChatService, ChatActions, ChatView
+│   ├── views.js               #   Dashboard, Projets, Bibliothèque, Historique,
+│   │                          #   Avancé, Enhancer, Storyboard, Workflows,
+│   │                          #   Verrous, Batch
+│   └── handlers.js            #   Handlers + restauration + init + window.LSV
 │
 ├── analytics/
 │   └── analytics.js           # Module Analytics indépendant et tolérant aux pannes
@@ -265,6 +290,50 @@ le back-office affiche « Compte non autorisé » et le tableau de bord reste vi
 | **Onglets du navigateur** | titres de pages explicites + favicon `lsv.jpg` |
 | **Texte sous les formulaires retiré** | la mention « Les mots de passe sont vérifiés… » sous la page de connexion a été supprimée |
 | **Erreurs d'inscription plus claires** | échec d'envoi de la confirmation ou limite d'inscription : messages **génériques** pour l'utilisateur (« réessaie dans quelques instants ») — aucun détail de configuration n'est jamais affiché |
+
+### 2.9 Architecture modulaire (refonte du code)
+
+`index.html` n'est plus un fichier monolithique : c'est un **squelette HTML**
+(~1 200 lignes au lieu de ~7 000) qui ne contient que le `head` SEO, le markup
+de l'accueil et du dashboard, et des liens vers des fichiers dédiés.
+
+| avant | après |
+|---|---|
+| tout le CSS dans un `<style>` de 2 470 lignes | 6 feuilles dans `styles/`, une responsabilité chacune |
+| tout le JS dans un `<script>` de 3 300 lignes | 8 modules dans `scripts/`, chargés dans un ordre fixe |
+| `index.html` : 6 995 lignes / ~250 Ko | `index.html` : ~1 230 lignes / 62 Ko |
+
+**Découpage des modules** (`scripts/`, scripts classiques dans cet ordre — les
+`const` de niveau supérieur partagent le scope global, comme avant) :
+
+1. `constants.js` — `GATEWAY_URL`, styles d'enhancer
+2. `core.js` — `Utils`, `StorageService`, `ProjectService`, `AssetService`,
+   `HistoryService`, `ConversationService`, `LockService`, `DebugService`,
+   `TimingService`, `WakeLockService`
+3. `account.js` — `Gateway`, `AccountService`, `AccountView`, `WelcomeView`
+4. `media.js` — provider, prompts, images, vidéos, fichiers, `Runtime`,
+   `UIState`, `EnhancerService`
+5. `ui.js` — contrôleur UI (toasts, panneaux, rendu global)
+6. `chat.js` — `ChatService`, `ChatActions`, `ChatView`
+7. `views.js` — dashboard, projets, bibliothèque, historique, avancé,
+   enhancer, storyboard, workflows, verrous, batch
+8. `handlers.js` — `Handlers`, restauration des résultats, `init()`, `window.LSV`
+
+Le shim de sécurité Analytics (`window.LSVAnalytics = … || {track: inerte}`)
+reste **inline** dans `index.html` : c'est le filet de sécurité qui doit
+toujours être présent, même si `analytics.js` ne se charge pas.
+
+**Ce qui ne bouge pas** : `window.LSV` expose exactement les mêmes propriétés
+(`config`, `services`, `views`, `actions`, `utils`), l'API publique est
+identique, et aucun test n'a eu besoin d'être adapté sur le plan fonctionnel.
+
+**Garde-fous ajoutés aux tests** : `public.test.js` §12 vérifie que
+`index.html` reste léger, qu'aucun `<style>` ni script volumineux n'y revient,
+que les 14 modules existent, sont tous référencés et dans le bon ordre.
+Les scans de sécurité (§5) portent désormais sur **tout le bundle**
+(`index.html` + `scripts/` + `styles/` + `shared/` + `analytics/`), pas
+seulement sur le HTML — la couverture sécurité n'a donc pas été réduite par la
+modularisation.
 
 ---
 
@@ -670,7 +739,7 @@ dans le back-office elle n'apparaît masquée que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 345 assertions (398 avec ORIG=… voir plus bas)
+npm test        # 353 assertions (406 avec ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (41 assertions, **53 avec `ORIG`**) — non-régression
@@ -686,7 +755,7 @@ npm test        # 345 assertions (398 avec ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (183 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (191 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -732,6 +801,12 @@ npm test        # 345 assertions (398 avec ORIG=… voir plus bas)
   `WebSite` + `Organization` (avec logo) + `SoftwareApplication`, `llms.txt`
   (indexation IA), `sitemap.xml` avec `lastmod`, images avec `alt` descriptifs,
   `loading="lazy"` + `decoding="async"` + `width`/`height` (anti-CLS).
+- **architecture modulaire** : `index.html` réduit à un squelette HTML
+  (~1 230 lignes au lieu de ~7 000) ; CSS en 6 fichiers `styles/`, JS en 8
+  modules `scripts/` chargés dans un ordre fixe ; `window.LSV` et toute l'API
+  publique inchangés ; scans de sécurité étendus à tout le bundle ; §12 de
+  `public.test.js` verrouille la structure (pas de `<style>` ni de gros script
+  inline, 14 modules présents et ordonnés).
 
 **`tests/gateway.test.mjs`** (49 assertions) — passerelle
 

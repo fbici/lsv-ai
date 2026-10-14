@@ -21,13 +21,19 @@ function check(label, cond, extra) {
     console.log((cond ? '  OK   ' : '  FAIL ') + label + (extra !== undefined ? '  [' + extra + ']' : ''));
 }
 
+/* Les scripts externes (shared/, analytics/, scripts/) sont inlinés car jsdom
+   ne télécharge pas les ressources sans resource loader. Les CSS externes et
+   les fonts sont retirés : inutiles pour les assertions. */
 function prepare() {
     let html = fs.readFileSync(INDEX, 'utf8');
     html = html.replace(/<link[^>]*fonts\.(googleapis|gstatic)[^>]*>/g, '');
-    const cfg = fs.readFileSync(path.join(PROJECT, 'shared/config.js'), 'utf8');
-    const ana = fs.readFileSync(path.join(PROJECT, 'analytics/analytics.js'), 'utf8');
-    html = html.replace('<script src="./shared/config.js"></script>', '<script>' + cfg + '</script>');
-    html = html.replace('<script src="./analytics/analytics.js"></script>', '<script>' + ana + '</script>');
+    html = html.replace(/<link[^>]*Material\+Symbols[^>]*>/g, '');
+    html = html.replace(/<link rel="stylesheet" href="\.\/styles\/[^"]*">/g, '');
+    html = html.replace(/<link rel="preload"[^>]*>/g, '');
+    html = html.replace(/<script src="\.\/([^"]+)"[^>]*><\/script>/g, (m, rel) => {
+        const p = path.join(PROJECT, rel);
+        return fs.existsSync(p) ? '<script>' + fs.readFileSync(p, 'utf8') + '</script>' : '';
+    });
     return html;
 }
 
@@ -49,6 +55,22 @@ async function load(html, url) {
 
 (async () => {
     const source = fs.readFileSync(INDEX, 'utf8');
+    /* Le code applicatif vit maintenant dans scripts/ + styles/ : les scans de
+       sécurité portent sur l'ensemble du bundle (index + scripts + styles +
+       config + analytics), pas seulement sur le squelette HTML. */
+    const parts = [source];
+    [
+        'analytics/analytics.js', 'shared/config.js',
+        'scripts/constants.js', 'scripts/core.js',
+        'scripts/account.js', 'scripts/media.js', 'scripts/ui.js',
+        'scripts/chat.js', 'scripts/views.js', 'scripts/handlers.js',
+        'styles/base.css', 'styles/sidebar.css', 'styles/studio.css',
+        'styles/account.css', 'styles/welcome.css', 'styles/views.css'
+    ].forEach(rel => {
+        const p = path.join(PROJECT, rel);
+        parts.push(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '');
+    });
+    const bundle = parts.join('\n');
     const { dom, errors } = await load(prepare());
     const wb = dom.window;
     const doc = wb.document;
@@ -136,11 +158,23 @@ async function load(html, url) {
     check('aucune erreur console', errors.length === 0, errors.join('|'));
 
     console.log('\n=== 5. SÉCURITÉ : AUCUN SECRET DANS LE DÉPÔT ===');
-    check('index.html sans token sk-', source.indexOf('sk-') === -1);
-    check('index.html sans clé en localStorage', source.indexOf('lsv4_api_key') === -1);
-    check('index.html sans endpoint amont', source.indexOf('apihub.agnes-ai.com') === -1);
-    check('index.html sans lien plateforme fournisseur', source.indexOf('platform.agnes-ai.com') === -1);
-    const publicFiles = ['admin/admin.js', 'admin/index.html', 'analytics/analytics.js', 'shared/config.js', 'admin/admin.css'];
+    /* Le motif sk-[A-Za-z0-9]{10,} ignore volontairement la regex de
+       redaction de analytics.js (qui écrit littéralement « sk-… » à des fins
+       de masquage, jamais de fuite). */
+    const skLeak = bundle.match(/sk-[A-Za-z0-9]{10,}/);
+    check('bundle sans token sk-', !skLeak, skLeak ? skLeak[0].slice(0, 20) : '');
+    check('bundle sans clé en localStorage', bundle.indexOf('lsv4_api_key') === -1);
+    check('bundle sans endpoint amont', bundle.indexOf('apihub.agnes-ai.com') === -1);
+    check('bundle sans lien plateforme fournisseur', bundle.indexOf('platform.agnes-ai.com') === -1);
+    check('bundle sans service_role', !/service_role/i.test(bundle));
+    check('bundle sans mot de passe en dur', !/password\s*[:=]\s*['"][^'"]+['"]/i.test(bundle));
+    const publicFiles = [
+        'admin/admin.js', 'admin/index.html', 'analytics/analytics.js', 'shared/config.js', 'admin/admin.css',
+        'scripts/constants.js', 'scripts/core.js', 'scripts/account.js',
+        'scripts/media.js', 'scripts/ui.js', 'scripts/chat.js', 'scripts/views.js', 'scripts/handlers.js',
+        'styles/base.css', 'styles/sidebar.css', 'styles/studio.css', 'styles/account.css',
+        'styles/welcome.css', 'styles/views.css'
+    ];
     let leak = null;
     publicFiles.forEach(f => {
         const p = path.join(PROJECT, f);
@@ -203,9 +237,7 @@ async function load(html, url) {
     check('aucun compte connecté par défaut', doc.getElementById('account-user').classList.contains('hidden'));
     check('page de connexion masquée par défaut', doc.getElementById('auth-modal').classList.contains('hidden'));
     check('page de connexion au niveau du body', !!doc.getElementById('auth-modal').closest('body'));
-    check('index.html permet l inscription (Auth REST)', /auth\/v1\/signup|AccountService/.test(source));
-    check('index.html sans mot de passe en dur', !/password\s*[:=]\s*['"][^'"]+['"]/i.test(source));
-    check('index.html sans service_role', !/service_role/i.test(source));
+    check('l application permet l inscription (Auth REST)', /auth\/v1\/signup|AccountService/.test(bundle));
     check('message clair si e-mail non confirmé (code GoTrue)',
         /E-mail non confirmé/i.test(wb.LSV.services.account.friendly('email_not_confirmed')),
         wb.LSV.services.account.friendly('email_not_confirmed'));
@@ -497,6 +529,35 @@ async function load(html, url) {
     check('erreur d envoi masquée à l utilisateur', /réessaie dans quelques instants/i.test(wb.LSV.services.account.friendly('Error sending confirmation email')), wb.LSV.services.account.friendly('Error sending confirmation email'));
     check('aucune mention technique dans les messages', !/SMTP|Supabase|Authentication|HTTP|sk-/i.test(wb.LSV.services.account.friendly('Error sending confirmation email') + ' ' + wb.LSV.services.account.friendly('Email address not authorized')));
     check('limite d inscriptions traduite', /réessaie dans une heure/i.test(wb.LSV.services.account.friendly('over_email_send_rate_limit')), wb.LSV.services.account.friendly('over_email_send_rate_limit'));
+
+    console.log('\n=== 12. ARCHITECTURE MODULAIRE ===');
+    check('index.html léger (squelette HTML seulement)', source.length < 90000, source.length + ' octets');
+    check('aucun <style> inline dans index.html', !/<style>/.test(source));
+    /* Seuls les <script> exécutables sont comptés : le JSON-LD
+       (type="application/ld+json") est de la donnée, pas du code. */
+    const inlineScripts = source.match(/<script(?![^>]*src=)(?![^>]*application\/ld\+json)[^>]*>([\s\S]*?)<\/script>/g) || [];
+    check('scripts inline limités au shim (3 max)', inlineScripts.length <= 3, inlineScripts.length);
+    check('script inline court (shim uniquement)', inlineScripts.every(s => s.length < 600), inlineScripts.map(s => s.length).join('+'));
+    const expected = [
+        'styles/base.css', 'styles/sidebar.css', 'styles/studio.css',
+        'styles/account.css', 'styles/welcome.css', 'styles/views.css',
+        'scripts/constants.js', 'scripts/core.js', 'scripts/account.js',
+        'scripts/media.js', 'scripts/ui.js', 'scripts/chat.js',
+        'scripts/views.js', 'scripts/handlers.js'
+    ];
+    const missing = expected.filter(rel => !fs.existsSync(path.join(PROJECT, rel)));
+    check('tous les modules CSS/JS existent', missing.length === 0, missing.join(','));
+    check('chaque module référencé par index.html', expected.every(rel => source.indexOf('./' + rel) !== -1), expected.filter(rel => source.indexOf('./' + rel) === -1).join(','));
+    const bigInline = source.match(/<script(?![^>]*src=)(?![^>]*application\/ld\+json)[^>]*>[\s\S]{2000,}<\/script>/);
+    check('aucun script inline volumineux', !bigInline);
+    check('ordre des modules constant → core → account → media → ui → chat → views → handlers',
+        source.indexOf('./scripts/constants.js') < source.indexOf('./scripts/core.js') &&
+        source.indexOf('./scripts/core.js') < source.indexOf('./scripts/account.js') &&
+        source.indexOf('./scripts/account.js') < source.indexOf('./scripts/media.js') &&
+        source.indexOf('./scripts/media.js') < source.indexOf('./scripts/ui.js') &&
+        source.indexOf('./scripts/ui.js') < source.indexOf('./scripts/chat.js') &&
+        source.indexOf('./scripts/chat.js') < source.indexOf('./scripts/views.js') &&
+        source.indexOf('./scripts/views.js') < source.indexOf('./scripts/handlers.js'));
 
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');
