@@ -25,6 +25,14 @@
 .welcome-top nav a:hover { color: #fff; background: rgba(255, 255, 255, 0.07); }
 .welcome-top nav a.w-top-cta { background: #ffffff; color: #0b0e0e; }
 .welcome-top nav a.w-top-cta:hover { background: #2dd4bf; }
+@media (max-width: 720px) {
+    .welcome-top { flex-wrap: wrap; row-gap: 0.5rem; }
+    .welcome-top nav { flex-wrap: wrap; justify-content: flex-end; }
+}
+@media (max-width: 560px) {
+    .welcome-top nav a:not(.w-top-cta) { display: none; }
+    .welcome-top nav a.w-top-cta { padding: 0.5rem 1rem; }
+}
 
 .w-hero { text-align: center; padding: 3.2rem 0 2.6rem; }
 .w-eyebrow { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.45rem 1rem; border: 1px solid rgba(45, 212, 191, 0.4); background: rgba(13, 148, 136, 0.12); color: #5eead4; border-radius: 999px; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 1.2rem; }
