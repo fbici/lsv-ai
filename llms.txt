@@ -1,0 +1,23 @@
+# LSV.ai — Le Studio Viral
+
+> LSV.ai est un studio de création de contenu propulsé par l'IA (images, vidéos
+> et chat IA en quelques secondes), édité par LeStudioViral, fondé par
+> Salaou Souleyman (développeur web & mobile).
+
+## Pages principales
+
+- [Accueil — Studio](https://fbici.github.io/lsv-ai/) : génération d'images IA,
+  de vidéos IA et chat IA, sans installation.
+- [À propos — LeStudioViral](https://fbici.github.io/lsv-ai/a-propos/) : la
+  marque, son fondateur et ses boutiques en ligne.
+
+## Boutiques
+
+- Boutique LeStudioViral (produits digitaux IA, TikTok, trading) :
+  https://rxorzera.mychariow.shop
+- Académie Digital (ebooks éducation) :
+  https://blgbiwds.mychariow.shop
+
+## Contact
+
+- Fondateur : Salaou Souleyman — https://fbici.github.io/lsv-ai/a-propos/

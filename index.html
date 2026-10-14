@@ -5,7 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#fafaf9">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="googlebot" content="index, follow">
 <link rel="icon" type="image/jpeg" href="./lsv.jpg">
+<link rel="apple-touch-icon" href="./lsv.jpg">
+<link rel="preload" as="image" href="./lsv.jpg">
 <title>LSV.ai — Le Studio Viral · Images, vidéos et chat IA | LeStudioViral</title>
 <meta name="description" content="LSV.ai, le Studio Viral de création de contenu propulsé par l'IA : génère des images, des vidéos et discute avec un chat IA en quelques secondes. Un studio créé par LeStudioViral, fondé par Salaou Souleyman, développeur web et mobile.">
 <meta name="keywords" content="LSV.ai, LeStudioViral, Le Studio Viral, images IA, vidéos IA, chat IA, création de contenu, Salaou Souleyman, studio IA">
@@ -17,9 +21,15 @@
 <meta property="og:description" content="Le studio de création de contenu propulsé par l'IA : images, vidéos et chat IA en quelques secondes. Par LeStudioViral (Salaou Souleyman).">
 <meta property="og:url" content="https://fbici.github.io/lsv-ai/">
 <meta property="og:locale" content="fr_FR">
-<meta name="twitter:card" content="summary">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="LSV.ai — Le Studio Viral · Images, vidéos et chat IA">
 <meta name="twitter:description" content="Le studio de création de contenu propulsé par l'IA : images, vidéos et chat IA en quelques secondes.">
+<meta name="twitter:image" content="https://fbici.github.io/lsv-ai/lsv.jpg">
+<meta property="og:image" content="https://fbici.github.io/lsv-ai/lsv.jpg">
+<meta property="og:image:alt" content="Logo LSV.ai — Le Studio Viral">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<link rel="apple-touch-icon" href="./lsv.jpg">
+<link rel="preload" as="image" href="./lsv.jpg">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -35,12 +45,30 @@
         "@type": "Organization",
         "name": "LeStudioViral",
         "url": "https://fbici.github.io/lsv-ai/a-propos/",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://fbici.github.io/lsv-ai/lsv.jpg"
+        },
         "founder": {
           "@type": "Person",
           "name": "Salaou Souleyman",
           "jobTitle": "Développeur d'applications web et mobile",
           "url": "https://fbici.github.io/lsv-ai/a-propos/"
         }
+      }
+    },
+    {
+      "@type": "SoftwareApplication",
+      "name": "LSV.ai — Le Studio Viral",
+      "applicationCategory": "MultimediaApplication",
+      "operatingSystem": "Web",
+      "inLanguage": "fr-FR",
+      "url": "https://fbici.github.io/lsv-ai/",
+      "description": "Studio IA de création de contenu : génération d'images, de vidéos et chat IA en quelques secondes.",
+      "publisher": {
+        "@type": "Organization",
+        "name": "LeStudioViral",
+        "url": "https://fbici.github.io/lsv-ai/a-propos/"
       }
     }
   ]
@@ -2221,10 +2249,9 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
 .w-shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .5s ease, transform .5s ease; }
 .w-shot.has-img img { opacity: 1; }
 .w-shot:hover img { transform: scale(1.04); }
-.w-shot figcaption { position: absolute; left: 0; right: 0; bottom: 0; padding: 1.9rem 0.9rem 0.85rem; background: linear-gradient(transparent, rgba(4, 8, 8, 0.92)); }
-.w-shot .w-prompt { display: block; font-size: 0.84rem; font-weight: 600; color: #f4f4f5; line-height: 1.35; }
-.w-shot .w-tag { display: inline-block; margin-top: 0.4rem; padding: 0.22rem 0.6rem; border-radius: 999px; background: rgba(45, 212, 191, 0.16); border: 1px solid rgba(45, 212, 191, 0.4); color: #5eead4; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
-.w-shot .w-badge { position: absolute; top: 0.8rem; left: 0.8rem; padding: 0.28rem 0.65rem; border-radius: 999px; background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(6px); color: #d4d4d8; font-size: 0.68rem; font-weight: 600; }
+
+.w-videoband { border-radius: 22px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.09); margin-bottom: 3.2rem; box-shadow: 0 26px 54px rgba(0, 0, 0, 0.45); }
+.w-videoband video { display: block; width: 100%; aspect-ratio: 16 / 7; object-fit: cover; background: #0b1220; }
 
 .w-features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 1.4rem 0 3rem; }
 @media (max-width: 900px) { .w-features { grid-template-columns: repeat(2, 1fr); } }
@@ -2564,41 +2591,27 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
             <p class="w-section-sub">Des images et des vidéos générées en quelques secondes à partir d'un simple texte.</p>
             <div class="w-showcase" id="welcome-gallery">
                 <figure class="w-shot w-shot-video">
-                    <span class="w-badge">Vidéo IA</span>
-                    <video autoplay muted loop playsinline preload="metadata" poster="./assets/showcase/4.jpg" aria-label="Vidéo générée par IA">
-                        <source src="./assets/showcase/video.mp4" type="video/mp4">
+                    <video autoplay muted loop playsinline preload="metadata" poster="./assets/showcase/4.jpg" aria-label="Exemple de vidéo générée par LSV.ai">
+                        <source src="./assets/showcase/V1.mp4" type="video/mp4">
                     </video>
-                    <figcaption><span class="w-prompt">« Clip généré par IA, prêt à publier »</span><span class="w-tag">Vidéo</span></figcaption>
                 </figure>
                 <figure class="w-shot">
-                    <span class="w-badge">Image IA</span>
-                    <img data-src="./assets/showcase/1.jpg" data-fallback="./assets/showcase/1.svg" alt="Portrait cinématique généré par IA">
-                    <figcaption><span class="w-prompt">« Portrait cinématique, lumière néon, regard intense »</span><span class="w-tag">Portrait</span></figcaption>
+                    <img data-src="./assets/showcase/1.jpg" data-fallback="./assets/showcase/1.svg" loading="lazy" decoding="async" width="800" height="1000" alt="Portrait cinématique généré avec LSV.ai">
                 </figure>
                 <figure class="w-shot">
-                    <span class="w-badge">Image IA</span>
-                    <img data-src="./assets/showcase/2.jpg" data-fallback="./assets/showcase/2.svg" alt="Scène urbaine générée par IA">
-                    <figcaption><span class="w-prompt">« Ville au coucher du soleil, ambiance cyberpunk »</span><span class="w-tag">Scène</span></figcaption>
+                    <img data-src="./assets/showcase/2.jpg" data-fallback="./assets/showcase/2.svg" loading="lazy" decoding="async" width="800" height="1000" alt="Scène urbaine générée avec LSV.ai">
                 </figure>
                 <figure class="w-shot">
-                    <span class="w-badge">Image IA</span>
-                    <img data-src="./assets/showcase/3.jpg" data-fallback="./assets/showcase/3.svg" alt="Produit premium généré par IA">
-                    <figcaption><span class="w-prompt">« Produit premium, studio photo, reflets doux »</span><span class="w-tag">Produit</span></figcaption>
+                    <img data-src="./assets/showcase/3.jpg" data-fallback="./assets/showcase/3.svg" loading="lazy" decoding="async" width="800" height="1000" alt="Produit premium généré avec LSV.ai">
                 </figure>
                 <figure class="w-shot">
-                    <span class="w-badge">Vidéo IA</span>
-                    <img data-src="./assets/showcase/4.jpg" data-fallback="./assets/showcase/4.svg" alt="Visuel vidéo vertical généré par IA">
-                    <figcaption><span class="w-prompt">« Clip vertical, mouvement fluide, format viral »</span><span class="w-tag">Vidéo</span></figcaption>
+                    <img data-src="./assets/showcase/4.jpg" data-fallback="./assets/showcase/4.svg" loading="lazy" decoding="async" width="800" height="1000" alt="Visuel vertical généré avec LSV.ai">
                 </figure>
                 <figure class="w-shot">
-                    <span class="w-badge">Image IA</span>
-                    <img data-src="./assets/showcase/5.jpg" data-fallback="./assets/showcase/5.svg" alt="Fond abstrait généré par IA">
-                    <figcaption><span class="w-prompt">« Vagues cosmiques, dégradés profonds, 8K »</span><span class="w-tag">Fond</span></figcaption>
+                    <img data-src="./assets/showcase/5.jpg" data-fallback="./assets/showcase/5.svg" loading="lazy" decoding="async" width="800" height="1000" alt="Fond abstrait généré avec LSV.ai">
                 </figure>
                 <figure class="w-shot">
-                    <span class="w-badge">Image IA</span>
-                    <img data-src="./assets/showcase/6.jpg" data-fallback="./assets/showcase/6.svg" alt="Illustration fluide générée par IA">
-                    <figcaption><span class="w-prompt">« Composition fluide, couleurs vives, énergie »</span><span class="w-tag">Illustration</span></figcaption>
+                    <img data-src="./assets/showcase/6.jpg" data-fallback="./assets/showcase/6.svg" loading="lazy" decoding="async" width="800" height="1000" alt="Illustration fluide générée avec LSV.ai">
                 </figure>
             </div>
         </section>
@@ -2685,6 +2698,12 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
                     <span class="w-shop-go">Découvrir l'Académie <span class="ms">arrow_forward</span></span>
                 </a>
             </div>
+        </section>
+
+        <section class="w-videoband" aria-label="Vidéo générée par LSV.ai">
+            <video autoplay muted loop playsinline preload="none" poster="./assets/showcase/5.jpg">
+                <source src="./assets/showcase/V2.mp4" type="video/mp4">
+            </video>
         </section>
 
         <section class="w-final">
@@ -4679,7 +4698,7 @@ const WelcomeView = {
             AccountView.setMode('login');
             AccountView.open();
         });
-        if (AccountService.signedIn() || this.done()) this.hide();
+        if (AccountService.signedIn()) this.hide();
         else this.open();
     },
     loadGallery() {

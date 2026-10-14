@@ -426,6 +426,12 @@ async function load(html, url) {
     const sitemapPath = path.join(PROJECT, 'sitemap.xml');
     const sitemapSrc = fs.existsSync(sitemapPath) ? fs.readFileSync(sitemapPath, 'utf8') : '';
     check('sitemap.xml contient studio + à propos', /fbici\.github\.io\/lsv-ai\//.test(sitemapSrc) && /a-propos\//.test(sitemapSrc) && !/a-propos\.html/.test(sitemapSrc));
+    check('sitemap daté (lastmod)', /<lastmod>/.test(sitemapSrc));
+    const llmsPath = path.join(PROJECT, 'llms.txt');
+    check('llms.txt présent (index IA)', fs.existsSync(llmsPath) && /LSV\.ai/.test(fs.readFileSync(llmsPath, 'utf8')));
+    check('SEO accueil : og:image + twitter:card large + robots', /og:image/.test(source) && /summary_large_image/.test(source) && /name="robots" content="index, follow/.test(source));
+    check('SEO accueil : JSON-LD SoftwareApplication', /"SoftwareApplication"/.test(source));
+    check('SEO à propos : og:image + robots', /og:image/.test(aboutSrc) && /name="robots" content="index, follow/.test(aboutSrc));
 
     console.log('\n=== 10. PAGE D\'ACCUEIL & BOUTIQUES ===');
     check('logo officiel sur l accueil', !!doc.getElementById('welcome-logo') && doc.getElementById('welcome-logo').getAttribute('src') === './lsv.jpg');
@@ -434,7 +440,9 @@ async function load(html, url) {
     check('lien connexion pour comptes existants', !!doc.getElementById('welcome-login'));
     check('gallerie d exemples (6 images + 1 vidéo)', doc.querySelectorAll('#welcome-gallery .w-shot').length === 7 && doc.querySelectorAll('#welcome-gallery img[data-src^="./assets/showcase/"]').length === 6, doc.querySelectorAll('#welcome-gallery .w-shot').length);
     check('vignettes jpg + repli svg', doc.querySelectorAll('#welcome-gallery img[data-src^="./assets/showcase/"]').length === 6 && doc.querySelectorAll('#welcome-gallery img[data-fallback$=".svg"]').length === 6);
-    check('vidéo générée intégrée à la gallerie', !!doc.querySelector('#welcome-gallery video source[src="./assets/showcase/video.mp4"]'));
+    check('vidéo générée (V1) en tête de gallerie', !!doc.querySelector('#welcome-gallery video source[src="./assets/showcase/V1.mp4"]'));
+    check('seconde vidéo (V2) en bas de page', !!doc.querySelector('.w-videoband video source[src="./assets/showcase/V2.mp4"]'));
+    check('gallerie sans badges ni légendes', doc.querySelectorAll('#welcome-gallery .w-badge, #welcome-gallery figcaption, #welcome-gallery .w-prompt, #welcome-gallery .w-tag').length === 0);
     check('aucune phrase technique de dépôt sur l accueil', !/dépose|assets\/showcase|repli|SVG/i.test(doc.getElementById('welcome-gallery').textContent));
     check('sections accueil (créations, fonctions, boutiques, final)', !!doc.getElementById('w-showcase') && !!doc.getElementById('w-features') && !!doc.getElementById('w-shops') && !!doc.querySelector('.w-final'));
     check('étapes & stats présentes', doc.querySelectorAll('.w-step').length === 3 && doc.querySelectorAll('.w-stat').length === 4);
@@ -458,6 +466,9 @@ async function load(html, url) {
     const wf = first.dom.window;
     const df = wf.document;
     check('première visite sans compte : accueil visible', !df.getElementById('welcome').classList.contains('hidden'));
+    wf.localStorage.setItem('lsv4_welcome', 'done');
+    const again = await load(prepare());
+    check('visiteur déconnecté : accueil visible même après passage précédent', !again.dom.window.document.getElementById('welcome').classList.contains('hidden'));
     df.getElementById('welcome-continue').click();
     await new Promise(r => setTimeout(r, 200));
     check('Continuer sans compte : modale d inscription ouverte', !df.getElementById('auth-modal').classList.contains('hidden'));

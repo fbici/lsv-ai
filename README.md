@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.6.2
+# LSV.ai — Studio Viral v3.6.3
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
 
@@ -86,7 +86,7 @@ lsv-ai/
 │
 ├── a-propos/                 # Page « À propos » (URL propre : /a-propos/)
 │   └── index.html            #   LeStudioViral · Salaou Souleyman · boutiques
-├── assets/showcase/          # 1.jpg…6.jpg + video.mp4 (créations réelles) + replis SVG
+├── assets/showcase/          # 1.jpg…6.jpg + V1.mp4 + V2.mp4 (créations réelles) + replis SVG
 ├── lsv.jpg                   # Logo officiel de la marque
 ├── robots.txt               # SEO : robots autorisés, /admin/ interdit, sitemap
 ├── sitemap.xml              # SEO : plan du site (studio + à propos)
@@ -252,13 +252,16 @@ le back-office affiche « Compte non autorisé » et le tableau de bord reste vi
 | Ajout | Détail |
 |---|---|
 | **Page d'accueil** | premier écran à l'ouverture de l'app (première visite), inspiré des grandes plateformes : barre de marque, héros avec logo officiel `lsv.jpg`, titre géant, double CTA (Commencer / J'ai déjà un compte) |
-| **Galerie « Créé avec LSV.ai »** | 1 **vidéo** générée en grand + 6 images générées (prompts + tags) — visuels réels `assets/showcase/1.jpg`…`6.jpg` + `video.mp4`, SVG de repli inclus |
+| **Galerie « Créé avec LSV.ai »** | 1 **vidéo** en grand (V1) + 6 images + 2ᵉ vidéo (V2) en bas de page — visuels réels `assets/showcase/1.jpg`…`6.jpg`, `V1.mp4`, `V2.mp4`, SVG de repli inclus |
 | **Sections complètes** | fonctionnalités (6 cartes), « Comment ça marche » (3 étapes), bandeau de stats, **boutiques**, CTA final, pied de marque |
 | **Première visite → compte** | « Commencer » sans compte ouvre l'inscription ; le dashboard de création n'apparaît qu'une fois le compte créé (drapeau `localStorage.lsv4_welcome`) |
 | **Déconnexion → accueil** | à la déconnexion, renvoi automatique vers la page d'accueil |
+| **Visiteur déconnecté** | l'accueil s'affiche à chaque visite sans compte (le drapeau `lsv4_welcome` ne masque plus l'accueil aux visiteurs) |
+| **Galerie épurée** | plus de badges ni de légendes sur les visuels : seuls les visuels et leurs `alt` SEO restent |
 | **Boutiques en ligne** | liens réels sur l'accueil **et** sur la page À propos : [Boutique LeStudioViral](https://rxorzera.mychariow.shop) (`SHOP_1_URL`) et [Académie Digital](https://blgbiwds.mychariow.shop) (`SHOP_2_URL`) |
 | **URL propres** | plus aucun lien interne vers `index.html` : accueil `…/lsv-ai/`, à propos `…/a-propos/`, back-office `…/admin/` |
 | **Page À propos épurée** | seul le logo du header reste visible ; logos héros/avatar supprimés |
+| **SEO renforcé** | `og:image` + `twitter:image` (carte large) sur les 2 pages, `robots` (index/follow, large images), `apple-touch-icon`, `preload` du logo, JSON-LD enrichi (`SoftwareApplication` + logo de l'Organization), `llms.txt` (index IA), `sitemap.xml` daté (`lastmod`), images avec `alt`, `loading="lazy"`, `width`/`height` (anti-CLS) |
 | **Onglets du navigateur** | titres de pages explicites + favicon `lsv.jpg` |
 | **Texte sous les formulaires retiré** | la mention « Les mots de passe sont vérifiés… » sous la page de connexion a été supprimée |
 | **Erreurs d'inscription plus claires** | échec d'envoi de la confirmation ou limite d'inscription : messages **génériques** pour l'utilisateur (« réessaie dans quelques instants ») — aucun détail de configuration n'est jamais affiché |
@@ -667,7 +670,7 @@ dans le back-office elle n'apparaît masquée que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 337 assertions (349 avec ORIG=… voir plus bas)
+npm test        # 345 assertions (398 avec ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (41 assertions, **53 avec `ORIG`**) — non-régression
@@ -683,7 +686,7 @@ npm test        # 337 assertions (349 avec ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (175 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (183 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -718,11 +721,17 @@ npm test        # 337 assertions (349 avec ORIG=… voir plus bas)
   Salaou Souleyman, métiers, boutiques, JSON-LD Person/Organization), meta/canonical/OG de
   l'app, `robots.txt` (admin interdit) et `sitemap.xml` ;
 - **page d'accueil & boutiques** : accueil de première visite (héros, galerie
-  1 vidéo + 6 images générées, fonctionnalités, étapes, stats, boutiques,
-  CTA), inscription obligatoire avant le dashboard, déconnexion renvoyant à
-  l'accueil, liens réels des boutiques (`rxorzera` / `blgbiwds`), aucun lien
-  interne `index.html`, page À propos épurée (logo header uniquement),
-  erreurs d'inscription génériques (jamais de détail de configuration).
+  V1 + 6 images + V2 en bas de page, fonctionnalités, étapes, stats, boutiques,
+  CTA), visiteur toujours renvoyé à l'accueil, déconnexion renvoyant à
+  l'accueil, galerie sans badges ni légendes, liens réels des boutiques
+  (`rxorzera` / `blgbiwds`), aucun lien interne `index.html`, page À propos
+  épurée, erreurs d'inscription génériques.
+- **SEO renforcé** (recherche Google 2026 appliquée) : `og:image` +
+  `twitter:image` (carte large) sur les 2 pages, `robots` (index, follow,
+  max-image-preview:large), `apple-touch-icon`, `preload` logo (LCP), JSON-LD
+  `WebSite` + `Organization` (avec logo) + `SoftwareApplication`, `llms.txt`
+  (indexation IA), `sitemap.xml` avec `lastmod`, images avec `alt` descriptifs,
+  `loading="lazy"` + `decoding="async"` + `width`/`height` (anti-CLS).
 
 **`tests/gateway.test.mjs`** (49 assertions) — passerelle
 
