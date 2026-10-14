@@ -18,10 +18,12 @@ const handle = createHandler({
         SUPABASE_SECRET_KEYS: Deno.env.get('SUPABASE_SECRET_KEYS') ?? '',
         ALLOWED_ORIGINS: Deno.env.get('ALLOWED_ORIGINS') ?? 'https://fbici.github.io,http://localhost:4173,http://127.0.0.1:4173',
         RATE_LIMIT_PER_MIN: Deno.env.get('RATE_LIMIT_PER_MIN') ?? '',
+        MAX_CONCURRENT_PER_USER: Deno.env.get('MAX_CONCURRENT_PER_USER') ?? '',
         IMAGE_LIMIT: Deno.env.get('IMAGE_LIMIT') ?? '',
         VIDEO_LIMIT: Deno.env.get('VIDEO_LIMIT') ?? '',
         CHAT_LIMIT: Deno.env.get('CHAT_LIMIT') ?? '',
         MOTION_LIMIT: Deno.env.get('MOTION_LIMIT') ?? '',
+        QUOTA_GLOBAL_DAILY: Deno.env.get('QUOTA_GLOBAL_DAILY') ?? '',
         MAX_BODY_BYTES: Deno.env.get('MAX_BODY_BYTES') ?? ''
     }
 });

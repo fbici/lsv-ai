@@ -258,6 +258,10 @@ html, body {
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 
+/* Quotas : 4 champs sur une ligne en desktop, empilés en mobile. */
+.quota-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.85rem; }
+.quota-grid .field { margin-bottom: 0; }
+
 /* ── KPI ───────────────────────────────────────────────────────────────── */
 .kpi-grid {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

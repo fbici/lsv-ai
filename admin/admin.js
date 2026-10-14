@@ -29,6 +29,10 @@
         users: [],
         actions: [],
         logs: [],
+        limits: {},
+        usage: [],
+        loadingLimits: false,
+        loadingUsage: false,
         loadingActions: false,
         loadingLogs: false,
         priorVisitors: [],
@@ -52,6 +56,7 @@
         motion: { title: 'Motion', sub: 'Module Motion Control' },
         users: { title: 'Utilisateurs', sub: 'Comptes créés sur LSV.ai (nom, e-mail, connexion)' },
         actions: { title: 'Actions', sub: 'Détail de l\'activité de chaque compte (images, vidéos, chat, projets)' },
+        limits: { title: 'Limites et quotas', sub: 'Quotas journaliers par compte, protections globales, interruption d\'urgence' },
         logs: { title: 'Journal', sub: 'Qui a fait quoi, quand — trace d\'audit du back-office' },
         settings: { title: 'Paramètres', sub: 'Connexion, session et actualisation' }
     };
@@ -1228,6 +1233,225 @@
         );
     }
 
+    /* ── Limites et quotas ──────────────────────────────────────────────────
+       Tout est stocké dans app_settings et lu par la passerelle (Edge
+       Function lsv-gateway) qui vérifie le jeton du compte et appelle les
+       fonctions SQL atomiques consume_quota / refund_quota / get_quota.
+       Une valeur à 0 signifie « illimité ». Les images sont pondérées par
+       résolution : 1K = 1 unité, 2K = 2, 3K = 3. */
+    var QUOTA_GROUPS = {
+        user: ['quota_image_daily', 'quota_video_daily', 'quota_chat_daily', 'quota_motion_daily'],
+        admin: ['quota_admin_image_daily', 'quota_admin_video_daily', 'quota_admin_chat_daily'],
+        global: ['quota_global_daily']
+    };
+    var ALL_QUOTA_KEYS = QUOTA_GROUPS.user.concat(QUOTA_GROUPS.admin, QUOTA_GROUPS.global,
+        ['quota_enabled', 'quota_suspended']);
+
+    function utcDay() { return new Date().toISOString().slice(0, 10); }
+
+    function loadLimits(showToast) {
+        if (!State.client || !State.user || State.loadingLimits) return Promise.resolve();
+        State.loadingLimits = true;
+        return Promise.resolve(
+            State.client.from('app_settings').select('key,value').limit(100)
+        ).then(function (res) {
+            State.loadingLimits = false;
+            if (res && res.error) {
+                State.limits = {};
+                renderLimits();
+                if (showToast) toast('Réglages illisibles : ' + friendlyAuthError(res.error.message), 'error');
+                return;
+            }
+            var map = {};
+            ((res && res.data) || []).forEach(function (r) {
+                if (ALL_QUOTA_KEYS.indexOf(r.key) !== -1) map[r.key] = String(r.value == null ? '' : r.value);
+            });
+            State.limits = map;
+            renderLimits();
+            return loadUsage(showToast);
+        }).catch(function (e) {
+            State.loadingLimits = false;
+            State.limits = {};
+            renderLimits();
+            if (showToast) toast('Erreur réseau : ' + ((e && e.message) || ''), 'error');
+        });
+    }
+
+    function renderLimits() {
+        if (!$('limits-enabled-badge')) return;
+        var m = State.limits || {};
+        var enabled = m.quota_enabled === undefined ? true : m.quota_enabled === '1';
+        var suspended = m.quota_suspended === '1';
+        var badge = $('limits-enabled-badge');
+        badge.textContent = enabled ? 'quotas actifs' : 'quotas désactivés';
+        badge.className = 'badge ' + (enabled ? 'ok' : 'err');
+
+        var fill = function (id, key) {
+            var el = $(id);
+            if (!el) return;
+            el.value = m[key] === undefined ? '' : m[key];
+        };
+        fill('quota-image-daily', 'quota_image_daily');
+        fill('quota-video-daily', 'quota_video_daily');
+        fill('quota-chat-daily', 'quota_chat_daily');
+        fill('quota-motion-daily', 'quota_motion_daily');
+        fill('quota-admin-image-daily', 'quota_admin_image_daily');
+        fill('quota-admin-video-daily', 'quota_admin_video_daily');
+        fill('quota-admin-chat-daily', 'quota_admin_chat_daily');
+        fill('quota-global-daily', 'quota_global_daily');
+
+        $('limits-suspend-status').innerHTML = kvHTML([
+            ['Générations', suspended ? '<span class="badge err">suspendues</span>' : '<span class="badge ok">actives</span>'],
+            ['Quotas journaliers', enabled ? '<span class="badge ok">appliqués</span>' : '<span class="badge err">désactivés</span>'],
+            ['Limite globale', m.quota_global_daily ? esc(m.quota_global_daily) + ' unités/jour' : 'illimitée'],
+            ['Images', (m.quota_image_daily || '0') + ' unités/jour (1K = 1, 2K = 2, 3K = 3)']
+        ]);
+        renderUsage();
+    }
+
+    function readQuotaInput(id) {
+        var el = $(id);
+        if (!el) return '';
+        var raw = String(el.value == null ? '' : el.value).trim();
+        if (raw === '') return '';
+        var n = parseInt(raw, 10);
+        if (!Number.isFinite(n) || n < 0) return '';
+        return String(n);
+    }
+
+    function saveQuotaKeys(keys, label, logAction) {
+        if (!State.client || !State.isAdmin) { toast('Réservé à l\'administrateur.', 'error'); return Promise.resolve(); }
+        /* Les ids HTML suivent le motif quota-<nom sans préfixe> :
+           quota_image_daily → quota-image-daily, quota_admin_image_daily →
+           quota-admin-image-daily. Une valeur vide = « quota standard ». */
+        var rows = keys.map(function (k) {
+            var id = 'quota-' + k.replace(/^quota_/, '').replace(/_/g, '-');
+            return { key: k, value: readQuotaInput(id), updated_at: new Date().toISOString() };
+        });
+        return Promise.resolve(
+            State.client.from('app_settings').upsert(rows, { onConflict: 'key' })
+        ).then(function (res) {
+            if (res && res.error) { toast('Enregistrement impossible : ' + friendlyAuthError(res.error.message), 'error'); return; }
+            toast(label + ' enregistré(s) — appliqué(s) sous ~30 s.', 'success');
+            logAdmin(logAction, 'app_settings', {
+                cles: keys.join(','),
+                valeurs: rows.map(function (r) { return r.key + '=' + (r.value === '' ? 'vide' : r.value); }).join(' ')
+            });
+            return loadLimits(false);
+        }).catch(function (e) {
+            toast('Enregistrement impossible : ' + ((e && e.message) || 'réseau'), 'error');
+        });
+    }
+
+    /* Consommation du jour : usage_counters croisé avec profiles. */
+    function loadUsage(showToast) {
+        if (!State.client || !State.user || State.loadingUsage) return Promise.resolve();
+        State.loadingUsage = true;
+        return Promise.resolve(
+            State.client.from('usage_counters').select('user_id,kind,units,updated_at').limit(2000)
+        ).then(function (res) {
+            State.loadingUsage = false;
+            if (res && res.error) {
+                State.usage = [];
+                renderUsage();
+                if (showToast) toast('Consommation illisible : ' + friendlyAuthError(res.error.message), 'error');
+                return;
+            }
+            var rows = ((res && res.data) || []).filter(function (r) { return r.user_id && r.user_id !== '00000000-0000-0000-0000-000000000000'; });
+            return loadProfiles().then(function (byId) {
+                var agg = {};
+                rows.forEach(function (r) {
+                    var a = agg[r.user_id] || (agg[r.user_id] = { user_id: r.user_id, image: 0, video: 0, chat: 0, motion: 0, global: 0, last: null });
+                    if (a[r.kind] !== undefined) a[r.kind] += Number(r.units) || 0;
+                    if (!a.last || (r.updated_at || '') > a.last) a.last = r.updated_at || null;
+                });
+                State.usage = Object.keys(agg).map(function (id) {
+                    var a = agg[id];
+                    var p = byId[id] || {};
+                    a.full_name = p.full_name || '';
+                    a.email = p.email || '';
+                    a.total = a.image + a.video + a.chat + a.motion;
+                    return a;
+                }).sort(function (x, y) { return y.total - x.total || (y.last || '').localeCompare(x.last || ''); });
+                renderUsage();
+                if (showToast) toast(num(State.usage.length) + ' compte(s) aujourd\'hui', 'success');
+            });
+        }).catch(function (e) {
+            State.loadingUsage = false;
+            State.usage = [];
+            renderUsage();
+            if (showToast) toast('Erreur réseau : ' + ((e && e.message) || ''), 'error');
+        });
+    }
+
+    function renderUsage() {
+        if (!$('limits-table')) return;
+        var rows = State.usage || [];
+        var images = 0, videos = 0, chats = 0;
+        rows.forEach(function (a) { images += a.image; videos += a.video; chats += a.chat; });
+        if ($('kpi-limits')) {
+            $('kpi-limits').innerHTML =
+                kpi('Comptes actifs', num(rows.length), 'aujourd\'hui (UTC)', 'group', COLORS.chat) +
+                kpi('Images', num(images), 'unités consommées', 'image', COLORS.image) +
+                kpi('Vidéos', num(videos), 'générées', 'movie', COLORS.video) +
+                kpi('Chat', num(chats), 'messages', 'forum', COLORS.project);
+        }
+        $('limits-table').innerHTML = tableHTML(
+            [{ label: 'Compte' }, { label: 'E-mail' }, { label: 'Images' }, { label: 'Vidéos' },
+             { label: 'Chat' }, { label: 'Total' }, { label: 'Dernière activité' }],
+            rows.map(function (a) {
+                return [
+                    esc(a.full_name || '—'),
+                    esc(a.email || '—'),
+                    num(a.image),
+                    num(a.video),
+                    num(a.chat),
+                    num(a.total),
+                    a.last ? esc(fmtDateTime(a.last)) : '—'
+                ];
+            })
+        );
+    }
+
+    function setSuspended(on) {
+        if (!State.client || !State.isAdmin) { toast('Réservé à l\'administrateur.', 'error'); return; }
+        Promise.resolve(
+            State.client.from('app_settings').upsert({
+                key: 'quota_suspended', value: on ? '1' : '0', updated_at: new Date().toISOString()
+            }, { onConflict: 'key' })
+        ).then(function (res) {
+            if (res && res.error) { toast('Action impossible : ' + friendlyAuthError(res.error.message), 'error'); return; }
+            toast(on ? 'Générations suspendues pour tout le monde.' : 'Générations réactivées.', on ? 'error' : 'success');
+            logAdmin(on ? 'generations_suspendues' : 'generations_reactivees', 'quota_suspended', {});
+            return loadLimits(false);
+        }).catch(function (e) {
+            toast('Action impossible : ' + ((e && e.message) || 'réseau'), 'error');
+        });
+    }
+
+    function initQuotaActions() {
+        var bind = function (id, fn) { var el = $(id); if (el) el.addEventListener('click', fn); };
+        bind('quota-save-user', function () { saveQuotaKeys(QUOTA_GROUPS.user, 'Quotas utilisateur', 'quotas_utilisateur_modifies'); });
+        bind('quota-save-admin', function () { saveQuotaKeys(QUOTA_GROUPS.admin, 'Quotas administrateur', 'quotas_admin_modifies'); });
+        bind('quota-clear-admin', function () {
+            if (!State.client || !State.isAdmin) { toast('Réservé à l\'administrateur.', 'error'); return; }
+            var rows = QUOTA_GROUPS.admin.map(function (k) {
+                return { key: k, value: '', updated_at: new Date().toISOString() };
+            });
+            Promise.resolve(State.client.from('app_settings').upsert(rows, { onConflict: 'key' }))
+                .then(function (res) {
+                    if (res && res.error) { toast('Action impossible : ' + friendlyAuthError(res.error.message), 'error'); return; }
+                    toast('Quotas administrateurs : valeurs standards rétablies.', 'success');
+                    logAdmin('quotas_admin_reinitialises', 'app_settings', {});
+                    return loadLimits(false);
+                }).catch(function () { toast('Action impossible.', 'error'); });
+        });
+        bind('quota-save-global', function () { saveQuotaKeys(QUOTA_GROUPS.global, 'Limite globale', 'limite_globale_modifiee'); });
+        bind('quota-suspend-on', function () { setSuspended(true); });
+        bind('quota-suspend-off', function () { setSuspended(false); });
+        bind('limits-refresh', function () { loadLimits(true); });
+    }
+
     function renderAll() {
         try {
         if (State.page === 'overview') renderOverview();
@@ -1238,6 +1462,7 @@
         else if (State.page === 'errors') renderErrors();
         else if (State.page === 'users') renderUsers();
         else if (State.page === 'actions') renderActions();
+        else if (State.page === 'limits') renderLimits();
         else if (State.page === 'logs') renderLogs();
         else if (State.page === 'settings') renderSettings();
         } catch (e) { if (window.console) console.error(e); toast('Erreur de rendu : ' + e.message, 'error'); }
@@ -1259,6 +1484,7 @@
         renderAll();
         if (page === 'users') loadUsers(false);
         if (page === 'actions') loadActions(false);
+        if (page === 'limits') loadLimits(false);
         if (page === 'logs') loadLogs(false);
     }
 
@@ -1319,6 +1545,8 @@
             startAutoRefresh();
             toast(State.refreshSec ? 'Actualisation automatique activée' : 'Actualisation automatique désactivée', 'success');
         });
+
+        initQuotaActions();
     }
 
     /* ── Démarrage ──────────────────────────────────────────────────────── */

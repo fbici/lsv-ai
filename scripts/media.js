@@ -22,12 +22,28 @@ const AgnesProvider = {
                 const res = await fetch(url, options);
                 const dt = Date.now() - t0;
                 DebugService.log('response', 'REP ' + label, 'HTTP ' + res.status + ' en ' + dt + 'ms');
+                /* Les en-têtes de quota sont lus à chaque vol : le compteur
+                   « restant » reste exact sans appel supplémentaire. */
+                if (window.QuotaService && QuotaService.applyHeaders) QuotaService.applyHeaders(res);
                 if (res.status === 429) {
+                    /* Quota journalier épuisé : inutile de réessayer, le
+                       compteur ne repart qu'à minuit UTC. */
+                    if (window.QuotaService && QuotaService.isExhausted(res)) {
+                        DebugService.log('warn', 'QUOTA', 'quota du jour atteint');
+                        UI.setStatus('');
+                        throw new Error(QuotaService.message(res) || 'Quota du jour atteint.');
+                    }
                     const wait = CONFIG.RETRY_429_WAITS[Math.min(attempt, 6)];
                     DebugService.log('warn', 'RATELIMIT', '429 — attente ' + wait + 's');
                     UI.setStatus('Génération en cours… (' + wait + 's)');
                     await Utils.sleep(wait * 1000);
                     continue;
+                }
+                if (res.status === 503 && window.QuotaService && QuotaService.message(res)) {
+                    /* Générations suspendues par l'administrateur. */
+                    DebugService.log('warn', 'SUSPENDU', 'générations suspendues');
+                    UI.setStatus('');
+                    throw new Error(QuotaService.message(res));
                 }
                 if (res.status === 503) {
                     const wait = CONFIG.RETRY_503_WAITS[Math.min(attempt, 5)];

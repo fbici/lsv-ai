@@ -22,6 +22,22 @@ const LOGS = [
     { created_at: new Date(Date.now() - 7200000).toISOString(), actor_email: 'admin@test.com', action: 'connexion', target: null, detail: {} }
 ];
 
+// Table public.app_settings (clé fournisseur + quotas journaliers)
+const SETTINGS = {};
+[['quota_enabled', '1'], ['quota_suspended', '0'],
+ ['quota_image_daily', '20'], ['quota_video_daily', '8'], ['quota_chat_daily', '30'],
+ ['quota_motion_daily', '0'], ['quota_global_daily', '500']].forEach(([k, v]) => {
+    SETTINGS[k] = { key: k, value: v, updated_at: new Date(Date.now() - 86400000).toISOString() };
+});
+
+// Table public.usage_counters (consommation du jour par compte)
+const USAGE = [
+    { user_id: 'u1', kind: 'image', units: 5, updated_at: new Date(Date.now() - 600000).toISOString() },
+    { user_id: 'u1', kind: 'video', units: 2, updated_at: new Date(Date.now() - 300000).toISOString() },
+    { user_id: 'u1', kind: 'chat', units: 11, updated_at: new Date().toISOString() },
+    { user_id: 'u2', kind: 'image', units: 3, updated_at: new Date(Date.now() - 120000).toISOString() }
+];
+
 // Table public.profiles (noms + e-mails des comptes, remplie par trigger SQL)
 const PROFILES = [
     { id: 'u1', email: 'ada@lsv.ai', full_name: 'Ada Lovelace', created_at: new Date(Date.now() - 2 * 86400000).toISOString(), last_sign_in_at: new Date(Date.now() - 3600000).toISOString() },
@@ -128,9 +144,10 @@ async function login(dom, email, password) {
     const fake = function makeFakeSupabase() {
         function builder(rowsForRequest, table) {
             const b = {
-                _table: table, _upsert: null, _isDelete: false, _insert: null,
+                _table: table, _upsert: null, _isDelete: false, _insert: null, _eq: null,
                 select() { return b; }, gte() { return b; }, lt() { return b; },
-                order() { return b; }, limit() { return b; }, eq() { return b; }, not() { return b; },
+                order() { return b; }, limit() { return b; },
+                eq(k, v) { b._eq = { k: k, v: v }; return b; }, not() { return b; },
                 insert(row) { b._insert = row; return b; },
                 upsert(row) { b._upsert = row; return b; },
                 delete() { b._isDelete = true; return b; },
@@ -147,16 +164,21 @@ async function login(dom, email, password) {
                     } else if (b._table === 'app_settings') {
                         const store = window.__SETTINGS || {};
                         if (b._upsert) {
-                            store[b._upsert.key] = b._upsert;
+                            const rows = Array.isArray(b._upsert) ? b._upsert : [b._upsert];
+                            rows.forEach(r => { store[r.key] = r; });
                             window.__SETTINGS = store;
-                            result = { data: [b._upsert], error: null };
+                            result = { data: rows, error: null };
                         } else if (b._isDelete) {
-                            window.__SETTINGS = {};
+                            if (b._eq && b._eq.k === 'key') delete store[b._eq.v];
+                            window.__SETTINGS = store;
                             result = { data: null, error: null };
                         } else {
-                            const row = store.provider_api_key;
-                            result = { data: row ? [{ key: row.key, value: row.value, updated_at: row.updated_at }] : [], error: null };
+                            var rows = Object.keys(store).map(k => ({ key: k, value: store[k].value, updated_at: store[k].updated_at }));
+                            if (b._eq && b._eq.k === 'key') rows = rows.filter(r => r.key === b._eq.v);
+                            result = { data: rows, error: null };
                         }
+                    } else if (b._table === 'usage_counters') {
+                        result = { data: window.__USAGE || [], error: null };
                     } else {
                         result = { data: rowsForRequest, error: null };
                     }
@@ -196,6 +218,7 @@ async function login(dom, email, password) {
             from(table) {
                 if (table === 'profiles') return builder(window.__PROFILES || [], table);
                 if (table === 'admin_logs') return builder(window.__LOGS || [], table);
+                if (table === 'usage_counters') return builder(window.__USAGE || [], table);
                 return builder(window.__EVENTS, table);
             },
             rpc(name) {
@@ -219,9 +242,10 @@ async function login(dom, email, password) {
                 '<script>window.__rlsEnabled=true;window.__GOOD_EMAIL="' + GOOD_EMAIL + '";window.__GOOD_PASSWORD="' + GOOD_PASSWORD +
                 '";window.__USER_EMAIL="' + OTHER_EMAIL + '";window.__CONFIRM_EMAIL="' + CONFIRM_EMAIL +
                 '";window.__WHITELIST=' + JSON.stringify(WHITELIST) +
-                ';window.__SETTINGS={};window.__EVENTS=' + JSON.stringify(EVENTS) +
+                ';window.__SETTINGS=' + JSON.stringify(SETTINGS) + ';window.__EVENTS=' + JSON.stringify(EVENTS) +
                 ';window.__PROFILES=' + JSON.stringify(PROFILES) +
-                ';window.__LOGS=' + JSON.stringify(LOGS) + ';window.supabase=(' + fake.toString() + ')();</script>')
+                ';window.__LOGS=' + JSON.stringify(LOGS) +
+                ';window.__USAGE=' + JSON.stringify(USAGE) + ';window.supabase=(' + fake.toString() + ')();</script>')
             .replace('<script src="../shared/config.js"></script>', '<script>window.LSV_CONFIG=' + JSON.stringify(config) + ';</script>')
             .replace('<script src="./admin.js"></script>', '<script>' + fs.readFileSync(path.join(PROJECT, 'admin/admin.js'), 'utf8') + '</script>');
     }
@@ -404,6 +428,7 @@ async function login(dom, email, password) {
     check('entrée de nav « Utilisateurs »', !!wu.document.querySelector('.nav-item[data-page="users"]'));
     check('entrée de nav « Actions »', !!wu.document.querySelector('.nav-item[data-page="actions"]'));
     check('entrée de nav « Journal »', !!wu.document.querySelector('.nav-item[data-page="logs"]'));
+    check('entrée de nav « Limites et quotas »', !!wu.document.querySelector('.nav-item[data-page="limits"]'));
     wu.document.querySelector('.nav-item[data-page="users"]').dispatchEvent(new wu.Event('click', { bubbles: true }));
     await sleep(350);
     const activePage = wu.document.querySelector('.page.active');
@@ -447,6 +472,44 @@ async function login(dom, email, password) {
     wu.document.getElementById('logs-refresh').dispatchEvent(new wu.Event('click', { bubbles: true }));
     await sleep(250);
     check('actualisation Journal sans erreur', t.errors.length === 0, t.errors.join('|'));
+
+    console.log('\n=== P. PAGE LIMITES ET QUOTAS ===');
+    wu.document.querySelector('.nav-item[data-page="limits"]').dispatchEvent(new wu.Event('click', { bubbles: true }));
+    await sleep(450);
+    const activeLimits = wu.document.querySelector('.page.active');
+    check('page Limites active', !!activeLimits && activeLimits.id === 'page-limits', activeLimits && activeLimits.id);
+    check('titre Limites', wu.document.getElementById('page-title').textContent === 'Limites et quotas', wu.document.getElementById('page-title').textContent);
+    check('quota images pré-rempli = 20', wu.document.getElementById('quota-image-daily').value === '20', wu.document.getElementById('quota-image-daily').value);
+    check('quota vidéos pré-rempli = 8', wu.document.getElementById('quota-video-daily').value === '8', wu.document.getElementById('quota-video-daily').value);
+    check('quota chat pré-rempli = 30', wu.document.getElementById('quota-chat-daily').value === '30', wu.document.getElementById('quota-chat-daily').value);
+    check('limite globale pré-remplie = 500', wu.document.getElementById('quota-global-daily').value === '500', wu.document.getElementById('quota-global-daily').value);
+    const suspendText = wu.document.getElementById('limits-suspend-status').textContent.replace(/\s+/g, ' ');
+    check('générations actives affichées', /actives/.test(suspendText), suspendText.slice(0, 100));
+    const limitsText = wu.document.getElementById('limits-table').textContent.replace(/\s+/g, ' ');
+    check('consommation du jour remplie (Ada)', /Ada Lovelace/.test(limitsText), limitsText.slice(0, 160));
+    check('consommation u1 agrégée (5+2+11=18)', /18/.test(limitsText), limitsText.slice(0, 200));
+
+    /* Modification d'un quota → app_settings + journal d'audit. */
+    wu.document.getElementById('quota-image-daily').value = '15';
+    wu.document.getElementById('quota-save-user').dispatchEvent(new wu.Event('click', { bubbles: true }));
+    await sleep(300);
+    check('quota images enregistré sans erreur', t.errors.length === 0, t.errors.join('|'));
+    check('quota_image_daily = 15 en base', wu.__SETTINGS.quota_image_daily && wu.__SETTINGS.quota_image_daily.value === '15',
+        JSON.stringify(wu.__SETTINGS.quota_image_daily));
+    check('sauvegarde tracée dans le journal', wu.__LOGS.some(l => l.action === 'quotas_utilisateur_modifies'),
+        JSON.stringify(wu.__LOGS.slice(0, 3)));
+
+    /* Suspension d'urgence. */
+    wu.document.getElementById('quota-suspend-on').dispatchEvent(new wu.Event('click', { bubbles: true }));
+    await sleep(300);
+    check('suspension enregistrée', wu.__SETTINGS.quota_suspended && wu.__SETTINGS.quota_suspended.value === '1',
+        JSON.stringify(wu.__SETTINGS.quota_suspended));
+    check('suspension tracée dans le journal', wu.__LOGS.some(l => l.action === 'generations_suspendues'));
+    check('statut suspendu affiché', /suspendues/.test(wu.document.getElementById('limits-suspend-status').textContent.replace(/\s+/g, ' ')));
+    wu.document.getElementById('quota-suspend-off').dispatchEvent(new wu.Event('click', { bubbles: true }));
+    await sleep(300);
+    check('réactivation enregistrée', wu.__SETTINGS.quota_suspended.value === '0');
+    check('aucune erreur console (limites)', t.errors.length === 0, t.errors.join('|'));
 
     console.log('\n=== K. SANITÉ ===');
     check('aucune erreur console globale', t.errors.length === 0, t.errors.join('|'));

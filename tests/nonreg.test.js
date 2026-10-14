@@ -194,11 +194,37 @@ function connect(w) {
         !!imgCall && imgCall.url.indexOf('apihub') === -1 && imgCall.url.indexOf('/v1/images/generations') !== -1,
         imgCall && imgCall.url);
     check('modèle inchangé dans le corps', !!imgCall && JSON.parse(imgCall.options.body).model === wb.LSV.config.MODEL_IMAGE);
-    check('auth = JWT anon LSV (aucun sk-)',
-        !!imgCall && imgCall.options.headers && imgCall.options.headers.Authorization === 'Bearer anon-test-key-0123456789' &&
+    check('auth = jeton du COMPTE (pour le quota) + aucun sk-',
+        !!imgCall && imgCall.options.headers &&
+        imgCall.options.headers.Authorization === 'Bearer jwt-de-test' &&
+        imgCall.options.headers.apikey === 'anon-test-key-0123456789' &&
         JSON.stringify(imgCall.options.headers).indexOf('sk-') === -1,
         imgCall && JSON.stringify(imgCall.options.headers));
     check('toujours aucune clé stockée', !wb.localStorage.getItem('lsv4_api_key'));
+
+    /* Sans compte connecté : seule la clé anonyme publique part. */
+    wb.localStorage.removeItem('lsv4_account');
+    if (wb.LSV.services.account) wb.LSV.services.account._s = null;
+    wb.LSV.services.gateway.setToken(null);
+    const anonHeaders = wb.LSV.services.gateway.headers();
+    check('visiteur anonyme = clé anon uniquement',
+        anonHeaders.Authorization === 'Bearer anon-test-key-0123456789',
+        anonHeaders.Authorization);
+    check('visiteur anonyme : aucun jeton de compte',
+        !anonHeaders.Authorization || anonHeaders.Authorization.indexOf('jwt-de-test') === -1,
+        anonHeaders.Authorization);
+
+    /* On remet la session de test pour les sections suivantes. */
+    wb.localStorage.setItem('lsv4_account', JSON.stringify({
+        access_token: 'jwt-de-test',
+        refresh_token: 'refresh-de-test',
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        email: 'compte@test.local',
+        name: 'Compte Test',
+        id: '11111111-1111-4111-8111-111111111111'
+    }));
+    wb.LSV.services.account._s = null;
+    wb.LSV.services.account.session();
 
     wb.fetch = function (url, options) {
         calls.push({ url: String(url), options: options || {} });

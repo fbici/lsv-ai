@@ -1,4 +1,9 @@
 const Gateway = {
+    /* Le jeton du COMPTE est envoyé quand l'utilisateur est connecté : la
+       passerelle le vérifie côté serveur et applique son quota journalier.
+       Sans compte, seule la clé anonyme publique part (aucun droit). */
+    _token: null,
+    setToken(t) { Gateway._token = t || null; },
     headers() {
         const h = {};
         try {
@@ -8,7 +13,11 @@ const Gateway = {
             }
         } catch (e) {}
         const anon = (window.LSV_CONFIG && window.LSV_CONFIG.SUPABASE_ANON_KEY) || '';
-        if (anon) {
+        const user = Gateway._token;
+        if (user) {
+            h['Authorization'] = 'Bearer ' + user;
+            h['apikey'] = anon;
+        } else if (anon) {
             h['Authorization'] = 'Bearer ' + anon;
             h['apikey'] = anon;
         }
@@ -199,6 +208,167 @@ const AccountService = {
     }
 };
 
+/* ── Quotas journaliers du compte ──────────────────────────────────────────
+   La passerelle renvoie les restants dans les en-têtes de CHAQUE réponse —
+   on les lit au vol. Le point de départ (/v1/quota) est chargé une fois à la
+   connexion. Affichage : « Images restantes aujourd'hui : 4/20 ». */
+const QuotaService = {
+    state: null,
+    _lastToast: 0,
+
+    /* Poids d'une image selon sa résolution — doit rester identique à
+       imageUnits() côté passerelle (supabase/functions/lsv-gateway/core.mjs). */
+    units(size) {
+        const m = /^(\d{2,5})\s*x\s*(\d{2,5})$/.exec(String(size || '').trim());
+        if (!m) return 1;
+        const max = Math.max(parseInt(m[1], 10), parseInt(m[2], 10));
+        if (!Number.isFinite(max) || max <= 0) return 1;
+        if (max <= 1500) return 1;
+        if (max <= 2800) return 2;
+        return 3;
+    },
+
+    async refresh() {
+        if (!AccountService.signedIn()) { this.clear(); return null; }
+        const token = await AccountService.token();
+        Gateway.setToken(token);
+        if (!GATEWAY_URL) return null;
+        try {
+            const res = await fetch(GATEWAY_URL + '/v1/quota', {
+                headers: Gateway.withHeaders({}).headers
+            });
+            if (!res || !res.ok) return null;
+            const data = await res.json();
+            if (data && data.anonymous) { this.clear(); return null; }
+            this.state = data || null;
+            this.render();
+            return this.state;
+        } catch (e) { return null; }
+    },
+
+    clear() {
+        this.state = null;
+        this.render();
+    },
+
+    /* Appelé par AgnesProvider sur chaque réponse : en-têtes toujours à jour. */
+    applyHeaders(res) {
+        try {
+            if (!res || !res.headers || !res.headers.get) return;
+            const g = n => { const v = res.headers.get(n); return v === null || v === undefined || v === '' ? null : Number(v); };
+            const next = this.state ? Object.assign({}, this.state) : {};
+            const img = g('x-lsv-quota-image');
+            const vid = g('x-lsv-quota-video');
+            const cht = g('x-lsv-quota-chat');
+            const mot = g('x-lsv-quota-motion');
+            const glb = g('x-lsv-quota-global');
+            const has = img !== null || vid !== null || cht !== null || mot !== null || glb !== null;
+            if (!has) return;
+            next.remaining = Object.assign({}, next.remaining || {});
+            next.limits = Object.assign({}, next.limits || {});
+            if (img !== null) next.remaining.image = img;
+            if (vid !== null) next.remaining.video = vid;
+            if (cht !== null) next.remaining.chat = cht;
+            if (mot !== null) next.remaining.motion = mot;
+            if (glb !== null) next.global = Object.assign({}, next.global || {}, { remaining: glb });
+            ['image', 'video', 'chat'].forEach(k => {
+                const r = next.remaining[k];
+                const l = next.limits[k];
+                if (typeof l === 'number' && l > 0 && typeof r === 'number') {
+                    next.used = Object.assign({}, next.used || {});
+                    next.used[k] = Math.max(0, l - r);
+                }
+            });
+            this.state = next;
+            this.render();
+        } catch (e) {}
+    },
+
+    /* Vrai si la requête vient d'être refusée pour quota épuisé. */
+    isExhausted(res) {
+        try { return !!(res && res.status === 429 && res.headers && res.headers.get && res.headers.get('x-lsv-quota')); }
+        catch (e) { return false; }
+    },
+
+    message(res) {
+        try {
+            if (res && res.status === 429) {
+                const scope = res.headers && res.headers.get && res.headers.get('x-lsv-quota-scope');
+                return scope === 'global'
+                    ? 'Limite globale du jour atteinte : réessaie plus tard.'
+                    : 'Quota du jour atteint : réessaie demain (compteur réinitialisé à minuit).';
+            }
+            if (res && res.status === 503 && res.headers && res.headers.get && res.headers.get('x-lsv-quota') === 'suspended') {
+                return 'Générations momentanément suspendues : réessaie dans quelques instants.';
+            }
+        } catch (e) {}
+        return null;
+    },
+
+    remaining(kind) {
+        const s = this.state;
+        if (!s || !s.remaining) return null;
+        const r = s.remaining[kind];
+        return typeof r === 'number' ? r : null;
+    },
+
+    limit(kind) {
+        const s = this.state;
+        if (!s || !s.limits) return null;
+        const l = s.limits[kind];
+        return typeof l === 'number' && l > 0 ? l : null;
+    },
+
+    /* « 4/20 » ou « illimité ». */
+    ratio(kind) {
+        const r = this.remaining(kind);
+        const l = this.limit(kind);
+        if (l === null) return '∞';
+        return (r === null ? l : r) + '/' + l;
+    },
+
+    render() {
+        const box = document.getElementById('sidebar-quota');
+        if (!box) return;
+        const signedIn = AccountService.signedIn();
+        box.classList.toggle('hidden', !signedIn || !this.state);
+        if (!signedIn || !this.state) return;
+        if (this.state.enabled === false) { box.classList.add('hidden'); return; }
+        const set = (id, kind) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.textContent = this.ratio(kind);
+            const r = this.remaining(kind);
+            el.classList.toggle('quota-zero', r === 0);
+            el.classList.toggle('quota-low', typeof r === 'number' && r > 0 && r <= 2);
+        };
+        set('quota-image', 'image');
+        set('quota-video', 'video');
+        set('quota-chat', 'chat');
+        const reset = document.getElementById('quota-reset');
+        if (reset) reset.textContent = this.state.suspended
+            ? 'Générations suspendues'
+            : 'Remise à zéro à minuit UTC';
+        box.classList.toggle('quota-suspended', !!this.state.suspended);
+        this._warnIfLow();
+    },
+
+    _warnIfLow() {
+        const now = Date.now();
+        if (now - this._lastToast < 120000) return;
+        ['image', 'video', 'chat'].some(kind => {
+            const r = this.remaining(kind);
+            if (r !== 0) return false;
+            this._lastToast = now;
+            const labels = { image: 'images', video: 'vidéos', chat: 'messages de chat' };
+            if (window.UI && UI.showToast) {
+                UI.showToast('Quota du jour épuisé : ' + labels[kind] + ' — réessaie demain.', 'error', 5000);
+            }
+            return true;
+        });
+    }
+};
+
 const AccountView = {
     mode: 'login',
     busy: false,
@@ -336,6 +506,8 @@ const AccountView = {
             : 'Connecte-toi pour créer des images, vidéos et chat. Ton compte retrouve tes projets sur tous tes appareils.');
     },
     renderGuest() {
+        try { Gateway.setToken(null); } catch (e) {}
+        if (window.QuotaService && QuotaService.clear) QuotaService.clear();
         this.$('account-user').classList.add('hidden');
         this.$('account-guest').classList.remove('hidden');
         const modal = this.$('auth-modal');
@@ -356,7 +528,10 @@ const AccountView = {
     },
     async ensure() {
         const t = await AccountService.token();
-        if (t) return true;
+        if (t) {
+            Gateway.setToken(t);
+            return true;
+        }
         return this.requireLogin();
     },
     async refresh() {
@@ -364,6 +539,7 @@ const AccountView = {
             if (!AccountService.signedIn()) { this.renderGuest(); return; }
             const t = await AccountService.token();
             if (!t) { this.renderGuest(); return; }
+            Gateway.setToken(t);
             this.$('account-guest').classList.add('hidden');
             this.$('account-user').classList.remove('hidden');
             const nm = AccountService.name();
@@ -372,6 +548,7 @@ const AccountView = {
                 : (AccountService.email() || 'Compte LSV.ai');
             const admin = await AccountService.isAdmin();
             this.$('account-admin').classList.toggle('hidden', !admin);
+            if (window.QuotaService && QuotaService.refresh) QuotaService.refresh();
         } catch (e) {
             this.renderGuest();
         }

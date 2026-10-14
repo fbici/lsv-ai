@@ -6,7 +6,7 @@
    sanitisation des erreurs amont, clé absente.
    Usage : node tests/gateway.test.mjs
    ═══════════════════════════════════════════════════════════════════════════ */
-import { createHandler, createMemoryStore, classifyRequest, subPath } from '../supabase/functions/lsv-gateway/core.mjs';
+import { createHandler, createMemoryStore, classifyRequest, subPath, imageUnits, requestUnits, tokenRole } from '../supabase/functions/lsv-gateway/core.mjs';
 
 const results = [];
 function check(label, cond, extra) {
@@ -117,7 +117,7 @@ async function run() {
     const bQ3 = await rQ3.json();
     check('quota 2 images acceptées', q1 === 200 && q2 === 200, [q1, q2].join(','));
     check('3e image bloquée = 429', rQ3.status === 429, rQ3.status);
-    check('message quota générique', /limite temporaire/.test(bQ3.error.message), bQ3.error.message);
+    check('message quota générique', /Quota du jour|limite temporaire/.test(bQ3.error.message), bQ3.error.message);
     tQ += 24 * 3600 * 1000;
     check('quota réinitialisé le lendemain', (await handleQ(mq())).status === 200);
 
@@ -190,7 +190,7 @@ async function run() {
             const u = String(url);
             if (u.indexOf('/rest/v1/app_settings') !== -1) {
                 settingsCalls.push({ url: u, init: init });
-                return new Response(JSON.stringify([{ value: DB_KEY }]), {
+                return new Response(JSON.stringify([{ key: 'provider_api_key', value: DB_KEY }]), {
                     status: 200, headers: { 'content-type': 'application/json' }
                 });
             }
@@ -204,7 +204,7 @@ async function run() {
     check('requête relayée avec la clé de la base', d1.status === 200 && upCalls.length === 2 &&
         upCalls[0].init.headers['Authorization'] === 'Bearer ' + DB_KEY, upCalls[0] && upCalls[0].init.headers['Authorization']);
     check('lecture de la table en une seule fois (cache)', settingsCalls.length === 1, settingsCalls.length);
-    check('lecture filtrée sur la clé du fournisseur', /select=value&key=eq\.provider_api_key/.test(settingsCalls[0].url), settingsCalls[0].url);
+    check('lecture filtrée sur la clé du fournisseur', /select=key,value&key=in\.\(provider_api_key/.test(settingsCalls[0].url), settingsCalls[0].url);
     check('lecture avec la clé de service du projet', settingsCalls[0].init.headers.apikey === SVC, settingsCalls[0].init.headers.apikey);
     const d1Body = JSON.stringify(await d1.json());
     check('clé de service jamais renvoyée au client', d1Body.indexOf(SVC) === -1);
@@ -225,7 +225,7 @@ async function run() {
             const u = String(url);
             if (u.indexOf('/rest/v1/app_settings') !== -1) {
                 dictCalls.push(init);
-                return new Response(JSON.stringify([{ value: DB_KEY }]), { status: 200, headers: { 'content-type': 'application/json' } });
+                return new Response(JSON.stringify([{ key: 'provider_api_key', value: DB_KEY }]), { status: 200, headers: { 'content-type': 'application/json' } });
             }
             return new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } });
         }
@@ -286,6 +286,237 @@ async function run() {
     const n1 = await handleNone(mkSec());
     const bNone = await n1.json();
     check('ni clé en base ni secret → 503', n1.status === 503 && /indisponible/.test(bNone.error.message), n1.status);
+
+    /* ═══ QUOTAS PAR COMPTE ═══════════════════════════════════════════════
+       La passerelle vérifie le jeton Supabase du compte puis appelle les
+       fonctions SQL atomiques (simulateur ci-dessous). */
+    const b64url = o => Buffer.from(JSON.stringify(o)).toString('base64')
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const jwtFor = (id, email) => 'hdr.' + b64url({ sub: id, role: 'authenticated', email }) + '.sig';
+
+    console.log('\n=== 11. POIDS PAR RÉSOLUTION (images) ===');
+    check('1K 1312x736 = 1 unité', imageUnits('1312x736') === 1, imageUnits('1312x736'));
+    check('1K 1024x1024 = 1 unité', imageUnits('1024x1024') === 1, imageUnits('1024x1024'));
+    check('2K 2624x1472 = 2 unités', imageUnits('2624x1472') === 2, imageUnits('2624x1472'));
+    check('2K 2048x2048 = 2 unités', imageUnits('2048x2048') === 2, imageUnits('2048x2048'));
+    check('3K 3936x2208 = 3 unités', imageUnits('3936x2208') === 3, imageUnits('3936x2208'));
+    check('3K 3072x3072 = 3 unités', imageUnits('3072x3072') === 3, imageUnits('3072x3072'));
+    check('taille absente = 1 unité (restrictif)', imageUnits('') === 1 && imageUnits(null) === 1);
+    check('taille illisible = 1 unité', imageUnits('gros') === 1 && imageUnits('1x1') === 1);
+    check('requestUnits image lit le corps', requestUnits('image', '{"size":"2624x1472"}') === 2);
+    check('requestUnits vidéo = 1', requestUnits('video', '{}') === 1);
+    check('jeton anon ignoré (role != authenticated)',
+        tokenRole('h.' + b64url({ role: 'anon' }) + '.s') !== 'authenticated' &&
+        tokenRole('h.' + b64url({ role: 'authenticated' }) + '.s') === 'authenticated');
+
+    /* Simulateur de la base : app_settings + consume/refund/get_quota. */
+    function makeDb(settings) {
+        const db = { settings: Object.assign({}, settings), counters: {} };
+        const dayOf = now => new Date(now).toISOString().slice(0, 10);
+        db.consume = (userId, email, kind, units, globalLimit, now) => {
+            const day = dayOf(now);
+            const k = userId + ':' + day + ':' + kind;
+            const gk = '00000000-0000-0000-0000-000000000000:' + day + ':global';
+            const limit = parseInt(db.settings['quota_' + kind + '_daily'] || '0', 10);
+            if (globalLimit > 0) {
+                const g = db.counters[gk] || 0;
+                if (g + units > globalLimit) {
+                    return { ok: false, scope: 'global', used: g, limit: globalLimit, remaining: Math.max(0, globalLimit - g), units };
+                }
+            }
+            if (limit > 0) {
+                const u = db.counters[k] || 0;
+                if (u + units > limit) {
+                    return { ok: false, scope: 'user', used: u, limit, remaining: Math.max(0, limit - u), units };
+                }
+            }
+            if (globalLimit > 0) db.counters[gk] = (db.counters[gk] || 0) + units;
+            db.counters[k] = (db.counters[k] || 0) + units;
+            return { ok: true, scope: 'user', used: db.counters[k], limit, units,
+                remaining: limit > 0 ? Math.max(0, limit - db.counters[k]) : null };
+        };
+        db.refund = (userId, kind, units, now) => {
+            const day = dayOf(now);
+            const k = userId + ':' + day + ':' + kind;
+            const gk = '00000000-0000-0000-0000-000000000000:' + day + ':global';
+            db.counters[k] = Math.max(0, (db.counters[k] || 0) - units);
+            db.counters[gk] = Math.max(0, (db.counters[gk] || 0) - units);
+        };
+        db.used = (userId, kind, now) => db.counters[userId + ':' + dayOf(now) + ':' + kind] || 0;
+        return db;
+    }
+
+    function quotaHarness(db, user, upstreamStatus = 200) {
+        const up = [];
+        let tt = 1700000000000;
+        const handle = createHandler({
+            env: {
+                AGNES_API_KEY: SECRET,
+                SUPABASE_URL: 'https://ref.supabase.co',
+                SUPABASE_SERVICE_ROLE_KEY: 'svc-key-0123456789',
+                ALLOWED_ORIGINS: 'https://fbici.github.io',
+                RATE_LIMIT_PER_MIN: '1000',
+                IMAGE_LIMIT: '0', VIDEO_LIMIT: '0', CHAT_LIMIT: '0', MOTION_LIMIT: '0'
+            },
+            store: createMemoryStore(),
+            now: () => tt,
+            log: () => {},
+            fetchImpl: async (url, init) => {
+                const u = String(url);
+                if (u.includes('/rest/v1/app_settings')) {
+                    return new Response(JSON.stringify(Object.keys(db.settings).map(k => ({ key: k, value: db.settings[k] }))),
+                        { status: 200, headers: { 'content-type': 'application/json' } });
+                }
+                if (u.includes('/auth/v1/user')) {
+                    const auth = (init && init.headers && init.headers.Authorization) || '';
+                    if (user && auth === 'Bearer ' + user.jwt) {
+                        return new Response(JSON.stringify({ id: user.id, email: user.email }),
+                            { status: 200, headers: { 'content-type': 'application/json' } });
+                    }
+                    return new Response('{"msg":"invalid token"}', { status: 401, headers: { 'content-type': 'application/json' } });
+                }
+                if (u.includes('/rest/v1/rpc/consume_quota')) {
+                    const b = JSON.parse(init.body);
+                    return new Response(JSON.stringify(db.consume(b.p_user, b.p_email, b.p_kind, b.p_units, b.p_global, tt)),
+                        { status: 200, headers: { 'content-type': 'application/json' } });
+                }
+                if (u.includes('/rest/v1/rpc/refund_quota')) {
+                    const b = JSON.parse(init.body);
+                    db.refund(b.p_user, b.p_kind, b.p_units, tt);
+                    return new Response('null', { status: 200, headers: { 'content-type': 'application/json' } });
+                }
+                if (u.includes('/rest/v1/rpc/get_quota')) {
+                    return new Response(JSON.stringify({ enabled: true, suspended: false, limits: {}, used: {}, remaining: {} }),
+                        { status: 200, headers: { 'content-type': 'application/json' } });
+                }
+                /* Amont */
+                up.push(u);
+                return new Response('{}', { status: upstreamStatus, headers: { 'content-type': 'application/json' } });
+            }
+        });
+        return { handle, up, advance: ms => { tt += ms; }, day: () => new Date(tt).toISOString().slice(0, 10) };
+    }
+
+    const ADA = { id: '11111111-1111-4111-8111-111111111111', email: 'ada@lsv.ai', jwt: jwtFor('11111111-1111-4111-8111-111111111111', 'ada@lsv.ai') };
+    const POST_IMG = (jwt, size) => makeReq(GW + '/v1/images/generations', {
+        method: 'POST',
+        headers: { 'authorization': 'Bearer ' + jwt, 'content-type': 'application/json', 'x-forwarded-for': '9.9.9.9' },
+        body: JSON.stringify({ size: size })
+    });
+
+    console.log('\n=== 12. QUOTA PAR COMPTE : 4 unités d\'images ===');
+    const db12 = makeDb({ quota_image_daily: '4', quota_video_daily: '8', quota_chat_daily: '30', quota_global_daily: '0' });
+    const h12 = quotaHarness(db12, ADA);
+    const a1 = await h12.handle(POST_IMG(ADA.jwt, '1312x736'));   // 1K = 1
+    const a2 = await h12.handle(POST_IMG(ADA.jwt, '2624x1472'));  // 2K = 2
+    const a3 = await h12.handle(POST_IMG(ADA.jwt, '1312x736'));   // 1K = 1 → total 4
+    check('1K acceptée', a1.status === 200, a1.status);
+    check('2K acceptée (2 unités)', a2.status === 200, a2.status);
+    check('3e acceptée → total 4 unités', a3.status === 200, a3.status);
+    check('consommation = 4 unités', db12.counters[ADA.id + ':' + h12.day() + ':image'] === 4,
+        JSON.stringify(db12.counters));
+    const a4 = await h12.handle(POST_IMG(ADA.jwt, '1312x736'));
+    const bA4 = await a4.json();
+    check('5e image bloquée = 429', a4.status === 429, a4.status);
+    check('en-tête x-lsv-quota = exhausted', a4.headers.get('x-lsv-quota') === 'exhausted', a4.headers.get('x-lsv-quota'));
+    check('portée = user', a4.headers.get('x-lsv-quota-scope') === 'user', a4.headers.get('x-lsv-quota-scope'));
+    check('message quota du jour', /Quota du jour/.test(bA4.error.message), bA4.error.message);
+    check('aucun appel amont après quota', h12.up.length === 3, h12.up.length);
+    h12.advance(24 * 3600 * 1000);
+    const a5 = await h12.handle(POST_IMG(ADA.jwt, '1312x736'));
+    check('minuit UTC : quota réinitialisé', a5.status === 200, a5.status);
+
+    console.log('\n=== 13. PLAFOND PAR RÉSOLUTION (quota = 4) ===');
+    const db13 = makeDb({ quota_image_daily: '4' });
+    const h13 = quotaHarness(db13, ADA);
+    const k1 = await h13.handle(POST_IMG(ADA.jwt, '3936x2208'));  // 3K = 3
+    const k2 = await h13.handle(POST_IMG(ADA.jwt, '3936x2208'));  // +3 = 6 > 4
+    check('3K acceptée (3 unités)', k1.status === 200, k1.status);
+    check('2e 3K refusée (6 > 4)', k2.status === 429, k2.status);
+    const k3 = await h13.handle(POST_IMG(ADA.jwt, '1312x736'));   // reste 1
+    check('1K acceptée dans le reliquat (3+1=4)', k3.status === 200, k3.status);
+    const k4 = await h13.handle(POST_IMG(ADA.jwt, '1312x736'));
+    check('puis bloquée', k4.status === 429, k4.status);
+
+    console.log('\n=== 14. REMBOURSEMENT SI GÉNÉRATION ÉCHOUÉE ===');
+    const db14 = makeDb({ quota_image_daily: '1' });
+    const h14 = quotaHarness(db14, ADA, 500);   // amont en erreur
+    const fai1 = await h14.handle(POST_IMG(ADA.jwt, '1312x736'));
+    check('échec amont → 502 masqué', fai1.status === 502, fai1.status);
+    check('unité remboursée (compteur = 0)',
+        db14.counters[ADA.id + ':' + h14.day() + ':image'] === 0,
+        db14.counters[ADA.id + ':' + h14.day() + ':image']);
+    const h14ok = quotaHarness(db14, ADA, 200);
+    const fai2 = await h14ok.handle(POST_IMG(ADA.jwt, '1312x736'));
+    check('nouvelle tentative acceptée après remboursement', fai2.status === 200, fai2.status);
+
+    console.log('\n=== 15. LIMITE GLOBALE JOURNALIÈRE ===');
+    const db15 = makeDb({ quota_image_daily: '100', quota_global_daily: '3' });
+    const h15 = quotaHarness(db15, ADA);
+    const g1 = await h15.handle(POST_IMG(ADA.jwt, '2624x1472'));  // 2 unités
+    const g2 = await h15.handle(POST_IMG(ADA.jwt, '2624x1472'));  // +2 = 4 > 3
+    check('2K acceptée dans la limite globale', g1.status === 200, g1.status);
+    check('2e 2K refusée par la limite globale', g2.status === 429, g2.status);
+    check('portée = global', g2.headers.get('x-lsv-quota-scope') === 'global', g2.headers.get('x-lsv-quota-scope'));
+    const g3 = await h15.handle(POST_IMG(ADA.jwt, '1312x736'));   // reste 1 globale
+    check('1K acceptée dans le reliquat global', g3.status === 200, g3.status);
+
+    console.log('\n=== 16. SUSPENSION D\'URGENCE ===');
+    const db16 = makeDb({ quota_image_daily: '20', quota_suspended: '1' });
+    const h16 = quotaHarness(db16, ADA);
+    const sus1 = await h16.handle(POST_IMG(ADA.jwt, '1312x736'));
+    const bS1 = await sus1.json();
+    check('générations suspendues → 503', sus1.status === 503, sus1.status);
+    check('en-tête x-lsv-quota = suspended', sus1.headers.get('x-lsv-quota') === 'suspended', sus1.headers.get('x-lsv-quota'));
+    check('message suspension', /suspendu/i.test(bS1.error.message), bS1.error.message);
+    check('aucun appel amont pendant la suspension', h16.up.length === 0, h16.up.length);
+    check('compteur non consommé',
+        !db16.counters[ADA.id + ':' + h16.day() + ':image'], JSON.stringify(db16.counters));
+
+    console.log('\n=== 17. QUOTAS VIDÉO ET CHAT PAR COMPTE ===');
+    const db17 = makeDb({ quota_image_daily: '20', quota_video_daily: '2', quota_chat_daily: '3' });
+    const h17 = quotaHarness(db17, ADA);
+    const mv = () => makeReq(GW + '/v1/videos', { method: 'POST', headers: { 'authorization': 'Bearer ' + ADA.jwt, 'content-type': 'application/json' }, body: '{}' });
+    const mc = () => makeReq(GW + '/v1/chat/completions', { method: 'POST', headers: { 'authorization': 'Bearer ' + ADA.jwt, 'content-type': 'application/json' }, body: '{}' });
+    check('vidéo 1 acceptée', (await h17.handle(mv())).status === 200);
+    check('vidéo 2 acceptée', (await h17.handle(mv())).status === 200);
+    check('vidéo 3 refusée (quota 2)', (await h17.handle(mv())).status === 429);
+    check('chat 1 accepté', (await h17.handle(mc())).status === 200);
+    check('chat 2 accepté', (await h17.handle(mc())).status === 200);
+    check('chat 3 accepté', (await h17.handle(mc())).status === 200);
+    check('chat 4 refusé (quota 3)', (await h17.handle(mc())).status === 429);
+    check('le polling vidéo n\'est PAS compté',
+        (await h17.handle(makeReq(GW + '/agnesapi?video_id=1', { headers: { 'authorization': 'Bearer ' + ADA.jwt } }))).status === 200);
+
+    console.log('\n=== 18. ÉTAT DES QUOTAS (/v1/quota) ===');
+    const db18 = makeDb({ quota_image_daily: '20', quota_video_daily: '8', quota_chat_daily: '30' });
+    const h18 = quotaHarness(db18, ADA);
+    await h18.handle(POST_IMG(ADA.jwt, '2624x1472'));   // 2 unités
+    const qs = await h18.handle(makeReq(GW + '/v1/quota', { headers: { 'authorization': 'Bearer ' + ADA.jwt } }));
+    check('endpoint /v1/quota répond 200', qs.status === 200, qs.status);
+    const qBody = await qs.json();
+    check('état renvoyé au compte', qBody && qBody.enabled === true, JSON.stringify(qBody).slice(0, 120));
+    const qa = await h18.handle(makeReq(GW + '/v1/quota'));
+    const qaBody = await qa.json();
+    check('visiteur anonyme : état minimal sans erreur', qa.status === 200 && qaBody.anonymous === true, JSON.stringify(qaBody).slice(0, 80));
+
+    console.log('\n=== 19. JETON DE COMPTE VÉRIFIÉ CÔTÉ SERVEUR ===');
+    const db19 = makeDb({ quota_image_daily: '1' });
+    const h19 = quotaHarness(db19, ADA);
+    const forged = jwtFor(ADA.id, 'intrus@lsv.ai');   // payload plausible, signature non vérifiée ici
+    const hForged = quotaHarness(db19, { id: ADA.id, email: 'intrus@lsv.ai', jwt: 'mauvais-jeton' });
+    const x1 = await hForged.handle(POST_IMG(forged, '1312x736'));
+    check('jeton non reconnu → traité en anonyme (pas de quota par compte)', x1.status === 200, x1.status);
+    const y1 = await h19.handle(POST_IMG(ADA.jwt, '1312x736'));
+    const y2 = await h19.handle(POST_IMG(ADA.jwt, '1312x736'));
+    check('compte réel : 1 image puis quota', y1.status === 200 && y2.status === 429, y1.status + '/' + y2.status);
+
+    console.log('\n=== 20. CONCATENATION / CONCURRENCE (store mémoire) ===');
+    const st = createMemoryStore();
+    check('3 requêtes simultanées admises (max 3)', st.enter('u1', 3) && st.enter('u1', 3) && st.enter('u1', 3));
+    check('4e simultanée refusée', st.enter('u1', 3) === false);
+    st.leave('u1');
+    check('libération → à nouveau admis', st.enter('u1', 3) === true);
 
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');

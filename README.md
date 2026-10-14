@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.8.0
+# LSV.ai — Studio Viral v3.9.0
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
 
@@ -220,20 +220,21 @@ Variables d'environnement de la fonction (Supabase → **Edge Functions → Secr
 
 | Variable | Rôle | Défaut |
 |---|---|---|
-| *(table `app_settings`)* | **clé du fournisseur saisie dans le back-office** — prioritaire, relue toutes les 60 s | — |
+| *(table `app_settings`)* | **clé du fournisseur + quotas journaliers, saisis dans le back-office** — prioritaires, relus toutes les 30 s | voir §2.11 |
 | `AGNES_API_KEY` | **secret serveur de secours**, utilisé si la table est vide | — (recommandé) |
 | `AGNES_API_BASE` | base amont (secret de configuration) | valeur interne |
 | `ALLOWED_ORIGINS` | origines CORS autorisées | GitHub Pages + localhost |
 | `RATE_LIMIT_PER_MIN` | requêtes / minute / IP + / visiteur | `10` |
-| `IMAGE_LIMIT` | images / jour / visiteur | `0` = illimité |
-| `VIDEO_LIMIT` | vidéos / jour / visiteur | `0` = illimité |
-| `CHAT_LIMIT` | messages / jour / visiteur | `0` = illimité |
-| `MOTION_LIMIT` | motions / jour / visiteur | `0` = illimité |
+| `MAX_CONCURRENT_PER_USER` | générations **simultanées** max par compte | `3` |
+| `IMAGE_LIMIT` / `VIDEO_LIMIT` / `CHAT_LIMIT` / `MOTION_LIMIT` | **secours uniquement** si `app_settings` est injoignable — les quotas par compte de la base priment | `0` = illimité |
+| `QUOTA_GLOBAL_DAILY` | **secours** : limite globale journalière | `0` = illimitée |
 | `MAX_BODY_BYTES` | taille max d'une requête | `20` Mo |
 
 Ordre de résolution de la clé côté serveur : **`app_settings` (saisie dans le
-back-office)** → sinon **`AGNES_API_KEY` (secret)**. Une lecture de base au plus
-par minute et par isolate ; la valeur n'est jamais renvoyée au navigateur.
+back-office)** → sinon **`AGNES_API_KEY` (secret)**. Une lecture groupée de la
+table au plus toutes les 30 s et par isolate ; la valeur n'est jamais renvoyée
+au navigateur. Les quotas journaliers suivent exactement le même chemin et se
+règlent depuis **/admin → Limites et quotas**.
 
 Le polling vidéo n'est pas compté comme une génération. Atteindre une limite
 renvoie `429` avec un message générique :
@@ -362,12 +363,73 @@ delete) via les policies RLS.
 ```bash
 # Dashboard Supabase → SQL Editor → New query → coller le contenu de :
 supabase/upgrade-activity-logs.sql
+supabase/upgrade-quotas.sql
 ```
 
 Ce fichier est idempotent : il ajoute la colonne `user_id` à
 `analytics_events` (si absente), crée la table `admin_logs`, le trigger
 `set_log_actor()`, les policies RLS et les grants. Le schéma complet de
 référence reste `supabase/schema.sql`.
+
+### 2.11 Quotas journaliers par compte (nouveau)
+
+Chaque **compte connecté** dispose de ses propres limites quotidiennes,
+remises à zéro **automatiquement à minuit UTC** :
+
+| Outil | Quota par défaut | Pondération |
+|---|---|---|
+| **Images** | **20 unités** | 1K = 1 unité · 2K = 2 · 3K = 3 |
+| **Vidéos** | **8** | 1 vidéo = 1 unité |
+| **Chat IA** | **30 messages** | 1 message = 1 unité |
+
+Un quota de 20 images autorise donc 20 images en 1K, **10 en 2K**, ou
+**6 en 3K** (+ 2 en 1K). Le poids est calculé côté **serveur** à partir du
+champ `size` de la requête — le client ne peut pas le modifier.
+
+**Les 5 règles appliquées**
+
+1. **Quota individuel** — la passerelle vérifie le jeton Supabase du compte
+   (`/auth/v1/user`) : chaque compte a ses propres compteurs, stockés dans
+   `public.usage_counters`. Un visiteur non connecté ne peut rien générer.
+2. **Remise à zéro à minuit UTC** — les compteurs sont indexés sur la date
+   UTC ; aucun compteur ne survit au jour.
+3. **Contrôle côté serveur** — tout se passe dans la fonction Supabase Edge
+   `lsv-gateway`. L'interface n'affiche que le résultat : impossible de
+   contourner le compteur en modifiant le navigateur.
+4. **Compteur visible** — la sidebar affiche « Quota du jour »
+   (`Images 4/20 · Vidéos 2/8 · Chat 11/30`) et un toast prévient quand une
+   réserve est épuisée. Chaque réponse de la passerelle renvoie les restants
+   dans des en-têtes, donc le compteur est toujours exact.
+5. **Protections globales** — en plus du quota par compte : une **limite
+   globale journalière** (0 = illimitée), un **débit** par IP/visiteur, et un
+   plafond de **générations simultanées** par compte. Tout est réglable.
+
+**Gestion des échecs et de la concurrence**
+
+- Une génération **refusée ou échouée** chez le fournisseur est
+  **remboursée** (`refund_quota`) : seul un lancement réel consomme.
+- La consommation est **atomique** (`select … for update` dans
+  `consume_quota`) : deux requêtes simultanées ne peuvent pas dépasser le
+  quota. Le plafond de concurrence par compte évite en plus les
+  enchaînements parallèles entre deux verrous.
+- Le **polling vidéo** (`/agnesapi`) n'est **pas** compté : il appartient à
+  la même génération.
+- Un quota épuisé renvoie un `429` marqué `x-lsv-quota` : le client **cesse
+  immédiatement** de réessayer au lieu d'attendre inutilement.
+
+**Back-office → « Limites et quotas »** permet de :
+
+- modifier les quotas journaliers par outil (images / vidéos / chat / motion) ;
+- définir une **limite globale** journalière ;
+- consulter la **consommation du jour** par compte (du plus grand
+  consommateur au moins grand) ;
+- **suspendre / réactiver** toutes les générations en un clic (urgence) ;
+- fixer des **quotas différents pour les administrateurs** (vide = quota
+  standard).
+
+Chaque modification est tracée dans le **journal d'audit** (`admin_logs`).
+Les valeurs sont lues par la passerelle avec un cache de 30 s : un changement
+est effectif en moins d'une minute, sans redéploiement.
 
 ---
 
@@ -640,6 +702,11 @@ Comportements attendus :
   vidéos, chat, projets, enhancer, batch, erreurs) pour chaque `user_id`,
   croise avec `profiles` pour afficher nom et e-mail, indique la dernière
   action. Ne voit que les événements produits par un compte connecté.
+- **Limites et quotas** — quotas journaliers par outil (images pondérées par
+  résolution : 1K = 1, 2K = 2, 3K = 3), quotas distincts pour les
+  administrateurs, **limite globale** journalière, **interruption d'urgence**
+  (suspend / réactiver toutes les générations), et **consommation du jour**
+  par compte. Toute modification est journalisée.
 - **Journal** — trace d'audit du back-office (`public.admin_logs`) : date,
   administrateur (auteur forcé côté serveur par trigger), action, cible,
   détail. Insert + select uniquement ; la modification / retrait de clé
@@ -864,7 +931,7 @@ npm test        # 353 assertions (406 avec ORIG=… voir plus bas)
   → 503 ; clé de service lue dans `SUPABASE_SERVICE_ROLE_KEY` ou
   `SUPABASE_SECRET_KEYS`.
 
-**`tests/admin.test.js`** (85 assertions)
+**`tests/admin.test.js`** (103 assertions)
 
 - configuration absente / non authentifié → dashboard inaccessible ;
 - mauvais identifiants → accès refusé ;

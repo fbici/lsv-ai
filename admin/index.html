@@ -80,6 +80,7 @@
             <div class="nav-section">Système</div>
             <button class="nav-item" data-page="users"><span class="ms">group</span> Utilisateurs</button>
             <button class="nav-item" data-page="actions"><span class="ms">insights</span> Actions</button>
+            <button class="nav-item" data-page="limits"><span class="ms">speed</span> Limites et quotas</button>
             <button class="nav-item" data-page="logs"><span class="ms">history</span> Journal</button>
             <button class="nav-item" data-page="settings"><span class="ms">settings</span> Paramètres</button>
         </nav>
@@ -375,6 +376,139 @@
                         Aucun identifiant, mot de passe ou secret n'est présent dans ce dépôt.
                     </div>
                 </div>
+            </section>
+
+            <!-- ══ LIMITES ET QUOTAS ══════════════════════════════════════ -->
+            <section class="page" id="page-limits">
+
+                <div class="kpi-grid" id="kpi-limits"></div>
+
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="ms">speed</span> Quotas journaliers par outil</div>
+                            <span class="badge info" id="limits-enabled-badge">—</span>
+                        </div>
+                        <div class="info-block">
+                            Quota de chaque <strong>compte utilisateur</strong>, par jour UTC.
+                            Les images sont <strong>pondérées par résolution</strong> :
+                            1K = 1 unité, 2K = 2 unités, 3K = 3 unités — un quota de
+                            <strong>20</strong> autorise donc 20 images en 1K, 10 en 2K ou 6 en 3K.
+                            <strong>0 = illimité.</strong> Aucun changement n'est appliqué avant d'avoir cliqué sur « Enregistrer ».
+                        </div>
+                        <div class="quota-grid">
+                            <label class="field">
+                                <span class="field-label">Images (unités)</span>
+                                <input type="number" min="0" step="1" id="quota-image-daily" inputmode="numeric">
+                            </label>
+                            <label class="field">
+                                <span class="field-label">Vidéos</span>
+                                <input type="number" min="0" step="1" id="quota-video-daily" inputmode="numeric">
+                            </label>
+                            <label class="field">
+                                <span class="field-label">Messages de chat</span>
+                                <input type="number" min="0" step="1" id="quota-chat-daily" inputmode="numeric">
+                            </label>
+                            <label class="field">
+                                <span class="field-label">Motion</span>
+                                <input type="number" min="0" step="1" id="quota-motion-daily" inputmode="numeric">
+                            </label>
+                        </div>
+                        <div class="key-actions">
+                            <button class="btn btn-primary" id="quota-save-user" type="button"><span class="ms">save</span> Enregistrer les quotas</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="ms">admin_panel_settings</span> Quotas des administrateurs</div>
+                        </div>
+                        <div class="info-block">
+                            Valeurs appliquées aux e-mails présents dans la liste blanche.
+                            Laisser <strong>vide</strong> pour utiliser les quotas standards.
+                            <strong>0 = illimité.</strong>
+                        </div>
+                        <div class="quota-grid">
+                            <label class="field">
+                                <span class="field-label">Images (unités)</span>
+                                <input type="number" min="0" step="1" id="quota-admin-image-daily" inputmode="numeric" placeholder="quota standard">
+                            </label>
+                            <label class="field">
+                                <span class="field-label">Vidéos</span>
+                                <input type="number" min="0" step="1" id="quota-admin-video-daily" inputmode="numeric" placeholder="quota standard">
+                            </label>
+                            <label class="field">
+                                <span class="field-label">Messages de chat</span>
+                                <input type="number" min="0" step="1" id="quota-admin-chat-daily" inputmode="numeric" placeholder="quota standard">
+                            </label>
+                        </div>
+                        <div class="key-actions">
+                            <button class="btn btn-primary" id="quota-save-admin" type="button"><span class="ms">save</span> Enregistrer</button>
+                            <button class="btn btn-ghost" id="quota-clear-admin" type="button"><span class="ms">restart_alt</span> Rétablir les quotas standards</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-header"><div class="card-title"><span class="ms">public</span> Protections globales</div></div>
+                        <div class="info-block">
+                            La <strong>limite globale</strong> protège le budget quel que soit le
+                            nombre de comptes créés : dès qu'elle est atteinte, plus rien n'est
+                            généré aujourd'hui pour personne. Le <strong>débit</strong> (requêtes
+                            par minute et par IP) et le <strong>nombre de générations simultanées</strong>
+                            par compte sont également limités côté passerelle.
+                        </div>
+                        <div class="quota-grid">
+                            <label class="field">
+                                <span class="field-label">Limite globale journalière (0 = illimitée)</span>
+                                <input type="number" min="0" step="1" id="quota-global-daily" inputmode="numeric">
+                            </label>
+                        </div>
+                        <div class="key-actions">
+                            <button class="btn btn-primary" id="quota-save-global" type="button"><span class="ms">save</span> Enregistrer la limite globale</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header"><div class="card-title"><span class="ms">power_settings_new</span> Interruption d'urgence</div></div>
+                        <div class="info-block">
+                            En cas de souci (facture, abus, fournisseur défaillant), coupe
+                            <strong>toutes les générations</strong> instantanément — y compris
+                            pour les administrateurs. La consultation de l'app reste accessible.
+                            Cette action est tracée dans le journal d'audit.
+                        </div>
+                        <div class="kv" id="limits-suspend-status"></div>
+                        <div class="key-actions">
+                            <button class="btn btn-primary" id="quota-suspend-on" type="button"><span class="ms">pause_circle</span> Suspendre les générations</button>
+                            <button class="btn btn-ghost" id="quota-suspend-off" type="button"><span class="ms">play_circle</span> Réactiver</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="ms">leaderboard</span> Consommation du jour</div>
+                        <button class="btn btn-ghost btn-sm" id="limits-refresh" type="button"><span class="ms">refresh</span> Actualiser</button>
+                    </div>
+                    <div class="info-block">
+                        Comptes ayant consommé des quotas aujourd'hui (UTC), du plus
+                        grand consommateur au moins grand. Les unités images tiennent
+                        compte de la résolution.
+                    </div>
+                    <div class="table-wrap">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Compte</th><th>E-mail</th><th>Images</th><th>Vidéos</th>
+                                    <th>Chat</th><th>Total</th><th>Dernière activité</th>
+                                </tr>
+                            </thead>
+                            <tbody id="limits-table"></tbody>
+                        </table>
+                    </div>
+                </div>
+
             </section>
 
         </div>

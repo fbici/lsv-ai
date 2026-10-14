@@ -114,7 +114,20 @@ create table if not exists public.app_settings (
     key         text primary key,
     value       text not null,
     updated_at  timestamptz not null default now(),
-    constraint app_settings_key_check check (key in ('provider_api_key'))
+    constraint app_settings_key_check check (key in (
+        'provider_api_key',
+        'quota_enabled',
+        'quota_suspended',
+        'quota_image_daily',
+        'quota_video_daily',
+        'quota_chat_daily',
+        'quota_motion_daily',
+        'quota_global_daily',
+        'quota_admin_image_daily',
+        'quota_admin_video_daily',
+        'quota_admin_chat_daily',
+        'quota_admin_motion_daily'
+    ))
 );
 alter table public.app_settings enable row level security;
 revoke all on public.app_settings from anon;
@@ -313,6 +326,188 @@ on conflict (id) do update
         full_name       = coalesce(excluded.full_name, public.profiles.full_name),
         last_sign_in_at = coalesce(excluded.last_sign_in_at, public.profiles.last_sign_in_at),
         updated_at      = now();
+
+-- ── QUOTAS JOURNALIERS PAR COMPTE ──────────────────────────────────────────
+-- Limites réglables depuis /admin → « Limites et quotas » (table app_settings).
+-- Par défaut : 20 images / 8 vidéos / 30 chats par jour et par compte,
+-- remis à zéro à minuit UTC. Les images sont PONDÉRÉES par résolution :
+-- 1K = 1 unité, 2K = 2 unités, 3K = 3 unités.
+-- La consommation est ATOMIQUE (select … for update) : deux requêtes
+-- simultanées ne peuvent pas dépasser le quota. Une génération échouée est
+-- remboursée par public.refund_quota().
+--
+-- Voir supabase/upgrade-quotas.sql pour la version incrémentale détaillée.
+
+create table if not exists public.usage_counters (
+    user_id     uuid not null,
+    day         date not null,
+    kind        text not null check (kind in ('image', 'video', 'chat', 'motion', 'global')),
+    units       integer not null default 0 check (units >= 0),
+    updated_at  timestamptz not null default now(),
+    primary key (user_id, day, kind)
+);
+create index if not exists usage_counters_day_idx on public.usage_counters (day desc);
+create index if not exists usage_counters_kind_day_idx on public.usage_counters (kind, day desc);
+alter table public.usage_counters enable row level security;
+revoke all on public.usage_counters from anon;
+revoke all on public.usage_counters from authenticated;
+grant select on public.usage_counters to authenticated;
+grant all on public.usage_counters to service_role;
+
+drop policy if exists "admin_select_usage" on public.usage_counters;
+create policy "admin_select_usage"
+    on public.usage_counters
+    for select
+    to authenticated
+    using (public.is_admin());
+
+create or replace function public.consume_quota(
+    p_user uuid, p_email text, p_kind text, p_units integer, p_global integer default 0
+) returns jsonb
+    language plpgsql security definer set search_path = public
+    as $$
+declare
+    v_day      date := (now() at time zone 'utc')::date;
+    v_zero     uuid := '00000000-0000-0000-0000-000000000000';
+    v_units    integer := greatest(1, coalesce(p_units, 1));
+    v_is_admin boolean;
+    v_limit    integer := 0;
+    v_key      text;
+    v_enabled  text;
+    v_glimit   integer := greatest(0, coalesce(p_global, 0));
+    v_used     integer;
+    v_gused    integer;
+begin
+    if p_user is null then
+        return jsonb_build_object('ok', false, 'scope', 'anonymous');
+    end if;
+    select coalesce((select value from public.app_settings where key = 'quota_enabled'), '1') into v_enabled;
+    if v_enabled <> '1' then
+        return jsonb_build_object('ok', true, 'scope', 'disabled', 'kind', p_kind, 'units', v_units);
+    end if;
+    v_is_admin := exists (select 1 from public.admin_emails a where a.email = lower(coalesce(p_email, '')));
+    v_key := 'quota_' || p_kind || '_daily';
+    if v_is_admin then
+        select value into v_limit from public.app_settings where key = 'quota_admin_' || p_kind || '_daily';
+        if v_limit is null then
+            select value into v_limit from public.app_settings where key = v_key;
+        end if;
+    else
+        select value into v_limit from public.app_settings where key = v_key;
+    end if;
+    v_limit := coalesce(nullif(v_limit, '')::integer, 0);
+    if v_glimit > 0 then
+        insert into public.usage_counters (user_id, day, kind, units) values (v_zero, v_day, 'global', 0)
+        on conflict (user_id, day, kind) do nothing;
+        select units into v_gused from public.usage_counters
+         where user_id = v_zero and day = v_day and kind = 'global' for update;
+        if coalesce(v_gused, 0) + v_units > v_glimit then
+            return jsonb_build_object('ok', false, 'scope', 'global', 'kind', p_kind, 'units', v_units,
+                'used', coalesce(v_gused, 0), 'limit', v_glimit,
+                'remaining', greatest(0, v_glimit - coalesce(v_gused, 0)), 'unlimited', false);
+        end if;
+    end if;
+    if v_limit > 0 then
+        insert into public.usage_counters (user_id, day, kind, units) values (p_user, v_day, p_kind, 0)
+        on conflict (user_id, day, kind) do nothing;
+        select units into v_used from public.usage_counters
+         where user_id = p_user and day = v_day and kind = p_kind for update;
+        if coalesce(v_used, 0) + v_units > v_limit then
+            return jsonb_build_object('ok', false, 'scope', 'user', 'kind', p_kind, 'units', v_units,
+                'used', coalesce(v_used, 0), 'limit', v_limit,
+                'remaining', greatest(0, v_limit - coalesce(v_used, 0)), 'unlimited', false);
+        end if;
+    end if;
+    if v_glimit > 0 then
+        update public.usage_counters set units = units + v_units, updated_at = now()
+         where user_id = v_zero and day = v_day and kind = 'global';
+    end if;
+    update public.usage_counters set units = units + v_units, updated_at = now()
+     where user_id = p_user and day = v_day and kind = p_kind;
+    if not found then
+        insert into public.usage_counters (user_id, day, kind, units) values (p_user, v_day, p_kind, v_units)
+        on conflict (user_id, day, kind)
+        do update set units = public.usage_counters.units + excluded.units, updated_at = now();
+    end if;
+    select units into v_used from public.usage_counters
+     where user_id = p_user and day = v_day and kind = p_kind;
+    return jsonb_build_object('ok', true, 'scope', 'user', 'kind', p_kind, 'units', v_units,
+        'used', coalesce(v_used, 0), 'limit', v_limit,
+        'remaining', case when v_limit > 0 then greatest(0, v_limit - coalesce(v_used, 0)) else null end,
+        'unlimited', v_limit <= 0);
+end;
+$$;
+revoke execute on function public.consume_quota(uuid, text, text, integer, integer) from public, anon, authenticated;
+grant  execute on function public.consume_quota(uuid, text, text, integer, integer) to service_role;
+
+create or replace function public.refund_quota(p_user uuid, p_kind text, p_units integer) returns void
+    language plpgsql security definer set search_path = public
+    as $$
+declare
+    v_day   date := (now() at time zone 'utc')::date;
+    v_zero  uuid := '00000000-0000-0000-0000-000000000000';
+    v_units integer := greatest(1, coalesce(p_units, 1));
+begin
+    if p_user is null then return; end if;
+    update public.usage_counters set units = greatest(0, units - v_units), updated_at = now()
+     where user_id = p_user and day = v_day and kind = p_kind;
+    update public.usage_counters set units = greatest(0, units - v_units), updated_at = now()
+     where user_id = v_zero and day = v_day and kind = 'global';
+end;
+$$;
+revoke execute on function public.refund_quota(uuid, text, integer) from public, anon, authenticated;
+grant  execute on function public.refund_quota(uuid, text, integer) to service_role;
+
+create or replace function public.get_quota(p_user uuid, p_email text) returns jsonb
+    language plpgsql security definer stable set search_path = public
+    as $$
+declare
+    v_day      date := (now() at time zone 'utc')::date;
+    v_zero     uuid := '00000000-0000-0000-0000-000000000000';
+    v_is_admin boolean;
+    v_result   jsonb := '{}'::jsonb;
+    v_limit    integer;
+    v_used     integer;
+    v_kind     text;
+begin
+    v_result := jsonb_build_object(
+        'enabled',   coalesce((select value from public.app_settings where key = 'quota_enabled'), '1') = '1',
+        'suspended', coalesce((select value from public.app_settings where key = 'quota_suspended'), '0') = '1',
+        'day', v_day, 'limits', '{}'::jsonb, 'used', '{}'::jsonb, 'remaining', '{}'::jsonb);
+    if (v_result->>'enabled') <> 'true' then return v_result; end if;
+    v_is_admin := exists (select 1 from public.admin_emails a where a.email = lower(coalesce(p_email, '')));
+    foreach v_kind in array array['image', 'video', 'chat', 'motion'] loop
+        v_limit := null;
+        if v_is_admin then
+            select value into v_limit from public.app_settings where key = 'quota_admin_' || v_kind || '_daily';
+        end if;
+        if v_limit is null then
+            select value into v_limit from public.app_settings where key = 'quota_' || v_kind || '_daily';
+        end if;
+        v_limit := coalesce(nullif(v_limit, '')::integer, 0);
+        select units into v_used from public.usage_counters where user_id = p_user and day = v_day and kind = v_kind;
+        v_result := v_result || jsonb_build_object(
+            'limits',    (v_result->'limits')    || jsonb_build_object(v_kind, v_limit),
+            'used',      (v_result->'used')      || jsonb_build_object(v_kind, coalesce(v_used, 0)),
+            'remaining', (v_result->'remaining') || jsonb_build_object(
+                v_kind, case when v_limit > 0 then greatest(0, v_limit - coalesce(v_used, 0)) else null end));
+    end loop;
+    v_limit := coalesce(nullif((select value from public.app_settings where key = 'quota_global_daily'), '')::integer, 0);
+    select units into v_used from public.usage_counters where user_id = v_zero and day = v_day and kind = 'global';
+    v_result := v_result || jsonb_build_object('global', jsonb_build_object(
+        'limit', v_limit, 'used', coalesce(v_used, 0),
+        'remaining', case when v_limit > 0 then greatest(0, v_limit - coalesce(v_used, 0)) else null end));
+    return v_result;
+end;
+$$;
+revoke execute on function public.get_quota(uuid, text) from public, anon, authenticated;
+grant  execute on function public.get_quota(uuid, text) to service_role;
+
+insert into public.app_settings (key, value) values
+    ('quota_enabled', '1'), ('quota_suspended', '0'),
+    ('quota_image_daily', '20'), ('quota_video_daily', '8'),
+    ('quota_chat_daily', '30'), ('quota_motion_daily', '0'), ('quota_global_daily', '0')
+on conflict (key) do nothing;
 
 -- ── LISTE BLANCHE : un e-mail = un accès admin ─────────────────────────────
 -- Une seule ligne pour un seul administrateur ; ajoute-en une autre

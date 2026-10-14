@@ -528,6 +528,8 @@ window.LSV = {
         timing: TimingService,
         wakelock: WakeLockService,
         account: AccountService,
+        quota: QuotaService,
+        gateway: Gateway,
         agnes: AgnesProvider,
         image: ImageService,
         video: VideoService,
