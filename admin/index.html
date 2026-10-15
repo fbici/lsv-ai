@@ -338,13 +338,47 @@
                     </div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><div class="card-title"><span class="ms">vpn_key</span> Clé du fournisseur</div></div>
+                    <div class="card-header">
+                        <div class="card-title"><span class="ms">key</span> Clés du fournisseur par outil</div>
+                        <span class="badge" id="tool-keys-count">—</span>
+                    </div>
                     <div class="info-block">
-                        La passerelle utilise cette clé pour générer images, vidéos et chat.
-                        Saisie ici, elle est stockée <strong>côté serveur</strong> (Supabase) :
-                        les visiteurs ne la lisent jamais et seuls les comptes de la liste
-                        blanche peuvent la modifier. Elle remplace le secret serveur si ce
-                        dernier est absent ; effective sous une minute.
+                        Une clé <strong>dédiée par outil</strong> : chaque fonctionnalité a
+                        alors son propre budget et son propre rate limit chez le fournisseur.
+                        Un lot d'images n'épuise donc <strong>pas</strong> la clé vidéo ni celle
+                        du chat, et la panne d'une clé n'arrête qu'un seul outil.
+                        Laisser un champ <strong>vide</strong> pour utiliser la clé partagée
+                        ci-dessous. Stockées <strong>côté serveur</strong> uniquement, jamais
+                        renvoyées au navigateur ; effective sous ~30 s.
+                    </div>
+                    <div class="kv" id="tool-keys-status"></div>
+                    <div class="quota-grid" style="margin-top:1rem">
+                        <label class="field">
+                            <span class="field-label"><span class="ms" style="font-size:14px">image</span> Images</span>
+                            <input type="password" id="tool-key-image" autocomplete="off" spellcheck="false" placeholder="clé images (sinon partagée)">
+                        </label>
+                        <label class="field">
+                            <span class="field-label"><span class="ms" style="font-size:14px">movie</span> Vidéos</span>
+                            <input type="password" id="tool-key-video" autocomplete="off" spellcheck="false" placeholder="clé vidéos (sinon partagée)">
+                        </label>
+                        <label class="field">
+                            <span class="field-label"><span class="ms" style="font-size:14px">forum</span> Chat IA</span>
+                            <input type="password" id="tool-key-chat" autocomplete="off" spellcheck="false" placeholder="clé chat (sinon partagée)">
+                        </label>
+                    </div>
+                    <div class="key-actions">
+                        <button class="btn btn-primary" id="tool-keys-save" type="button"><span class="ms">save</span> Enregistrer les 3 clés</button>
+                        <button class="btn btn-ghost" id="tool-keys-clear" type="button"><span class="ms">delete</span> Tout retirer</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><div class="card-title"><span class="ms">vpn_key</span> Clé partagée (secours)</div></div>
+                    <div class="info-block">
+                        Clé utilisée par <strong>tous les outils</strong> dont la clé dédiée est
+                        vide, et par le module <strong>Motion</strong>. Saisie ici, elle est
+                        stockée <strong>côté serveur</strong> (Supabase) : les visiteurs ne la
+                        lisent jamais. Elle remplace le secret serveur si ce dernier est
+                        absent ; effective sous une minute.
                     </div>
                     <div class="kv" id="settings-key-status"></div>
                     <label class="field" style="margin-top:1rem">

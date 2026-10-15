@@ -518,6 +518,79 @@ async function run() {
     st.leave('u1');
     check('libération → à nouveau admis', st.enter('u1', 3) === true);
 
+    console.log('\n=== 21. CLÉ DU FOURNISSEUR PAR OUTIL ===');
+    /* Une clé dédiée par outil : un lot d'images n'utilise pas la clé vidéo.
+       Repli sur la clé partagée, puis sur le secret serveur. */
+    const KEYS = { image: 'CLE-IMAGES-111', video: 'CLE-VIDEOS-222', chat: 'CLE-CHAT-333', shared: 'CLE-PARTAGEE-444' };
+    function keyHarness(settings) {
+        const seen = [];
+        const handle = createHandler({
+            env: {
+                AGNES_API_KEY: 'secret-CLI',
+                SUPABASE_URL: 'https://ref.supabase.co',
+                SUPABASE_SERVICE_ROLE_KEY: 'svc-key-0123456789',
+                ALLOWED_ORIGINS: 'https://fbici.github.io',
+                RATE_LIMIT_PER_MIN: '1000',
+                IMAGE_LIMIT: '0', VIDEO_LIMIT: '0', CHAT_LIMIT: '0', MOTION_LIMIT: '0'
+            },
+            store: createMemoryStore(), now: () => 1700000000000, log: () => {},
+            fetchImpl: async (url, init) => {
+                const u = String(url);
+                if (u.includes('/rest/v1/app_settings')) {
+                    return new Response(JSON.stringify(Object.keys(settings).map(k => ({ key: k, value: settings[k] }))),
+                        { status: 200, headers: { 'content-type': 'application/json' } });
+                }
+                seen.push({ url: u, auth: (init.headers && init.headers.Authorization) || '' });
+                return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+            }
+        });
+        return { handle, seen };
+    }
+    const mkTool = (path, method) => makeReq(GW + path, {
+        method: method || 'POST',
+        headers: { 'content-type': 'application/json', 'x-forwarded-for': '5.5.5.5' },
+        body: method === 'GET' ? undefined : '{}'
+    });
+
+    const kh1 = keyHarness({
+        provider_api_key_image: KEYS.image, provider_api_key_video: KEYS.video,
+        provider_api_key_chat: KEYS.chat, provider_api_key: KEYS.shared
+    });
+    await kh1.handle(mkTool('/v1/images/generations'));
+    await kh1.handle(mkTool('/v1/videos'));
+    await kh1.handle(mkTool('/v1/chat/completions'));
+    check('images → clé dédiée images', kh1.seen[0].auth === 'Bearer ' + KEYS.image, kh1.seen[0].auth);
+    check('vidéos → clé dédiée vidéos', kh1.seen[1].auth === 'Bearer ' + KEYS.video, kh1.seen[1].auth);
+    check('chat → clé dédiée chat', kh1.seen[2].auth === 'Bearer ' + KEYS.chat, kh1.seen[2].auth);
+
+    const kh2 = keyHarness({
+        provider_api_key_image: KEYS.image, provider_api_key: KEYS.shared
+    });
+    await kh2.handle(mkTool('/v1/images/generations'));
+    await kh2.handle(mkTool('/v1/videos'));
+    await kh2.handle(mkTool('/v1/chat/completions'));
+    check('clé vidéo absente → repli sur la clé partagée', kh2.seen[1].auth === 'Bearer ' + KEYS.shared, kh2.seen[1].auth);
+    check('clé chat absente → repli sur la clé partagée', kh2.seen[2].auth === 'Bearer ' + KEYS.shared, kh2.seen[2].auth);
+    check('clé images toujours dédiée', kh2.seen[0].auth === 'Bearer ' + KEYS.image, kh2.seen[0].auth);
+
+    const kh3 = keyHarness({ provider_api_key_image: KEYS.image });
+    await kh3.handle(mkTool('/v1/images/generations'));
+    await kh3.handle(mkTool('/agnesapi?video_id=1', 'GET'));
+    check('seule la clé images renseignée → images dédiée', kh3.seen[0].auth === 'Bearer ' + KEYS.image, kh3.seen[0].auth);
+    check('aucune clé vidéo ni partagée → secret serveur', kh3.seen[1].auth === 'Bearer secret-CLI', kh3.seen[1].auth);
+
+    const kh4 = keyHarness({
+        provider_api_key_image: KEYS.image, provider_api_key_video: KEYS.video, provider_api_key: KEYS.shared
+    });
+    await kh4.handle(makeReq(GW + '/agnesapi?video_id=1', { headers: { 'x-forwarded-for': '5.5.5.5' } }));
+    check('polling vidéo → clé vidéo (même génération)', kh4.seen[0].auth === 'Bearer ' + KEYS.video, kh4.seen[0].auth);
+
+    const kh5 = keyHarness({ provider_api_key: KEYS.shared });
+    await kh5.handle(mkTool('/v1/images/generations'));
+    check('aucune clé d\'outil → clé partagée utilisée', kh5.seen[0].auth === 'Bearer ' + KEYS.shared, kh5.seen[0].auth);
+    check('jamais la clé du client ni sk- dans l\'en-tête amont',
+        kh5.seen[0].auth.indexOf('sk-') === -1, kh5.seen[0].auth);
+
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');
     console.log((results.length - failed.length) + '/' + results.length + ' tests gateway OK');

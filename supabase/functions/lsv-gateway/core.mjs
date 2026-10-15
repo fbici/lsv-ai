@@ -194,7 +194,10 @@ export function createHandler(options = {}) {
         'quota_admin_image_daily', 'quota_admin_video_daily',
         'quota_admin_chat_daily', 'quota_admin_motion_daily'
     ];
-    const SETTINGS_KEYS = ['provider_api_key'].concat(QUOTA_KEYS);
+    const SETTINGS_KEYS = [
+        'provider_api_key', 'provider_api_key_image',
+        'provider_api_key_video', 'provider_api_key_chat'
+    ].concat(QUOTA_KEYS);
     const SETTINGS_CACHE_MS = 30000;
     let settingsCache = { at: -1, map: null };
 
@@ -231,10 +234,33 @@ export function createHandler(options = {}) {
         return map;
     }
 
-    async function resolveKey() {
+    /* ── Clés du fournisseur ────────────────────────────────────────────────
+       Une clé DÉDIÉE par outil (images / vidéos / chat), saisie dans le
+       back-office. Chaque outil a ainsi son propre budget et son propre rate
+       limit chez le fournisseur : un lot d'images n'épuise pas la clé vidéo.
+       Si la clé de l'outil est vide, on retombe sur la CLÉ PARTAGÉE
+       (provider_api_key) — également utilisée pour le module Motion.
+       Dernier recours : le secret serveur AGNES_API_KEY. La table est lue
+       avec la clé de service du projet : les clés ne quittent jamais le
+       serveur. Une seule lecture groupée toutes les 30 s (cache). */
+
+    /** Clé utilisée pour un chemin donné : 'image' | 'video' | 'chat' | ''. */
+    function keyKind(path, method) {
+        /* Le polling vidéo appartient à la même génération que le POST. */
+        if (path.startsWith('/agnesapi')) return 'video';
+        return classifyRequest(path, method) || '';
+    }
+
+    /** Résout la clé pour un outil : clé dédiée → clé partagée → secret. */
+    async function resolveKey(kind) {
         const envKey = (env.AGNES_API_KEY || '').trim();
+        const k = String(kind || '');
         if (!supaUrl || !svcKey) return envKey;
         const map = await allSettings();
+        if (k) {
+            const dedicated = String(map['provider_api_key_' + k] || '').trim();
+            if (dedicated) return dedicated;
+        }
         return String(map.provider_api_key || '').trim() || envKey;
     }
 
@@ -420,7 +446,9 @@ export function createHandler(options = {}) {
         const isProxy = path === '/v1' || path.startsWith('/v1/') || path.startsWith('/agnesapi');
         if (!isProxy) return json(404, MSG_NOT_FOUND, c.headers);
 
-        const agnesKey = await resolveKey();
+        /* Clé dédiée à l'outil concerné (images / vidéos / chat), avec repli
+           sur la clé partagée puis sur le secret serveur. */
+        const agnesKey = await resolveKey(keyKind(path, request.method));
         if (!agnesKey) {
             log('clé du fournisseur absente (back-office ou secret serveur)');
             return json(503, MSG_NO_KEY, c.headers);

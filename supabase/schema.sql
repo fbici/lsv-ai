@@ -106,16 +106,21 @@ grant usage on schema public to anon, authenticated;
 grant insert on public.analytics_events to anon, authenticated;
 grant select on public.analytics_events to authenticated;
 
--- ── Réglages applicatifs (clé du fournisseur, saisie dans le back-office) ──
--- La passerelle (Edge Function lsv-gateway) lit la clé avec la clé de service
--- du projet : elle n'est JAMAIS exposée aux visiteurs (aucun droit pour anon).
--- Seuls les comptes de la liste blanche peuvent la lire ou la modifier.
+-- ── Réglages applicatifs (clés du fournisseur + quotas, back-office) ───────
+-- Clés : une DÉDIÉE par outil (images / vidéos / chat) + une clé partagée de
+-- secours (provider_api_key) utilisée si la clé de l'outil est vide, et pour
+-- le module Motion. La passerelle les lit avec la clé de service du projet :
+-- elles ne sont JAMAIS exposées aux visiteurs (aucun droit pour anon).
+-- Quotas : valeurs journalières par compte, réglées dans /admin.
 create table if not exists public.app_settings (
     key         text primary key,
     value       text not null,
     updated_at  timestamptz not null default now(),
     constraint app_settings_key_check check (key in (
         'provider_api_key',
+        'provider_api_key_image',
+        'provider_api_key_video',
+        'provider_api_key_chat',
         'quota_enabled',
         'quota_suspended',
         'quota_image_daily',

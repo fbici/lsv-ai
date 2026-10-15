@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.9.0
+# LSV.ai — Studio Viral v3.10.0
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
 
@@ -120,6 +120,9 @@ lsv-ai/
 │   ├── schema.sql             # Tables + RLS + indexes (à exécuter une fois)
 │   ├── upgrade-admin-whitelist.sql  # Migration : liste blanche admin
 │   ├── upgrade-profiles.sql   # Migration : noms des comptes (profiles)
+│   ├── upgrade-activity-logs.sql    # Migration : user_id + admin_logs
+│   ├── upgrade-quotas.sql     # Migration : quotas journaliers + usage_counters
+│   ├── upgrade-multi-key.sql  # Migration : clés du fournisseur par outil
 │   ├── email-confirm-signup.html    # Modèle d'e-mail « confirme ton compte »
 │   ├── email-reset-password.html    # Modèle d'e-mail « mot de passe oublié »
 │   └── functions/lsv-gateway/
@@ -195,7 +198,8 @@ supabase link --project-ref <votre-ref>
 supabase functions deploy lsv-gateway --no-verify-jwt
 
 # 2) donner la clé du fournisseur à la passerelle — 2 possibilités :
-#    a) RECOMMANDÉ : back-office → Paramètres → « Clé du fournisseur » (§5.3)
+#    a) RECOMMANDÉ : back-office → Paramètres (§5.3) — une clé dédiée par
+#       outil (images / vidéos / chat) + une clé partagée de secours (§2.12)
 #    b) secret de la fonction (secours / usage CLI) :
 supabase secrets set AGNES_API_KEY=sk-…
 ```
@@ -256,7 +260,7 @@ ne protègent que notre passerelle.
 | **Nom en base** | table `profiles` (`full_name`, `email`, `last_sign_in_at`) remplie par trigger à chaque inscription/connexion, affichée dans la page **Utilisateurs** du back-office |
 | **Création = compte** | `AgnesProvider.fetch` + `ChatService.send` appellent `AccountView.ensure()` : sans compte, **aucune requête** de génération n'est émise (image, vidéo, chat, enhancer, batch) — le formulaire Compte s'ouvre avec le message « Connecte-toi à ton compte pour créer. » |
 | **Bouton back-office** | affiché dans l'app **uniquement** si l'e-mail connecté est dans la liste blanche |
-| **Clé du fournisseur** | back-office → **Paramètres** → « Clé du fournisseur » : champ masqué + `Enregistrer la clé` → table `app_settings` (RLS : **liste blanche uniquement**, aucun droit pour `anon`) ; la Gateway la lit côté serveur, avec priorité sur le secret `AGNES_API_KEY` |
+| **Clés du fournisseur** | back-office → **Paramètres** : une clé dédiée par outil (images / vidéos / chat) **plus** une clé partagée de secours → table `app_settings` (RLS : **liste blanche uniquement**, aucun droit pour `anon`) ; la Gateway choisit la bonne par requête, avec priorité sur le secret `AGNES_API_KEY` (§2.12) |
 | **Événements** | `account_created`, `account_signed_in` (sans e-mail, sans donnée personnelle) |
 
 Un compte créé **n'ouvre rien par lui-même** : sans figure dans `admin_emails`,
@@ -364,6 +368,7 @@ delete) via les policies RLS.
 # Dashboard Supabase → SQL Editor → New query → coller le contenu de :
 supabase/upgrade-activity-logs.sql
 supabase/upgrade-quotas.sql
+supabase/upgrade-multi-key.sql   # clés du fournisseur par outil (§2.12)
 ```
 
 Ce fichier est idempotent : il ajoute la colonne `user_id` à
@@ -433,6 +438,47 @@ est effectif en moins d'une minute, sans redéploiement.
 
 ---
 
+### 2.12 Clés du fournisseur par outil (nouveau)
+
+Trois clés **dédiées**, une par outil, saisies dans le back-office :
+
+| Clé `app_settings` | Utilisée pour |
+|---|---|
+| `provider_api_key_image` | toutes les générations d'images |
+| `provider_api_key_video` | les générations de vidéo **et** leur polling |
+| `provider_api_key_chat` | le chat IA et l'amélioration de prompts |
+| `provider_api_key` | **clé partagée de secours** : outils dont la clé dédiée est vide, et le module Motion |
+
+**Résolution** (par requête, côté serveur uniquement) :
+
+```
+clé dédiée de l'outil  →  clé partagée  →  secret serveur AGNES_API_KEY
+```
+
+**Intérêt.** Chaque outil a alors son propre **budget** et son propre
+**rate limit** chez le fournisseur : un lot de 50 images n'épuise **pas** la
+clé vidéo, et la panne ou la révocation d'une clé n'arrête **qu'un seul outil**.
+Le débit total devient la somme des débits des trois clés.
+
+**Inconvénients à garder en tête.** Trois clés = trois postes chez le
+fournisseur (suivi du coût, de la facturation, des plafonds). Sans cela, il
+vaut mieux ne renseigner que la clé partagée.
+
+**Sécurité.** Les trois clés vivent dans `app_settings` (RLS : **liste blanche
+uniquement**, aucun droit pour `anon`), sont lues par la passerelle avec la clé
+de **service** du projet, **jamais** renvoyées au navigateur, et le back-office
+n'affiche que les **4 derniers caractères**. Le journal d'audit enregistre
+l'opération **sans les valeurs**.
+
+Interface : `/admin → Paramètres → « Clés du fournisseur par outil »` —
+un champ par outil, `Enregistrer les 3 clés` (champ vide ignoré) et
+`Tout retirer`. Migration : `supabase/upgrade-multi-key.sql`.
+
+> Rien ne casse si seule l'ancienne clé partagée est renseignée : c'est le
+> comportement par défaut, et le repli automatique.
+
+---
+
 ## 3. Installation locale
 
 ```bash
@@ -467,8 +513,9 @@ npm run serve      # http://localhost:4173
 
 1. Dashboard → **SQL Editor** → **New query**.
 2. Coller le contenu de `supabase/schema.sql` → **Run**.
-   *(Base déjà créée ? exécuter `supabase/upgrade-admin-whitelist.sql`,
-   puis `supabase/upgrade-profiles.sql`.)*
+   *(Base déjà créée ? exécuter, dans cet ordre : `upgrade-admin-whitelist.sql`,
+   `upgrade-profiles.sql`, `upgrade-activity-logs.sql`, `upgrade-quotas.sql`,
+   `upgrade-multi-key.sql` — toutes idempotentes.)*
 3. **Ajouter son e-mail administrateur** (décommenter la dernière ligne du
    script, ou SQL direct) :
 
@@ -483,9 +530,10 @@ Ce script crée :
   comptes authentifiés et listés**, pas de UPDATE/DELETE anon) ;
 - la table `admin_emails` (liste blanche, **invisible côté client** : RLS sans
    policy + droits révoqués sur `anon` et `authenticated`) ;
-- la table `app_settings` (clé du fournisseur saisie dans le back-office :
-   RLS activée, **aucun droit pour `anon`**, lecture/écriture réservées à
-   `is_admin()`) ;
+- la table `app_settings` (clés du fournisseur saisies dans le back-office :
+   une dédiée par outil + une clé partagée de secours, et les quotas
+   journaliers ; RLS activée, **aucun droit pour `anon`**, lecture/écriture
+   réservées à `is_admin()`) ;
 - la table `profiles` (**nom complet, e-mail et dernière connexion de chaque
   compte**, recopiés de `auth.users` par un trigger à chaque inscription et
   chaque connexion — aucun secret, aucun mot de passe ; lecture : soi-même ou
@@ -712,11 +760,18 @@ Comportements attendus :
   détail. Insert + select uniquement ; la modification / retrait de clé
   y laisse automatiquement une entrée, **jamais la valeur de la clé**.
 - **Paramètres** — état de la connexion, session, fréquence d'actualisation,
-  déconnexion, et **Clé du fournisseur** (état « aucune clé / configurée »
-  masquée `••••1234`, champ pour enregistrer une nouvelle clé, bouton
-  `Retirer la clé`). La clé est stockée dans `app_settings` : visible et
-  modifiable **uniquement** par les comptes de la liste blanche, jamais
-  renvoyée aux visiteurs ; effective côté passerelle sous ~1 minute.
+  déconnexion, et les **clés du fournisseur** :
+  - *« Clés du fournisseur par outil »* — 3 champs (images / vidéos / chat),
+    compteur `n / 3 actives`, aperçu `••••1234` uniquement,
+    `Enregistrer les 3 clés` (champ vide = on garde la clé partagée) et
+    `Tout retirer` ;
+  - *« Clé partagée (secours) »* — état « aucune clé / configurée » masquée
+    `••••1234`, champ pour enregistrer une nouvelle clé, bouton
+    `Retirer la clé`.
+
+  Les clés sont stockées dans `app_settings` : visibles et modifiables
+  **uniquement** par les comptes de la liste blanche, jamais renvoyées aux
+  visiteurs ; effective côté passerelle sous ~30 s.
 
 Périodes : **Aujourd'hui · 7 jours · 30 jours · Tout**.
 
@@ -832,16 +887,17 @@ un sous-dossier GitHub Pages (`/lsv-ai/`).
 | `.env.example` | modèle commenté | ✅ oui |
 | `.env` | éventuel, hors dépôt | ❌ non (`.gitignore`) |
 | `AGNES_API_KEY` | **secret serveur de secours** de la Gateway (Supabase Secrets) | ❌ non |
-| Clé du fournisseur | saisie dans `/admin` → Paramètres → table `app_settings` (RLS liste blanche) | ❌ non |
+| Clés du fournisseur | saisies dans `/admin` → Paramètres → table `app_settings` (RLS liste blanche) : une dédiée par outil + une clé partagée | ❌ non |
 | `service_role` key | **jamais** utilisée par le front | ❌ non |
 | Mot de passe base | uniquement dans Supabase | ❌ non |
 | Mot de passe admin | uniquement dans Supabase Auth (haché) | ❌ non |
 
-La clé du fournisseur de génération n'existe **que** côté serveur : secret de
-la fonction ou table `app_settings` (protégée par RLS, lue par la passerelle
-avec la clé de service). Jamais dans `index.html`, `admin/`, `analytics/`,
-`shared/`, `localStorage` ni dans Git (`tests/public.test.js` le vérifie) —
-dans le back-office elle n'apparaît masquée que sous forme `••••1234`.
+Les clés du fournisseur de génération n'existent **que** côté serveur : secret
+de la fonction ou table `app_settings` (protégée par RLS, lue par la passerelle
+avec la clé de service) — une dédiée par outil **plus** une clé partagée de
+secours (§2.12). Jamais dans `index.html`, `admin/`, `analytics/`, `shared/`,
+`localStorage` ni dans Git (`tests/public.test.js` le vérifie) — dans le
+back-office elles n'apparaissent masquées que sous forme `••••1234`.
 
 ---
 
@@ -944,6 +1000,10 @@ npm test        # 353 assertions (406 avec ORIG=… voir plus bas)
 - **compte hors liste blanche** → « Compte non autorisé », zéro donnée ;
 - **clé du fournisseur** dans Paramètres : refus (< 8 caractères), enregistre,
   affiche `••••1234` (jamais la valeur), retrait → état initial ;
+- **clés par outil** (§2.12) : 3 champs, refus d'une clé trop courte,
+  enregistrement des 3 en une seule écriture, persistance `app_settings`,
+  compteur `n / 3`, valeurs masquées, retrait global, et journal d'audit
+  **sans** la valeur des clés ;
 - **page Utilisateurs** : nav + titre + table des comptes (`profiles`) avec nom,
   e-mail, inscription, dernière connexion, KPI (comptes, avec nom, déjà
   connectés), aucun secret affiché, actualisation sans erreur ;
@@ -971,7 +1031,7 @@ npm test        # 353 assertions (406 avec ORIG=… voir plus bas)
   = quota par isolate). Si LSV.ai grandit, brancher un store Supabase
   (table + service role) dans `core.mjs`.
 - **Clé du fournisseur en base** : la passerelle la relit au plus une fois par
-  minute (cache) → un changement depuis le back-office prend effet sous ~1 min
+  minute (cache) → un changement depuis le back-office prend effet sous ~30 s
   et par isolate. Si la base est injoignable, le secret serveur reprend la main.
 - **Noms de modèles encore présents dans `index.html`** (constantes `MODEL_*`) :
   ils ne sont jamais affichés à l'écran (testé), mais restent lisibles dans le

@@ -251,6 +251,7 @@
         $('logout-btn').addEventListener('click', doLogout);
         $('settings-logout').addEventListener('click', doLogout);
         initKeyCard();
+    initToolKeys();
     }
 
     function doLogout() {
@@ -966,6 +967,112 @@
         });
     }
 
+    /* ── Clés du fournisseur PAR OUTIL ─────────────────────────────────────
+       Trois clés dédiées : images / vidéos / chat. Chaque outil a alors son
+       propre budget et son propre rate limit chez le fournisseur, et la panne
+       d'une clé n'arrête qu'un seul outil. Champ vide = utiliser la clé
+       partagée (provider_api_key), elle-même remplacée par le secret serveur. */
+    var TOOL_KEYS = [
+        { key: 'provider_api_key_image', id: 'tool-key-image', label: 'Images' },
+        { key: 'provider_api_key_video', id: 'tool-key-video', label: 'Vidéos' },
+        { key: 'provider_api_key_chat', id: 'tool-key-chat', label: 'Chat IA' }
+    ];
+
+    function renderToolKeys() {
+        var el = $('tool-keys-status');
+        if (!el) return;
+        if (!State.client || !State.isAdmin) {
+            el.innerHTML = kvHTML([['Statut', '<span class="badge err">réservé à l\'administrateur</span>']]);
+            return;
+        }
+        el.innerHTML = kvHTML([['Statut', '<span class="badge">lecture…</span>']]);
+        Promise.all(TOOL_KEYS.map(function (t) {
+            return State.client.from('app_settings').select('value').eq('key', t.key);
+        })).then(function (results) {
+            var lines = [];
+            var count = 0;
+            TOOL_KEYS.forEach(function (t, i) {
+                var res = results[i];
+                if (res && res.error) {
+                    lines.push([t.label, '<span class="badge err">base non prête</span>']);
+                    return;
+                }
+                var row = res && res.data && res.data[0];
+                if (row && row.value) {
+                    count++;
+                    lines.push([t.label, '<span class="badge ok">configurée</span> · ••••••••' + esc(String(row.value).slice(-4)), true]);
+                } else {
+                    lines.push([t.label, '<span class="badge">vide</span> · clé partagée utilisée']);
+                }
+            });
+            lines.unshift(['Clés dédiées actives', '<span class="badge ' + (count ? 'ok' : 'err') + '">' + count + ' / 3</span>']);
+            el.innerHTML = kvHTML(lines);
+            var cnt = $('tool-keys-count');
+            if (cnt) cnt.textContent = count + ' / 3 actives';
+        }).catch(function (e) {
+            el.innerHTML = kvHTML([
+                ['Statut', '<span class="badge err">lecture impossible</span>'],
+                ['Détail', esc((e && e.message) || 'réseau'), true]
+            ]);
+        });
+    }
+
+    function initToolKeys() {
+        var save = $('tool-keys-save');
+        var clear = $('tool-keys-clear');
+        if (!save || !clear) return;
+        save.addEventListener('click', function () {
+            if (!State.client || !State.isAdmin) { toast('Réservé à l\'administrateur.', 'error'); return; }
+            var now = new Date().toISOString();
+            var rows = [];
+            var bad = null;
+            TOOL_KEYS.forEach(function (t) {
+                var input = $(t.id);
+                var v = (input && input.value || '').trim();
+                if (!v) return;
+                if (v.length < 8) { bad = t.label; return; }
+                rows.push({ key: t.key, value: v, updated_at: now });
+            });
+            if (bad) { toast('Clé « ' + bad + ' » trop courte : 8 caractères minimum.', 'error'); return; }
+            if (!rows.length) { toast('Aucune clé saisie : laisse vide pour utiliser la clé partagée.', 'error'); return; }
+            save.disabled = true;
+            State.client.from('app_settings')
+                .upsert(rows, { onConflict: 'key' })
+                .then(function (res) {
+                    save.disabled = false;
+                    if (res && res.error) { toast('Enregistrement impossible : ' + friendlyAuthError(res.error.message), 'error'); return; }
+                    TOOL_KEYS.forEach(function (t) { var i = $(t.id); if (i) i.value = ''; });
+                    toast(rows.length + ' clé(s) enregistrée(s) — prise en compte sous ~30 s.', 'success');
+                    /* Journalise l'action SANS les valeurs des clés. */
+                    logAdmin('cles_outils_modifiees', 'app_settings', {
+                        cles: rows.map(function (r) { return r.key; }), longueurs: rows.map(function (r) { return r.value.length; })
+                    });
+                    renderToolKeys();
+                })
+                .catch(function (e) {
+                    save.disabled = false;
+                    toast('Enregistrement impossible : ' + ((e && e.message) || 'réseau'), 'error');
+                });
+        });
+        clear.addEventListener('click', function () {
+            if (!State.client || !State.isAdmin) { toast('Réservé à l\'administrateur.', 'error'); return; }
+            save.disabled = true;
+            Promise.all(TOOL_KEYS.map(function (t) {
+                return State.client.from('app_settings').delete().eq('key', t.key);
+            })).then(function (results) {
+                save.disabled = false;
+                var err = results.filter(function (r) { return r && r.error; })[0];
+                if (err) { toast('Retrait impossible : ' + friendlyAuthError(err.error.message), 'error'); return; }
+                toast('Clés d\'outils retirées : la passerelle utilise la clé partagée.', 'success');
+                logAdmin('cles_outils_retirees', 'app_settings', {});
+                renderToolKeys();
+            }).catch(function (e) {
+                save.disabled = false;
+                toast('Retrait impossible : ' + ((e && e.message) || 'réseau'), 'error');
+            });
+        });
+    }
+
     function renderSettings() {
         var c = window.LSV_CONFIG || {};
         var url = String(c.SUPABASE_URL || '');
@@ -989,6 +1096,7 @@
             ['Dernière synchro', State.syncedAt ? State.syncedAt.toLocaleTimeString('fr-FR') : '—']
         ]);
         renderKeyCard();
+        renderToolKeys();
     }
 
     /* ── Comptes (page Utilisateurs) ────────────────────────────────────────

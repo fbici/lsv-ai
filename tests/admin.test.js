@@ -420,6 +420,61 @@ async function login(dom, email, password) {
     check('clé retirée → statut initial', /aucune clé/i.test(keyStatus()), keyStatus().replace(/\s+/g, ' ').slice(0, 90));
     check('aucune erreur console (clé)', t.errors.length === 0, t.errors.join('|'));
 
+    console.log('\n=== L2. CLÉS DU FOURNISSEUR PAR OUTIL ===');
+    t = await load(inject(src, CONFIG_OK));
+    const wt = t.dom.window;
+    await login(t, GOOD_EMAIL, GOOD_PASSWORD);
+    await sleep(500);
+    wt.document.querySelector('.nav-item[data-page="settings"]').dispatchEvent(new wt.Event('click', { bubbles: true }));
+    await sleep(350);
+    check('carte « Clés … par outil » présente', !!wt.document.getElementById('tool-key-image'));
+    check('3 champs (images / vidéos / chat)',
+        !!wt.document.getElementById('tool-key-video') && !!wt.document.getElementById('tool-key-chat'));
+    check('boutons enregistrer / retirer', !!wt.document.getElementById('tool-keys-save') && !!wt.document.getElementById('tool-keys-clear'));
+    const toolStatus = () => wt.document.getElementById('tool-keys-status').textContent.replace(/\s+/g, ' ');
+    check('statut initial : 0 / 3', /0 \/ 3/.test(toolStatus()), toolStatus().slice(0, 120));
+    check('badge initial 0 / 3 actives', /0 \/ 3 actives/.test(wt.document.getElementById('tool-keys-count').textContent),
+        wt.document.getElementById('tool-keys-count').textContent);
+
+    wt.document.getElementById('tool-key-video').value = 'court';
+    wt.document.getElementById('tool-keys-save').dispatchEvent(new wt.Event('click', { bubbles: true }));
+    await sleep(120);
+    check('clé d\'outil trop courte refusée', /8 caractères/.test(wt.document.getElementById('toast-text').textContent), wt.document.getElementById('toast-text').textContent);
+    check('rien enregistré après refus', /0 \/ 3/.test(toolStatus()), toolStatus().slice(0, 120));
+
+    wt.document.getElementById('tool-key-video').value = '';
+    wt.document.getElementById('tool-keys-save').dispatchEvent(new wt.Event('click', { bubbles: true }));
+    await sleep(120);
+    check('aucune saisie → message d\'aide', /Aucune clé saisie/.test(wt.document.getElementById('toast-text').textContent), wt.document.getElementById('toast-text').textContent);
+
+    wt.document.getElementById('tool-key-image').value = 'images-cle-00112233';
+    wt.document.getElementById('tool-key-video').value = 'videos-cle-44556677';
+    wt.document.getElementById('tool-key-chat').value = 'chat-cle-8899aabb';
+    wt.document.getElementById('tool-keys-save').dispatchEvent(new wt.Event('click', { bubbles: true }));
+    await sleep(350);
+    check('3 clés enregistrées', /3 clé\(s\) enregistrée/.test(wt.document.getElementById('toast-text').textContent), wt.document.getElementById('toast-text').textContent);
+    check('statut : 3 / 3', /3 \/ 3/.test(toolStatus()), toolStatus().slice(0, 160));
+    check('clés masquées (aperçu 4 derniers caractères)',
+        /••••••••2233/.test(toolStatus()) && !/images-cle-00112233/.test(toolStatus()), toolStatus().slice(0, 160));
+    check('champs vidés après enregistrement',
+        wt.document.getElementById('tool-key-image').value === '' &&
+        wt.document.getElementById('tool-key-video').value === '');
+    check('persistance en base (3 lignes app_settings)',
+        wt.__SETTINGS && wt.__SETTINGS.provider_api_key_image && wt.__SETTINGS.provider_api_key_video && wt.__SETTINGS.provider_api_key_chat,
+        Object.keys(wt.__SETTINGS || {}).join(','));
+    check('valeur exacte stockée en base', wt.__SETTINGS.provider_api_key_chat.value === 'chat-cle-8899aabb');
+    check('journal sans la valeur de clé',
+        (wt.__LOGS || []).some(l => l.action === 'cles_outils_modifiees') &&
+        !(wt.__LOGS || []).some(l => JSON.stringify(l).indexOf('images-cle-00112233') !== -1),
+        JSON.stringify((wt.__LOGS || [])[0] || {}).slice(0, 120));
+
+    wt.document.getElementById('tool-keys-clear').dispatchEvent(new wt.Event('click', { bubbles: true }));
+    await sleep(350);
+    check('retrait global → 0 / 3', /0 \/ 3/.test(toolStatus()), toolStatus().slice(0, 120));
+    check('3 lignes supprimées de la base',
+        !wt.__SETTINGS.provider_api_key_image && !wt.__SETTINGS.provider_api_key_video && !wt.__SETTINGS.provider_api_key_chat);
+    check('aucune erreur console (clés outils)', t.errors.length === 0, t.errors.join('|'));
+
     console.log('\n=== M. PAGE UTILISATEURS ===');
     t = await load(inject(src, CONFIG_OK));
     const wu = t.dom.window;
