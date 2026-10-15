@@ -94,6 +94,9 @@ function normalizePublic(doc) {
     drop('#site-about');
     // Page d'accueil de première visite : testée par public.test, retirée ici.
     drop('#welcome');
+    // Lien « Studio vidéo » (page séparée studio/, testée par studio.test) :
+    // ajouté dans la sidebar, retiré ici pour garder l'égalité structurelle ORIG.
+    drop('.nav-ext');
     const w = doc.defaultView;
     if (w && w.LSV && w.LSV.services && w.LSV.services.account) delete w.LSV.services.account;
     const keyInput = doc.getElementById('api-input');

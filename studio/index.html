@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>LSV Studio — Montage vidéo</title>
+
+<link rel="icon" type="image/jpeg" href="../lsv.jpg">
+<link rel="apple-touch-icon" href="../lsv.jpg">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet">
+
+<!-- Tokens de design + mode sombre partagés avec l'application principale. -->
+<link rel="stylesheet" href="../styles/base.css">
+<link rel="stylesheet" href="./studio.css">
+<!-- Le thème est appliqué AVANT le premier rendu : aucun clignotement blanc. -->
+<script>try{if(localStorage.getItem('lsv4_theme')==='dark')document.body.className='dark'}catch(e){}</script>
+</head>
+<body>
+
+<div class="sv-app" id="sv-app">
+
+    <!-- ═══════════ BARRE SUPÉRIEURE ═══════════ -->
+    <header class="sv-topbar">
+        <div class="sv-top-left">
+            <a class="sv-back" href="../" title="Retour à LSV.ai"><span class="ms">arrow_back</span></a>
+            <input class="sv-project-name" id="sv-project-name" type="text" maxlength="80"
+                   value="Nouveau montage" aria-label="Nom du projet">
+            <span class="sv-save-state" id="sv-save-state"><span class="ms ms-sm">cloud_done</span> <span id="sv-save-text">Prêt</span></span>
+        </div>
+        <div class="sv-top-right">
+            <button class="sv-btn icon" id="sv-undo" title="Annuler (Ctrl+Z)" disabled><span class="ms">undo</span></button>
+            <button class="sv-btn icon" id="sv-redo" title="Rétablir (Ctrl+Maj+Z)" disabled><span class="ms">redo</span></button>
+            <button class="sv-btn icon" id="sv-theme" title="Basculer en mode sombre"><span class="ms">dark_mode</span></button>
+            <button class="sv-btn primary" id="sv-export" title="Exporter la vidéo"><span class="ms">download</span> Exporter</button>
+        </div>
+    </header>
+
+    <!-- ═══════════ CORPS : 3 ZONES ═══════════ -->
+    <div class="sv-body">
+
+        <!-- PANNEAU DES MÉDIAS -->
+        <aside class="sv-panel sv-media" id="sv-media">
+            <div class="sv-panel-head">
+                <span class="ms">perm_media</span> Médias
+                <button class="sv-btn icon sm" id="sv-import" title="Importer des fichiers"><span class="ms">add</span></button>
+            </div>
+            <div class="sv-panel-body">
+                <div class="sv-dropzone" id="sv-dropzone">
+                    <span class="ms ms-lg">upload_file</span>
+                    <p>Dépose tes images, vidéos ou audio ici</p>
+                    <button class="sv-btn" id="sv-import-btn" type="button">Choisir des fichiers</button>
+                    <input type="file" id="sv-file-input" multiple
+                           accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/wav,audio/mp4,audio/x-m4a"
+                           hidden>
+                </div>
+                <ul class="sv-media-list" id="sv-media-list"></ul>
+            </div>
+        </aside>
+
+        <!-- CENTRE : APERÇU + TIMELINE -->
+        <div class="sv-center">
+
+            <section class="sv-preview">
+                <div class="sv-monitor" id="sv-monitor">
+                    <canvas id="sv-canvas" width="1080" height="1920"></canvas>
+                    <div class="sv-monitor-empty" id="sv-monitor-empty">
+                        <span class="ms ms-lg">movie</span>
+                        <p>Importe des médias pour commencer</p>
+                    </div>
+                </div>
+                <div class="sv-transport">
+                    <button class="sv-btn icon" id="sv-to-start" title="Début (Origine)"><span class="ms">first_page</span></button>
+                    <button class="sv-btn icon" id="sv-play" title="Lecture / Pause (Espace)"><span class="ms">play_arrow</span></button>
+                    <button class="sv-btn icon" id="sv-to-end" title="Fin"><span class="ms">last_page</span></button>
+                    <span class="sv-time" id="sv-time">00:00.0 / 00:00.0</span>
+                    <span class="sv-seq" id="sv-seq">1080 × 1920 · 30 i/s</span>
+                </div>
+            </section>
+
+            <section class="sv-timeline">
+                <div class="sv-tl-toolbar">
+                    <button class="sv-btn sm" id="sv-add-track" title="Ajouter une piste"><span class="ms">add</span> Piste</button>
+                    <button class="sv-btn sm" id="sv-split" title="Scinder à la tête de lecture (S)"><span class="ms">content_cut</span> Scinder</button>
+                    <button class="sv-btn sm" id="sv-delete" title="Supprimer la sélection (Suppr)"><span class="ms">delete</span></button>
+                    <div class="sv-zoom">
+                        <span class="ms ms-sm">zoom_out</span>
+                        <input type="range" id="sv-zoom" min="4" max="400" value="60" aria-label="Zoom de la timeline">
+                        <span class="ms ms-sm">zoom_in</span>
+                    </div>
+                </div>
+                <div class="sv-tl-scroll" id="sv-tl-scroll">
+                    <div class="sv-tl-ruler" id="sv-tl-ruler"></div>
+                    <div class="sv-tl-tracks" id="sv-tl-tracks"></div>
+                    <div class="sv-playhead" id="sv-playhead"></div>
+                </div>
+            </section>
+
+        </div>
+
+        <!-- PANNEAU DE PROPRIÉTÉS -->
+        <aside class="sv-panel sv-props" id="sv-props">
+            <div class="sv-panel-head"><span class="ms">tune</span> Propriétés</div>
+            <div class="sv-panel-body" id="sv-props-body">
+                <p class="sv-muted">Sélectionne un clip pour régler ses propriétés.</p>
+            </div>
+        </aside>
+
+    </div>
+</div>
+
+<!-- Écran d'accueil : liste des projets locaux -->
+<div class="sv-home" id="sv-home">
+    <div class="sv-home-inner">
+        <header class="sv-home-head">
+            <a class="sv-back" href="../" title="Retour à LSV.ai"><span class="ms">arrow_back</span></a>
+            <span class="sv-home-title">LSV Studio</span>
+            <span class="sv-home-badge">Montage vidéo local</span>
+            <button class="sv-btn icon" id="sv-home-theme" title="Basculer en mode sombre"><span class="ms">dark_mode</span></button>
+        </header>
+
+        <div class="sv-home-actions">
+            <button class="sv-cta" id="sv-new-project">
+                <span class="ms ms-lg">add_circle</span>
+                <span>Nouveau montage</span>
+            </button>
+            <button class="sv-cta ghost" id="sv-import-project">
+                <span class="ms ms-lg">file_open</span>
+                <span>Importer un projet</span>
+                <input type="file" id="sv-project-file" accept="application/json,.json,.lsvp" hidden>
+            </button>
+        </div>
+
+        <h2 class="sv-home-h2">Projets récents</h2>
+        <div class="sv-projects" id="sv-projects">
+            <p class="sv-muted">Aucun montage pour l'instant.</p>
+        </div>
+
+        <div class="sv-notice" id="sv-storage-notice">
+            <span class="ms ms-sm">info</span>
+            <span>Tes montages sont conservés <strong>sur cet appareil uniquement</strong> (IndexedDB).
+            Ils ne sont pas synchronisés avec un autre ordinateur : une sauvegarde locale n'est pas
+            une sauvegarde cloud. Exporte régulièrement un fichier projet.</span>
+        </div>
+        <div class="sv-notice warn" id="sv-caps-notice" hidden>
+            <span class="ms ms-sm">warning</span>
+            <span id="sv-caps-text"></span>
+        </div>
+    </div>
+</div>
+
+<div class="sv-toast" id="sv-toast"><span class="ms ms-sm" id="sv-toast-icon">info</span><span id="sv-toast-text"></span></div>
+
+<!-- Modules : chargés à la demande, dans cet ordre (constant → dépendances → UI → rendu → bootstrap). -->
+<script src="./render/capability.js"></script>
+<script src="./main.js"></script>
+</body>
+</html>

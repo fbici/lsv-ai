@@ -140,6 +140,16 @@
     white-space: nowrap;
 }
 .nav-item:hover { background: var(--bg-hover); color: var(--ink); }
+
+/* Lien externe dans la sidebar (ex. Studio vidéo → ./studio/).
+   Il reprend les styles de .nav-item mais reste une balise <a> : on neutralise
+   le style par défaut des liens, y compris :visited qui a une spécificité
+   supérieure à celle de la classe. */
+a.nav-ext, a.nav-ext:visited {
+    text-decoration: none;
+    color: var(--ink-2);
+}
+a.nav-ext:active { color: var(--accent); }
 .nav-item.active {
     background: var(--accent-light);
     color: var(--accent);

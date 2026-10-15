@@ -23,6 +23,10 @@ const UI = {
         this._toastTimer = setTimeout(() => toast.classList.remove('visible'), dur);
     },
     switchTab(id) {
+        /* Garde-fou : les entrées de la sidebar qui sont des liens externes
+           (ex. Studio vidéo → ./studio/) n'ont pas de data-tab. Sans ce test,
+           switchTab(undefined) désactiverait tous les .tab-content. */
+        if (!id) return;
         document.querySelectorAll('.nav-item').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
         document.querySelectorAll('.nav-mob').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
         document.querySelectorAll('.tab-content').forEach(p => p.classList.toggle('active', p.id === 'tab-' + id));
