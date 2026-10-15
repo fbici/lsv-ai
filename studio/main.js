@@ -255,9 +255,11 @@
             /* Enregistre à l'entrée pour que le projet apparaisse dans la liste. */
             await S.ProjectStorage.save(project);
             this.setSaveState('saved');
+            if (S.HistoryManager) S.HistoryManager.reset(project);
 
             if (S.MediaPanel) S.MediaPanel.render();
             if (S.TimelineView) { S.TimelineView.selection = null; S.TimelineView.playhead = 0; S.TimelineView.render(); }
+            if (S.PropertiesPanel) S.PropertiesPanel.onSelection(null);
             if (S.Preview) { S.Preview.time = 0; S.Preview.refresh(); }
         },
 
@@ -265,6 +267,41 @@
             if (!this.project) return;
             S.ProjectStorage.download(this.project);
             this.toast('Projet exporté (fichier JSON, sans les médias)', 'success');
+        },
+
+        /* ── Annuler / rétablir ─────────────────────────────────────────── */
+        undo() {
+            const restored = S.HistoryManager.undo(this.project);
+            if (!restored) return;
+            this.project = restored;
+            this._afterRestore();
+            this.toast('Annulé', 'success');
+        },
+
+        redo() {
+            const restored = S.HistoryManager.redo(this.project);
+            if (!restored) return;
+            this.project = restored;
+            this._afterRestore();
+            this.toast('Rétabli', 'success');
+        },
+
+        /* Reconstruit toute l'UI après un aller-retour dans l'historique :
+           le projet restauré est un objet neuf, donc toutes les vues doivent
+           se ré-afficher (aucune référence ancienne n'est conservée). */
+        _afterRestore() {
+            if (S.TimelineView) {
+                /* La sélection peut avoir disparu avec l'état restauré. */
+                if (S.TimelineView.selection && !S.TimelineModel.clip(this.project, S.TimelineView.selection)) {
+                    S.TimelineView.selection = null;
+                }
+                S.TimelineView.render();
+                if (S.PropertiesPanel) S.PropertiesPanel.onSelection(S.TimelineView.selection);
+            }
+            if (S.MediaPanel) S.MediaPanel.render();
+            if (S.Preview) S.Preview.refresh();
+            S.HistoryManager.syncButtons();
+            this.setSaveState('dirty');
         },
 
         /* ── Démarrage ──────────────────────────────────────────────────── */
@@ -279,6 +316,8 @@
             };
             on('sv-new-project', () => this.newProject());
             on('sv-export-project', () => this.exportProjectFile());
+            on('sv-undo', () => this.undo());
+            on('sv-redo', () => this.redo());
 
             const fileInput = document.getElementById('sv-project-file');
             const importBtn = document.getElementById('sv-import-project');
@@ -303,6 +342,8 @@
             safe(S.MediaPanel, 'init');
             safe(S.TimelineView, 'init');
             safe(S.Preview, 'init');
+            safe(S.PropertiesPanel, 'init');
+            if (S.HistoryManager) S.HistoryManager.syncButtons();
 
             this.renderCapabilityNotice();
             this.showHome();

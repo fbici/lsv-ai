@@ -13,6 +13,10 @@
     /* Cache des éléments média (images / vidéos) créés une seule fois. */
     const elementCache = new Map();
 
+    /* Fonctions d'accélération des transitions. */
+    const easeOut = p => 1 - Math.pow(1 - p, 3);
+    const easeIn = p => p * p * p;
+
     const Compositor = {
         /* Retourne (ou crée) l'élément DOM utilisé pour lire un média. */
         async elementFor(media, project) {
@@ -85,7 +89,7 @@
                             if (Math.abs(el.currentTime - item.sourceTime) > 0.05) el.currentTime = item.sourceTime;
                         } catch (e) { /* seek non prêt */ }
                     }
-                    this._drawElement(ctx, el, clip, media, w, h, seq);
+                    this._drawElement(ctx, el, clip, media, w, h, seq, time);
                     drawn++;
                 }
             }
@@ -93,8 +97,52 @@
             return drawn;
         },
 
+        /* ── Effets (filtres CSS, §9) ───────────────────────────────────── */
+        /* Construit la chaîne `ctx.filter` à partir des effets du clip.
+           Retourne null si aucun effet (ctx.filter=null = pas de filtre). */
+        filterFor(clip) {
+            if (!clip.effects || !clip.effects.length) return null;
+            const parts = [];
+            for (const e of clip.effects) {
+                if (!e || !e.type) continue;
+                if (e.type === 'brightness' && e.brightness != null) parts.push('brightness(' + (e.brightness / 100) + ')');
+                else if (e.type === 'contrast' && e.contrast != null) parts.push('contrast(' + (e.contrast / 100) + ')');
+                else if (e.type === 'saturate' && e.saturate != null) parts.push('saturate(' + (e.saturate / 100) + ')');
+                else if (e.type === 'blur' && e.blur != null && e.blur > 0) parts.push('blur(' + e.blur + 'px)');
+            }
+            return parts.length ? parts.join(' ') : null;
+        },
+
+        /* Progression 0→1 d'une transition d'entrée/sortie à l'instant `t`.
+           Renvoie un facteur d'opacité/décalage appliqué au clip. */
+        transitionFactor(clip, time) {
+            const t = time - clip.start;
+            const remaining = clip.duration - t;
+            let alpha = 1, dx = 0, dy = 0, scale = 1;
+
+            const tin = clip.transitionIn;
+            if (tin && tin.type && tin.duration > 0 && t < tin.duration) {
+                const p = Math.max(0, Math.min(1, t / tin.duration));
+                const e = easeOut(p);
+                if (tin.type === 'fade') alpha *= e;
+                else if (tin.type === 'slide-left') dx = (1 - e) * -0.4;
+                else if (tin.type === 'slide-right') dx = (1 - e) * 0.4;
+                else if (tin.type === 'zoom') { scale = 0.85 + 0.15 * e; alpha *= e; }
+            }
+            const tout = clip.transitionOut;
+            if (tout && tout.type && tout.duration > 0 && remaining < tout.duration) {
+                const p = Math.max(0, Math.min(1, 1 - remaining / tout.duration));
+                const e = easeIn(p);
+                if (tout.type === 'fade') alpha *= 1 - e;
+                else if (tout.type === 'slide-left') dx = e * 0.4;
+                else if (tout.type === 'slide-right') dx = e * -0.4;
+                else if (tout.type === 'zoom') { scale = 1 - 0.15 * e; alpha *= 1 - e; }
+            }
+            return { alpha: Math.max(0, Math.min(1, alpha)), dx: dx, dy: dy, scale: scale };
+        },
+
         /* Ajuste un média au format de séquence (contain ou cover). */
-        _drawElement(ctx, el, clip, media, w, h, seq) {
+        _drawElement(ctx, el, clip, media, w, h, seq, time) {
             const sw = media.kind === 'image' ? el.naturalWidth : el.videoWidth;
             const sh = media.kind === 'image' ? el.naturalHeight : el.videoHeight;
             if (!sw || !sh) return;
@@ -102,12 +150,27 @@
             const fit = (clip.style && clip.style.fit) || 'cover';
             const scale = fit === 'contain'
                 ? Math.min(w / sw, h / sh) : Math.max(w / sw, h / sh);
-            const dw = sw * scale, dh = sh * scale;
-            const dx = (w - dw) / 2 + (clip.offsetX || 0) * w;
-            const dy = (h - dh) / 2 + (clip.offsetY || 0) * h;
+            let dw = sw * scale, dh = sh * scale;
+            let dx = (w - dw) / 2 + (clip.offsetX || 0) * w;
+            let dy = (h - dh) / 2 + (clip.offsetY || 0) * h;
+
+            /* Transitions : décalage, mise à l'échelle, fondu. */
+            const tr = this.transitionFactor(clip, time);
+            if (tr.scale !== 1) {
+                const cx = dx + dw / 2, cy = dy + dh / 2;
+                dw *= tr.scale; dh *= tr.scale;
+                dx = cx - dw / 2; dy = cy - dh / 2;
+            }
+            dx += tr.dx * w; dy += tr.dy * h;
 
             ctx.save();
-            ctx.globalAlpha = clip.opacity == null ? 1 : clip.opacity;
+            ctx.globalAlpha = (clip.opacity == null ? 1 : clip.opacity) * tr.alpha;
+            /* `ctx.filter` n'existe pas sur tous les navigateurs (certains
+               Safari) : Capability l'a signalé, on l'applique quand présent. */
+            const filter = this.filterFor(clip);
+            if (filter) {
+                try { ctx.filter = filter; } catch (e) { /* ignoré */ }
+            }
             try { ctx.drawImage(el, dx, dy, dw, dh); } catch (e) { /* frame non prête */ }
             ctx.restore();
         },

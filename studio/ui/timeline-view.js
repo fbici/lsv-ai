@@ -76,10 +76,12 @@
                     e.preventDefault();
                     const trackEl = e.target.closest('.sv-track');
                     const trackId = trackEl ? trackEl.dataset.trackId : null;
-                    const res = S.MediaManager.dropOnTimeline(S.App.project, mediaId, trackId, this._timeFromEvent(e));
+                    const res = S.HistoryManager.run(S.App.project, () =>
+                        S.MediaManager.dropOnTimeline(S.App.project, mediaId, trackId, this._timeFromEvent(e)));
                     if (res.ok) {
                         this.selection = res.clip.id;
                         this.render();
+                        if (S.PropertiesPanel) S.PropertiesPanel.onSelection(res.clip.id);
                         S.App.setSaveState('dirty');
                     } else {
                         S.App.toast('Dépôt refusé : ' + res.reason, 'warn');
@@ -134,29 +136,33 @@
         },
 
         /* ── Actions de clip ────────────────────────────────────────────── */
-        select(clipId) { this.selection = clipId; this.render(); },
+        select(clipId) {
+            this.selection = clipId;
+            this.render();
+            if (S.PropertiesPanel) S.PropertiesPanel.onSelection(clipId);
+        },
 
         splitAtPlayhead() {
             const project = S.App.project;
             if (!project || !this.selection) { S.App.toast('Sélectionne d’abord un clip', 'warn'); return; }
-            const r = TM().splitClip(project, this.selection, this.playhead);
-            if (r) { this.selection = r.id; this.render(); S.App.setSaveState('dirty'); }
+            const r = S.HistoryManager.run(project, () => TM().splitClip(project, this.selection, this.playhead));
+            if (r) { this.selection = r.id; this.render(); if (S.PropertiesPanel) S.PropertiesPanel.onSelection(r.id); S.App.setSaveState('dirty'); }
             else S.App.toast('Scission impossible à cette position', 'warn');
         },
 
         duplicateSelection() {
             const project = S.App.project;
             if (!project || !this.selection) return;
-            const r = TM().duplicateClip(project, this.selection);
-            if (r) { this.selection = r.id; this.render(); S.App.setSaveState('dirty'); }
+            const r = S.HistoryManager.run(project, () => TM().duplicateClip(project, this.selection));
+            if (r) { this.selection = r.id; this.render(); if (S.PropertiesPanel) S.PropertiesPanel.onSelection(r.id); S.App.setSaveState('dirty'); }
             else S.App.toast('Duplication impossible ici', 'warn');
         },
 
         deleteSelection() {
             const project = S.App.project;
             if (!project || !this.selection) return;
-            const r = TM().removeClip(project, this.selection);
-            if (r) { this.selection = null; this.render(); S.App.setSaveState('dirty'); }
+            const r = S.HistoryManager.run(project, () => TM().removeClip(project, this.selection));
+            if (r) { this.selection = null; this.render(); if (S.PropertiesPanel) S.PropertiesPanel.onSelection(null); S.App.setSaveState('dirty'); }
         },
 
         addTrack() {
@@ -166,7 +172,8 @@
             if (!kind) return;
             if (TM().TRACK_ACCEPTS[kind] === undefined) { S.App.toast('Type de piste inconnu', 'error'); return; }
             const n = project.tracks.filter(t => t.kind === kind).length + 1;
-            S.ProjectModel.addTrack(project, kind, kind.charAt(0).toUpperCase() + kind.slice(1) + ' ' + n);
+            S.HistoryManager.run(project, () =>
+                S.ProjectModel.addTrack(project, kind, kind.charAt(0).toUpperCase() + kind.slice(1) + ' ' + n));
             this.render();
             S.App.setSaveState('dirty');
         },
@@ -261,15 +268,21 @@
             const project = S.App.project;
             const track = TM().track(project, trackId);
             if (!track) return;
+            S.HistoryManager.begin(project);
             if (act === 'mute') track.muted = !track.muted;
             else if (act === 'lock') track.locked = !track.locked;
             else if (act === 'hide') track.hidden = !track.hidden;
             else if (act === 'del') {
                 if (track.clips.length &&
-                    !confirm('Supprimer la piste « ' + track.name + ' » et ses ' + track.clips.length + ' clip(s) ?')) return;
+                    !confirm('Supprimer la piste « ' + track.name + ' » et ses ' + track.clips.length + ' clip(s) ?')) {
+                    S.HistoryManager._undo.pop();   // annulation de l'entrée créée par begin()
+                    return;
+                }
                 TM().removeTrack(project, trackId);
             }
             S.ProjectModel.touch(project);
+            S.HistoryManager.commit(project);
+            S.HistoryManager.syncButtons();
             this.render();
             S.App.setSaveState('dirty');
         },
@@ -290,6 +303,8 @@
                 : (rect.right - e.clientX) < 6 ? 'right' : null;
             const mode = side ? 'trim-' + side : 'move';
             let lastResult = null;
+            /* Une seule entrée d'historique par glisser-curseur, pas par pixel. */
+            S.HistoryManager.begin(S.App.project);
 
             const onMove = ev => {
                 const dt = (ev.clientX - startX) / this.zoom;
@@ -314,8 +329,13 @@
                 if (lastResult && lastResult.ok === false && mode !== 'move') {
                     clip.start = orig.start; clip.duration = orig.duration;
                     clip.in = orig.in; clip.out = orig.out;
+                    /* Rien n'a changé : on retire l'entrée d'historique. */
+                    S.HistoryManager._undo.pop();
                 } else if (lastResult) {
+                    S.HistoryManager.commit(S.App.project);
                     S.App.setSaveState('dirty');
+                } else {
+                    S.HistoryManager._undo.pop();
                 }
                 this.render();
                 if (S.Preview) S.Preview.refresh();

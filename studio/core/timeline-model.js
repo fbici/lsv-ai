@@ -179,13 +179,14 @@
             if (this._overlaps(target, start, found.clip.duration, found.clip.id)) {
                 return { ok: false, reason: 'chevauchement' };
             }
-            /* Retire d'abord, sinon le clip se chevauche lui-même. */
+            /* Retire d'abord (sinon le clip se chevauche lui-même), puis
+               réajoute TOUJOURS sur la cible — y compris quand source et
+               cible sont la même piste. */
             const i = found.track.clips.indexOf(found.clip);
             found.track.clips.splice(i, 1);
             found.clip.start = start;
-            if (found.track.id !== target.id) target.clips.push(found.clip);
+            target.clips.push(found.clip);
             target.clips.sort((a, b) => a.start - b.start);
-            if (found.track.id !== target.id) found.track.clips.sort((a, b) => a.start - b.start);
             S.ProjectModel.touch(project);
             return { ok: true, clip: found.clip, track: target };
         },

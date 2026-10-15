@@ -257,7 +257,88 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     check('clipsAt : sourceTime = in + t×speed', at2[0].items[0].sourceTime === 2);
     check('clipsAt vide à t=20', TM.clipsAt(p2, 20).length === 0);
 
-    console.log('\n=== 9. NON-RÉGRESSION DE L’APP PRINCIPALE ===');
+    console.log('\n=== 9. HISTORIQUE ANNULER / RÉTABLIR (M2) ===');
+    const HM = w.LSVStudio.HistoryManager;
+    check('HistoryManager exposé', !!HM);
+    const hp = PM.create({ name: 'Hist' });
+    const hmTrack = hp.tracks[0];
+    const hmMedia = { id: 'm1', kind: 'image', name: 'a.png', duration: 0 };
+    hp.media.push(hmMedia);
+    HM.reset();
+    check('reset : rien à annuler au départ', HM.canUndo() === false && HM.canRedo() === false);
+
+    /* Ajout d'un clip (via run = begin + fn + commit). */
+    const hclip = TM.makeClip(hmMedia, { start: 0, duration: 3 });
+    HM.run(hp, () => TM.addClip(hp, hmTrack.id, hclip));
+    check('run() enregistre une entrée', HM.canUndo() === true);
+    check('run() a bien appliqué l’opération', hmTrack.clips.length === 1);
+
+    /* Déplacement. */
+    HM.run(hp, () => TM.moveClip(hp, hclip.id, hmTrack.id, 5));
+    check('déplacement appliqué', hclip.start === 5);
+
+    /* Annuler deux fois → retour au départ. */
+    const u1 = HM.undo(hp);
+    check('undo 1 restaure l’état sans déplacement', u1 && u1.tracks[0].clips[0].start === 0);
+    const u2 = HM.undo(u1);
+    check('undo 2 restaure l’état sans clip', u2 && u2.tracks[0].clips.length === 0);
+    check('undo 3 : pile vide', HM.undo(u2) === null);
+
+    /* Rétablir. */
+    const r1 = HM.redo(u2);
+    check('redo 1 rétablit le clip', r1 && r1.tracks[0].clips.length === 1);
+    const r2 = HM.redo(r1);
+    check('redo 2 rétablit le déplacement', r2 && r2.tracks[0].clips[0].start === 5);
+    check('redo 3 : pile vide', HM.redo(r2) === null);
+
+    /* Deux begin() sans changement = une seule entrée. */
+    HM.reset();
+    const hmClip2 = TM.makeClip(hmMedia, { start: 0, duration: 2 });
+    TM.addClip(hp, hmTrack.id, hmClip2);
+    HM.begin(hp); HM.commit(hp);   // état identique
+    HM.begin(hp); HM.commit(hp);
+    check('pas d’entrée dupliquée si rien n’a changé', HM.canUndo() === false);
+
+    /* Budget : au mieux 60 entrées. */
+    HM.reset();
+    for (let i = 0; i < 100; i++) {
+        HM.begin(hp);
+        hp.name = 'n' + i;
+        HM.commit(hp);
+    }
+    check('pile bornée à 60 entrées', HM._undo.length === 60, HM._undo.length);
+
+    console.log('\n=== 10. EFFETS & TRANSITIONS (M2) ===');
+    const Comp = w.LSVStudio.Compositor;
+    check('Compositor exposé', !!Comp);
+    check('filterFor : aucun effet → null', Comp.filterFor({ effects: [] }) === null);
+    const fBright = Comp.filterFor({ effects: [{ type: 'brightness', brightness: 150 }] });
+    check('filterFor : luminosité 150% → brightness(1.5)', fBright === 'brightness(1.5)', fBright);
+    const fMulti = Comp.filterFor({ effects: [{ type: 'contrast', contrast: 80 }, { type: 'blur', blur: 4 }] });
+    check('filterFor : effets combinés', fMulti === 'contrast(0.8) blur(4px)', fMulti);
+
+    const base = { start: 0, duration: 4, transitionIn: { type: 'fade', duration: 1 }, transitionOut: null };
+    check('transition d’entrée : alpha 0 au début',
+        Comp.transitionFactor(base, 0).alpha === 0);
+    check('transition d’entrée : alpha 1 après la transition',
+        Comp.transitionFactor(base, 1.5).alpha === 1);
+    const mid = Comp.transitionFactor(base, 0.5).alpha;
+    check('transition d’entrée : alpha entre 0 et 1 au milieu', mid > 0 && mid < 1, mid);
+
+    const outBase = { start: 0, duration: 4, transitionIn: null, transitionOut: { type: 'fade', duration: 1 } };
+    check('transition de sortie : alpha 0 à la fin', Comp.transitionFactor(outBase, 4).alpha === 0);
+    check('transition de sortie : alpha 1 avant', Comp.transitionFactor(outBase, 2.5).alpha === 1);
+
+    const slide = { start: 0, duration: 4, transitionIn: { type: 'slide-left', duration: 1 }, transitionOut: null };
+    check('transition glissement : décalage en X au début', Comp.transitionFactor(slide, 0).dx !== 0);
+    check('transition glissement : pas de décalage après', Comp.transitionFactor(slide, 2).dx === 0);
+
+    /* Le panneau Propriétés est présent et se vide sans sélection. */
+    check('PropertiesPanel exposé', !!w.LSVStudio.PropertiesPanel);
+    check('panneau de propriétés initialisé sans erreur',
+        !!doc.getElementById('sv-props-body') && /Sélectionne un clip/.test(doc.getElementById('sv-props-body').textContent));
+
+    console.log('\n=== 11. NON-RÉGRESSION DE L’APP PRINCIPALE ===');
     const appScripts = (appHtml.match(/<script src="\.\/([^"]+)"><\/script>/g) || []).join(',');
     check('ordre des modules de l’app inchangé',
         appScripts.indexOf('scripts/constants.js') < appScripts.indexOf('scripts/core.js') &&
