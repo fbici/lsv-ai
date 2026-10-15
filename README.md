@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.10.0
+# LSV.ai — Studio Viral v3.11.0
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
 
@@ -732,6 +732,14 @@ Comportements attendus :
 
 ### 5.3 Pages du dashboard
 
+- **Mode clair / sombre** — bouton en haut à droite du dashboard **et** sur
+  l'écran de connexion. Le choix est mémorisé dans `localStorage`
+  (`lsv_admin_theme`), appliqué **avant le premier rendu** (script inline en
+  `<head>`, aucun clignotement blanc) et, à la première visite, on suit la
+  préférence du système (`prefers-color-scheme`). Palette alignée sur celle de
+  l'application principale (`styles/base.css`).
+- **Favicon** — le logo `lsv.jpg` est désormais affiché aussi dans l'onglet du
+  back-office (il manquait le `<link rel="icon">`).
 - **Vue d'ensemble** — visiteurs, sessions, images, vidéos, chat, erreurs ;
   graphique d'activité quotidienne ; utilisation par fonctionnalité ;
   activité récente ; détail visiteurs (nouveaux / récurrents).
@@ -1007,6 +1015,11 @@ npm test        # 353 assertions (406 avec ORIG=… voir plus bas)
 - **page Utilisateurs** : nav + titre + table des comptes (`profiles`) avec nom,
   e-mail, inscription, dernière connexion, KPI (comptes, avec nom, déjà
   connectés), aucun secret affiché, actualisation sans erreur ;
+- **favicon + mode sombre** : `<link rel="icon">` et `apple-touch-icon`
+  présents dans `admin/index.html`, palette `html.dark` dans `admin.css`,
+  bouton de bascule sur le dashboard **et** sur l'écran de connexion,
+  synchronisation des icônes, mémorisation `localStorage`, aucun flash au
+  démarrage ;
 - aucun mot de passe codé en dur, aucune `service_role`.
 
 ---

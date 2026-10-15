@@ -1657,9 +1657,46 @@
         initQuotaActions();
     }
 
+    /* ── Thème clair / sombre ──────────────────────────────────────────────
+       Le thème est appliqué AVANT le premier rendu par le script inline en
+       <head> de admin/index.html : aucun clignotement blanc en démarrant.
+       Le choix est mémorisé dans localStorage (clé lsv_admin_theme) et, à la
+       première visite, on suit la préférence du système. */
+    var THEME_KEY = 'lsv_admin_theme';
+
+    function currentTheme() {
+        return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+    }
+
+    function applyTheme(theme) {
+        var dark = theme === 'dark';
+        document.documentElement.classList.toggle('dark', dark);
+        /* Plusieurs boutons peuvent coexister (écran de connexion + topbar). */
+        var btns = document.querySelectorAll('.theme-toggle');
+        for (var i = 0; i < btns.length; i++) {
+            var icon = btns[i].querySelector('.ms');
+            if (icon) icon.textContent = dark ? 'light_mode' : 'dark_mode';
+            btns[i].title = dark ? 'Passer en mode clair' : 'Passer en mode sombre';
+            btns[i].setAttribute('aria-label', btns[i].title);
+        }
+    }
+
+    function initTheme() {
+        applyTheme(currentTheme());
+        var btns = document.querySelectorAll('.theme-toggle');
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].addEventListener('click', function () {
+                var next = currentTheme() === 'dark' ? 'light' : 'dark';
+                try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* mode privé */ }
+                applyTheme(next);
+            });
+        }
+    }
+
     /* ── Démarrage ──────────────────────────────────────────────────────── */
     function bootstrap() {
         initAuth();
+        initTheme();
         bindUI();
 
         if (!window.supabase) {

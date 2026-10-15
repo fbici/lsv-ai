@@ -46,6 +46,55 @@
     --font-display: 'Space Grotesk', sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, monospace;
     --sidebar-w: 244px;
+    color-scheme: light;
+}
+
+/* ── Mode sombre ──────────────────────────────────────────────────────────
+   Mêmes tokens que l'application principale (styles/base.css → body.dark)
+   pour rester aligné sur l'identité LSV. Activé par la classe .dark sur
+   <html>, posée AVANT le premier rendu par un script inline en <head>. */
+html.dark {
+    --bg: #1a1a1e;
+    --bg-2: #232328;
+    --bg-3: #2c2c32;
+    --bg-4: #38383f;
+    --bg-hover: #2a2a30;
+    --border: #333340;
+    --border-2: #42424e;
+    --border-3: #52525e;
+    --ink: #f4f4f5;
+    --ink-2: #b8b8bc;
+    --ink-3: #8a8a90;
+    --ink-4: #5a5a62;
+    --accent: #2dd4bf;
+    --accent-hover: #5eead4;
+    --accent-light: rgba(45, 212, 191, 0.15);
+    --accent-soft: rgba(45, 212, 191, 0.08);
+    --blue: #60a5fa;
+    --blue-hover: #93c5fd;
+    --blue-light: rgba(96, 165, 250, 0.15);
+    --violet: #a78bfa;
+    --violet-hover: #c4b5fd;
+    --violet-light: rgba(167, 139, 250, 0.15);
+    --pink: #f472b6;
+    --pink-hover: #f9a8d4;
+    --pink-light: rgba(244, 114, 182, 0.15);
+    --orange: #fb923c;
+    --orange-hover: #fdba74;
+    --orange-light: rgba(251, 146, 60, 0.15);
+    --green: #4ade80;
+    --green-hover: #86efac;
+    --green-light: rgba(74, 222, 128, 0.15);
+    --red: #f87171;
+    --red-hover: #fca5a5;
+    --red-light: rgba(248, 113, 113, 0.15);
+    --amber: #fbbf24;
+    --amber-light: rgba(251, 191, 36, 0.15);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.25);
+    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.4), 0 4px 6px rgba(0, 0, 0, 0.3);
+    color-scheme: dark;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -136,6 +185,8 @@ html, body {
     box-shadow: var(--shadow-lg);
 }
 .auth-brand { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.4rem; }
+/* Pousse le bouton de thème à droite sur l'écran de connexion. */
+.auth-brand .theme-toggle { margin-left: auto; }
 .auth-logo, .brand-logo {
     font-family: var(--font-display); font-size: 1.35rem; font-weight: 700;
     letter-spacing: -0.03em; color: var(--ink);
@@ -400,6 +451,10 @@ td.num, th.num { text-align: right; font-family: var(--font-mono); }
 .toast.visible { opacity: 1; transform: none; }
 .toast.error { background: var(--red); }
 .toast.success { background: var(--green); }
+
+html.dark .toast { background: var(--bg-4); color: var(--ink); }
+html.dark .toast.error { background: var(--red); color: #1a1a1e; }
+html.dark .toast.success { background: var(--green); color: #1a1a1e; }
 
 /* ── Responsive ────────────────────────────────────────────────────────── */
 @media (max-width: 960px) {

@@ -566,6 +566,72 @@ async function login(dom, email, password) {
     check('réactivation enregistrée', wu.__SETTINGS.quota_suspended.value === '0');
     check('aucune erreur console (limites)', t.errors.length === 0, t.errors.join('|'));
 
+    console.log('\n=== K2. FAVICON + MODE SOMBRE ===');
+    const adminHtmlOnly = fs.readFileSync(path.join(PROJECT, 'admin/index.html'), 'utf8');
+    const adminCssOnly = fs.readFileSync(path.join(PROJECT, 'admin/admin.css'), 'utf8');
+    check('favicon présent dans le back-office', /<link rel="icon"[^>]*lsv\.jpg/.test(adminHtmlOnly));
+    check('apple-touch-icon présent', /<link rel="apple-touch-icon"[^>]*lsv\.jpg/.test(adminHtmlOnly));
+    check('favicon relatif au dossier parent (../lsv.jpg)', /href="\.\.\/lsv\.jpg"/.test(adminHtmlOnly));
+    check('thème appliqué avant le premier rendu (script inline en <head>)',
+        /<script>[\s\S]*localStorage\.getItem\('lsv_admin_theme'\)[\s\S]*<\/script>/.test(adminHtmlOnly.split('</head>')[0]),
+        adminHtmlOnly.split('</head>')[0].slice(-160));
+    check('le script inline est bien dans <head> (pas après <body>)',
+        adminHtmlOnly.indexOf('lsv_admin_theme') < adminHtmlOnly.indexOf('<body'));
+    check('palette sombre définie dans admin.css', /html\.dark\s*\{/.test(adminCssOnly));
+    check('palette sombre = tokens LSV (accent #2dd4bf)',
+        /html\.dark\s*\{[\s\S]*?--accent:\s*#2dd4bf/.test(adminCssOnly));
+    check('color-scheme: dark posé', /html\.dark\s*\{[\s\S]*?color-scheme:\s*dark/.test(adminCssOnly));
+    check('contraste du toast corrigé en sombre', /html\.dark \.toast/.test(adminCssOnly));
+
+    t = await load(inject(src, CONFIG_OK));
+    const wth = t.dom.window;
+    await login(t, GOOD_EMAIL, GOOD_PASSWORD);
+    await sleep(500);
+    const themeBtn = wth.document.getElementById('theme-toggle');
+    check('bouton de thème dans le topbar', !!themeBtn);
+    check('thème par défaut = clair (pas de classe sur <html>)',
+        !wth.document.documentElement.classList.contains('dark'));
+    check('icône initiale = dark_mode', themeBtn.querySelector('.ms').textContent === 'dark_mode',
+        themeBtn.querySelector('.ms').textContent);
+
+    themeBtn.dispatchEvent(new wth.Event('click', { bubbles: true }));
+    await sleep(120);
+    check('clic → mode sombre actif', wth.document.documentElement.classList.contains('dark'));
+    check('icône basculée en light_mode', themeBtn.querySelector('.ms').textContent === 'light_mode',
+        themeBtn.querySelector('.ms').textContent);
+    check('choix mémorisé en localStorage', wth.localStorage.getItem('lsv_admin_theme') === 'dark',
+        wth.localStorage.getItem('lsv_admin_theme'));
+    check('libellé du bouton mis à jour', /mode clair/i.test(themeBtn.title), themeBtn.title);
+
+    themeBtn.dispatchEvent(new wth.Event('click', { bubbles: true }));
+    await sleep(120);
+    check('second clic → retour au mode clair', !wth.document.documentElement.classList.contains('dark'));
+    check('localStorage = light', wth.localStorage.getItem('lsv_admin_theme') === 'light');
+    check('icône revenue en dark_mode', themeBtn.querySelector('.ms').textContent === 'dark_mode');
+    check('aucune erreur console (thème)', t.errors.length === 0, t.errors.join('|'));
+
+    console.log('\n=== K3. MODE SOMBRE SUR L\'ÉCRAN DE CONNEXION ===');
+    t = await load(inject(src, CONFIG_OK));
+    const wtc = t.dom.window;
+    await sleep(350);
+    check('écran de connexion visible avant login', !wtc.document.getElementById('auth-screen').classList.contains('hidden'));
+    const authThemeBtn = wtc.document.getElementById('theme-toggle-auth');
+    check('bouton de thème présent sur l\'écran de connexion', !!authThemeBtn);
+    check('bouton de thème réellement accessible (dans l\'écran de connexion, pas dans le panneau masqué)',
+        !!wtc.document.getElementById('auth-screen') &&
+        wtc.document.getElementById('auth-screen').contains(authThemeBtn) &&
+        wtc.document.getElementById('admin-app').classList.contains('hidden'));
+    authThemeBtn.dispatchEvent(new wtc.Event('click', { bubbles: true }));
+    await sleep(120);
+    check('thème basculable SANS être connecté', wtc.document.documentElement.classList.contains('dark'));
+    check('icône de l\'écran de connexion synchronisée', authThemeBtn.querySelector('.ms').textContent === 'light_mode',
+        authThemeBtn.querySelector('.ms').textContent);
+    check('écran de connexion toujours affiché', !wtc.document.getElementById('auth-screen').classList.contains('hidden'));
+    check('mémorisé même hors session', wtc.localStorage.getItem('lsv_admin_theme') === 'dark');
+    check('bouton du topbar synchronisé même s\'il est masqué',
+        wtc.document.getElementById('theme-toggle').querySelector('.ms').textContent === 'light_mode');
+    check('aucune erreur console (connexion + thème)', t.errors.length === 0, t.errors.join('|'));
+
     console.log('\n=== K. SANITÉ ===');
     check('aucune erreur console globale', t.errors.length === 0, t.errors.join('|'));
     const finalHtml = fs.readFileSync(path.join(PROJECT, 'admin/index.html'), 'utf8') + fs.readFileSync(path.join(PROJECT, 'admin/admin.js'), 'utf8');
