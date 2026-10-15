@@ -1,6 +1,6 @@
-# LSV.ai — Studio Viral v3.11.0
+# LSV.ai — Studio Viral v3.12.0
 
-Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library**.
+Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
 Le public n'utilise que **LSV.ai** : ni clé API à saisir, ni nom de fournisseur,
 ni endpoint, ni console de debug. L'application parle à **sa propre passerelle**,
@@ -1063,3 +1063,76 @@ aucune clé**. Sans compte, la consultation reste ouverte mais toute génératio
 est refusée. Deux autres conditions : la Gateway (§2.4) doit être déployée,
 sinon les boutons de génération restent inactifs (et non pas « cassés »), et
 ton e-mail doit être dans `admin_emails` pour ouvrir `/admin/` (§4.2).
+
+---
+
+## 12. LSV Studio — montage vidéo local (`/studio/`)
+
+Éditeur vidéo **100 % local** dans le navigateur, accessible depuis le lien
+« Studio vidéo » de la sidebar. Aucune requête réseau, aucun compte requis,
+aucun quota consommé : le montage n'utilise jamais la Gateway ni les modèles
+IA. Tout (projets, médias, export) reste sur l'appareil.
+
+### 12.1 Ce qu'il fait
+
+- **Projets locaux** en IndexedDB : création, ouverture, suppression, export /
+  import d'un fichier `.lsvstudio.json` (sans les médias).
+- **Import** de vidéos (MP4, MOV, WEBM), images (PNG, JPG, WEBP) et sons
+  (MP3, WAV, M4A) par glisser-déposer ou sélecteur de fichiers.
+- **Timeline multipiste** (vidéo, overlay, texte, audio) : déplacement,
+  recadrage aux poignées, scission à la tête de lecture (touche `S`),
+  duplication (`Ctrl+D`), suppression (`Suppr`), aimantation sur les bords.
+- **Panneau Propriétés** : vitesse, volume, opacité, texte (taille, couleur,
+  contour, alignement), effets (luminosité, contraste, saturation, flou),
+  transitions d'entrée/sortie (fondu, glissement, zoom).
+- **Annuler / rétablir** (60 niveaux, `Ctrl+Z` / `Ctrl+Maj+Z`).
+- **Export vidéo** en temps réel via `MediaRecorder` + `canvas.captureStream` :
+  MP4/H.264 quand le navigateur le sait, sinon WebM. L'extension suit
+  toujours le conteneur réel — aucun renommage de fichier.
+- **Mode sombre** partagé avec LSV.ai (même clé `lsv4_theme`).
+
+### 12.2 Comment l'export fonctionne (et ses limites)
+
+L'export est **en temps réel** : une vidéo de 30 s met ~30 s à se produire.
+C'est le prix d'une absence totale de dépendance native — pas de FFmpeg.wasm
+(GitHub Pages n'offre pas COOP/COEP, donc pas de `SharedArrayBuffer`), pas de
+transcodage serveur. Le mixage audio passe par Web Audio ; si le navigateur
+ne l'expose pas, l'export est muet mais reste utilisable.
+
+Le choix du conteneur (MP4 vs WebM) est détecté à l'ouverture de la page via
+`MediaRecorder.isTypeSupported` et affiché dans l'écran d'accueil ainsi que
+dans le panneau Propriétés (aucun réglage à faire).
+
+### 12.3 Stockage et sauvegarde
+
+Les projets vivent dans IndexedDB, **sur cet appareil uniquement** : une
+sauvegarde locale n'est pas une sauvegarde cloud. Le bouton « Projet »
+exporte la structure au format JSON (sans les binaires) ; à réimporter
+ailleurs, les médias sont marqués « manquant » et doivent être re-reliés un
+par un. Un projet dont le schéma provient d'une version plus récente est
+refusé proprement (jamais corrompu à l'ouverture).
+
+### 12.4 Tests
+
+`npm run test:studio` (inclus dans `npm test`) vérifie : intégration sidebar,
+structure des 5 zones, détection des capacités, thème partagé, absence
+d'appel réseau et de clé secrète, ordre de chargement des modules, modèle de
+projet (validations d'imports hostiles), modèle de timeline (chevauchements,
+scission, recadrage, aimantation), historique, effets/transitions, export
+(preflight) et mixage audio. L'export réel et le rendu canvas ne sont pas
+automatisables sous jsdom : voir la checklist manuelle du dépôt.
+
+### 12.5 Checklist manuelle (avant une release)
+
+1. Ouvrir `/studio/` → l'écran d'accueil s'affiche sans erreur console.
+2. Créer un projet → le format de séquence proposé est bien 1080×1920.
+3. Importer 2 images + 1 vidéo → vignettes présentes, durées affichées.
+4. Déposer les 3 médias sur la timeline → 3 clips, ordre chronologique.
+5. Ajouter un texte (`Texte`) → le clip apparaît, le panneau Propriétés
+   s'ouvre sur le texte.
+6. Déplacer un clip, en recadrer un, scinder à la tête de lecture.
+7. `Ctrl+Z` trois fois puis `Ctrl+Maj+Z` deux fois → l'état suit.
+8. Exporter 5 s → un fichier est téléchargé, l'extension correspond au
+   conteneur annoncé à l'accueil, la vidéo est lisible.
+9. Recharger la page → le projet est toujours dans la liste, état intact.
+10. Basculer le mode sombre → l'application principale suit au retour.

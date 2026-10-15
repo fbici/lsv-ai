@@ -37,29 +37,69 @@
             this._toastTimer = setTimeout(() => el.classList.remove('visible'), 3200);
         },
 
-        /* Barre de progression (import long, export futur). */
-        setProgress(p, label) {
+        /* Barre de progression (import long, export). */
+        setProgress(p, label, cancelFn) {
             let bar = document.getElementById('sv-progress');
             if (!bar) {
                 bar = document.createElement('div');
                 bar.id = 'sv-progress';
-                bar.style.cssText = 'position:fixed;inset:0;z-index:90;display:flex;flex-direction:column;' +
-                    'align-items:center;justify-content:center;background:rgba(0,0,0,.55);color:#fff;';
-                bar.innerHTML = '<div style="width:min(320px,70vw);height:6px;background:rgba(255,255,255,.2);' +
-                    'border-radius:3px;overflow:hidden"><div id="sv-progress-fill" style="height:100%;width:0;' +
-                    'background:var(--accent,#7c5cff);transition:width .15s"></div></div>' +
-                    '<p id="sv-progress-label" style="margin:.6rem 0 0;font-size:.8rem"></p>';
+                bar.className = 'sv-progress';
+                bar.innerHTML =
+                    '<div class="sv-progress-card">' +
+                    '  <h3>Export de la vidéo</h3>' +
+                    '  <div class="sv-progress-track"><div class="sv-progress-fill" id="sv-progress-fill"></div></div>' +
+                    '  <p class="sv-progress-label" id="sv-progress-label"></p>' +
+                    '  <div class="sv-progress-foot">' +
+                    '    <span class="sv-progress-pct" id="sv-progress-pct">0 %</span>' +
+                    '    <button class="sv-btn sm" id="sv-progress-cancel" type="button">Annuler</button>' +
+                    '  </div>' +
+                    '</div>';
                 document.body.appendChild(bar);
+                bar._cancel = null;
+                bar.querySelector('#sv-progress-cancel').addEventListener('click', () => {
+                    if (bar._cancel) bar._cancel();
+                });
             }
+            bar._cancel = cancelFn || null;
+            const cancelBtn = bar.querySelector('#sv-progress-cancel');
+            if (cancelBtn) cancelBtn.hidden = !cancelFn;
             const fill = document.getElementById('sv-progress-fill');
             const lbl = document.getElementById('sv-progress-label');
             if (p > 0) {
                 bar.style.display = 'flex';
                 if (fill) fill.style.width = Math.round(p * 100) + '%';
                 if (lbl) lbl.textContent = label || '';
+                const pct = document.getElementById('sv-progress-pct');
+                if (pct) pct.textContent = Math.round(p * 100) + ' %';
             } else {
                 bar.style.display = 'none';
+                bar._cancel = null;
             }
+        },
+
+        /* ── Export vidéo ───────────────────────────────────────────────── */
+        async exportVideo() {
+            const project = this.project;
+            if (!project) return;
+            if (S.Exporter && S.Exporter.isRunning()) { this.toast('Un export est déjà en cours', 'warn'); return; }
+            if (!S.Exporter) { this.toast('Module d’export indisponible', 'error'); return; }
+
+            const err = S.Exporter.preflight(project);
+            if (err) { this.toast(err, 'error'); return; }
+
+            /* L'aperçu doit être en pause : le compositeur est partagé. */
+            if (S.Preview) S.Preview.pause();
+
+            const res = await S.Exporter.export(project, (p, label) => this.setProgress(p, label, () => S.Exporter.cancel()));
+            this.setProgress(0, '');
+
+            if (res.cancelled) { this.toast('Export annulé', 'warn'); return; }
+            if (!res.ok) { this.toast(res.error || 'Export impossible', 'error'); return; }
+
+            const name = (project.exportSettings && project.exportSettings.name) || project.name || 'montage';
+            const safe = name.replace(/[^\w\-]+/g, '_').slice(0, 60) || 'montage';
+            downloadBlob(res.blob, safe + '.' + res.ext);
+            this.toast('Vidéo exportée (' + res.label + ', ' + Math.round(res.duration) + ' s)', 'success');
         },
 
         /* ── État de sauvegarde ─────────────────────────────────────────── */
@@ -318,6 +358,7 @@
             on('sv-export-project', () => this.exportProjectFile());
             on('sv-undo', () => this.undo());
             on('sv-redo', () => this.redo());
+            on('sv-export', () => this.exportVideo());
 
             const fileInput = document.getElementById('sv-project-file');
             const importBtn = document.getElementById('sv-import-project');
@@ -368,6 +409,16 @@
         return String(s == null ? '' : s)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function downloadBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 6000);
     }
     function fmtDate(iso) {
         if (!iso) return '—';

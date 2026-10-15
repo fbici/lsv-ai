@@ -42,6 +42,7 @@
             }
             const bind = (id, fn) => { const el = q(id); if (el) el.addEventListener('click', fn); };
             bind('sv-add-track', () => this.addTrack());
+            bind('sv-add-text', () => this.addTextClip());
             bind('sv-split', () => this.splitAtPlayhead());
             bind('sv-delete', () => this.deleteSelection());
             bind('sv-duplicate', () => this.duplicateSelection());
@@ -176,6 +177,44 @@
                 S.ProjectModel.addTrack(project, kind, kind.charAt(0).toUpperCase() + kind.slice(1) + ' ' + n));
             this.render();
             S.App.setSaveState('dirty');
+        },
+
+        /* Crée un clip texte à la tête de lecture (sur une piste texte, en
+           créant la piste si nécessaire). Le texte s'édite ensuite dans le
+           panneau Propriétés. */
+        addTextClip() {
+            const project = S.App.project;
+            if (!project) return;
+            const text = prompt('Texte à afficher :', 'Votre texte');
+            if (text === null || !text.trim()) return;
+
+            const clip = S.HistoryManager.run(project, () => {
+                let track = project.tracks.find(t => t.kind === 'text' && !t.locked);
+                if (!track) track = S.ProjectModel.addTrack(project, 'text', 'Texte');
+                const c = {
+                    id: 'clp-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7),
+                    kind: 'text',
+                    mediaId: '',
+                    start: this.playhead,
+                    duration: 4,
+                    in: 0, out: 0, speed: 1,
+                    volume: 1, muted: false, opacity: 1,
+                    text: text.trim(),
+                    style: { fontSize: 64, color: '#ffffff', stroke: '#000000', align: 'center' },
+                    effects: [],
+                    transitionIn: null, transitionOut: null
+                };
+                return TM().appendClip(project, track.id, c);
+            });
+
+            if (clip) {
+                this.selection = clip.id;
+                this.render();
+                if (S.PropertiesPanel) S.PropertiesPanel.onSelection(clip.id);
+                S.App.setSaveState('dirty');
+            } else {
+                S.App.toast('Emplacement occupé à cette position', 'warn');
+            }
         },
 
         /* ── Rendu ──────────────────────────────────────────────────────── */

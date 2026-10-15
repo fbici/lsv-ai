@@ -46,6 +46,13 @@ function check(label, cond, extra) {
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+/* Ajoute une piste texte au projet (utilisé par les tests M5). */
+function S_ProjectModel_addTextTrack(project) {
+    const t = { id: 'trk-txt-' + Math.random().toString(36).slice(2, 7), kind: 'text', name: 'Texte', locked: false, muted: false, hidden: false, clips: [] };
+    project.tracks.push(t);
+    return t;
+}
+
 /* ── Suite ───────────────────────────────────────────────────────────────── */
 (async () => {
     const src = fs.readFileSync(STUDIO_HTML, 'utf8');
@@ -338,7 +345,56 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     check('panneau de propriétés initialisé sans erreur',
         !!doc.getElementById('sv-props-body') && /Sélectionne un clip/.test(doc.getElementById('sv-props-body').textContent));
 
-    console.log('\n=== 11. NON-RÉGRESSION DE L’APP PRINCIPALE ===');
+    console.log('\n=== 11. EXPORT VIDÉO (M3) ===');
+    const Exp = w.LSVStudio.Exporter;
+    check('Exporter exposé', !!Exp);
+    check('preflight refuse un projet vide', /timeline est vide/i.test(Exp.preflight(PM.create({ name: 'x' })) || ''));
+    check('preflight refuse sans projet', /Aucun projet/i.test(Exp.preflight(null) || ''));
+    /* Sous jsdom : ni MediaRecorder, ni captureStream → message lisible. */
+    const pre = Exp.preflight(p2);   // p2 contient des clips
+    check('preflight signale l’absence de MediaRecorder sans jargon',
+        pre !== null && !/undefined|null|TypeError|\bat \b/.test(pre), pre);
+    check('isRunning = false au repos', Exp.isRunning() === false);
+    /* L'export ne doit jamais consommer de quota (§17.1) : aucune URL réseau. */
+    const expSrc = fs.readFileSync(path.join(PROJECT, 'studio', 'render', 'exporter.js'), 'utf8');
+    check('exporter sans appel réseau', !/fetch\(|XMLHttpRequest|https?:\/\//.test(expSrc));
+    check('exporter sans import/require (aucune dépendance)',
+        !/\bimport\s|\brequire\(|from\s+['"]/.test(expSrc));
+
+    console.log('\n=== 12. MIXAGE AUDIO (M4) ===');
+    const AM = w.LSVStudio.AudioMixer;
+    check('AudioMixer exposé', !!AM);
+    check('supported() = false sous jsdom (pas d’AudioContext)', AM.supported() === false);
+    check('context() = null sans Web Audio', AM.context() === null);
+    check('attach() renvoie null sans Web Audio (pas d’exception)',
+        AM.attach({ tagName: 'VIDEO' }, 'x') === null);
+    check('applyProject ne lève pas d’exception sans audio', (() => {
+        try { AM.applyProject(p2, 0); return true; } catch (e) { return false; }
+    })());
+    check('les fondus audio réutilisent le facteur du compositeur',
+        /transitionFactor\(clip, time\)/.test(fs.readFileSync(path.join(PROJECT, 'studio', 'render', 'audio-mixer.js'), 'utf8')));
+
+    console.log('\n=== 13. CLIPS TEXTE & RÉGLAGES (M5) ===');
+    check('bouton Texte dans la barre d’outils', !!doc.getElementById('sv-add-text'));
+    check('le modèle accepte une piste texte', TM.TRACK_ACCEPTS.text !== undefined);
+    const tp = PM.create({ name: 'Txt' });
+    const txtTrack = S_ProjectModel_addTextTrack(tp);
+    const txtClip = TM.appendClip(tp, txtTrack.id, {
+        id: 't1', kind: 'text', mediaId: '', start: 0, duration: 4,
+        in: 0, out: 0, speed: 1, volume: 1, muted: false, opacity: 1,
+        text: 'Bonjour', style: { fontSize: 64, color: '#fff' }, effects: []
+    });
+    check('clip texte ajouté sur une piste texte', txtClip !== null && txtTrack.clips.length === 1);
+    check('clipsAt rend le texte à t=1', TM.clipsAt(tp, 1).length === 1);
+    check('le texte n’exige pas de média référencé', TM.clipsAt(tp, 1)[0].items[0].clip.kind === 'text');
+    check('validate() accepte un clip texte sans mediaId',
+        PM.validate({
+            schemaVersion: 1, name: 'x', sequence: { width: 100, height: 100, fps: 30 },
+            media: [],
+            tracks: [{ id: 't', kind: 'text', clips: [{ id: 'c', kind: 'text', mediaId: '', start: 0, duration: 1, text: 'a' }] }]
+        }).ok === true);
+
+    console.log('\n=== 14. NON-RÉGRESSION DE L’APP PRINCIPALE ===');
     const appScripts = (appHtml.match(/<script src="\.\/([^"]+)"><\/script>/g) || []).join(',');
     check('ordre des modules de l’app inchangé',
         appScripts.indexOf('scripts/constants.js') < appScripts.indexOf('scripts/core.js') &&

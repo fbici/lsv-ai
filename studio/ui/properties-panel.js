@@ -48,10 +48,7 @@
         render(clip, track) {
             const body = this.els.body;
             if (!body) return;
-            if (!clip) {
-                body.innerHTML = '<p class="sv-muted">Sélectionne un clip pour régler ses propriétés.</p>';
-                return;
-            }
+            if (!clip) { this._renderProject(body); return; }
             const project = S.App.project;
             const media = S.TimelineModel.media(project, clip.mediaId);
             const isText = clip.kind === 'text';
@@ -119,6 +116,53 @@
 
             body.innerHTML = html;
             this._bind(clip);
+        },
+
+        /* ── Réglages du projet (aucun clip sélectionné) ─────────────────── */
+        _renderProject(body) {
+            const project = S.App.project;
+            if (!project) {
+                body.innerHTML = '<p class="sv-muted">Sélectionne un clip pour régler ses propriétés.</p>';
+                return;
+            }
+            const es = project.exportSettings || (project.exportSettings = {});
+            const caps = S.Capability ? S.Capability.summary() : { format: '—', exportable: false };
+            body.innerHTML =
+                '<div class="sv-prop-group">' +
+                '  <div class="sv-prop-title">Séquence</div>' +
+                '  <div class="sv-prop-row"><span class="sv-prop-label">Format</span>' +
+                '    <span class="sv-prop-value">' + project.sequence.width + '×' + project.sequence.height + '</span></div>' +
+                '  <div class="sv-prop-row"><span class="sv-prop-label">Images/s</span>' +
+                '    <span class="sv-prop-value">' + Math.round(project.sequence.fps) + '</span></div>' +
+                '  <div class="sv-prop-row"><span class="sv-prop-label">Durée</span>' +
+                '    <span class="sv-prop-value">' + S.TimelineModel.duration(project).toFixed(1) + ' s</span></div>' +
+                '</div>' +
+                '<div class="sv-prop-group">' +
+                '  <div class="sv-prop-title">Export</div>' +
+                '  <div class="sv-prop-row"><span class="sv-prop-label">Conteneur</span>' +
+                '    <span class="sv-prop-value">' + esc(caps.format) + '</span></div>' +
+                (caps.exportable ? '' :
+                    '  <p class="sv-muted">Export indisponible sur ce navigateur (voir l’écran d’accueil).</p>') +
+                select('quality', 'Qualité', es.quality || 'high',
+                    [{ id: 'low', label: 'Basse (plus rapide)' }, { id: 'high', label: 'Haute' }]) +
+                '</div>' +
+                '<div class="sv-prop-group">' +
+                '  <div class="sv-prop-title">Aide</div>' +
+                '  <p class="sv-muted">L’export se fait <strong>en temps réel</strong> : une vidéo de ' +
+                Math.round(S.TimelineModel.duration(project)) + ' s prend environ ' +
+                Math.round(S.TimelineModel.duration(project)) + ' s à produire. ' +
+                'Ne ferme pas cet onglet pendant l’export.</p>' +
+                '</div>';
+
+            const sel = body.querySelector('select[data-svp="quality"]');
+            if (sel) {
+                sel.addEventListener('change', () => {
+                    S.HistoryManager.begin(project);
+                    project.exportSettings.quality = sel.value;
+                    S.HistoryManager.commit(project);
+                    S.App.setSaveState('dirty');
+                });
+            }
         },
 
         _bind(clip) {
