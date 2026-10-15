@@ -36,6 +36,7 @@
             <button class="sv-btn icon" id="sv-undo" title="Annuler (Ctrl+Z)" disabled><span class="ms">undo</span></button>
             <button class="sv-btn icon" id="sv-redo" title="Rétablir (Ctrl+Maj+Z)" disabled><span class="ms">redo</span></button>
             <button class="sv-btn icon" id="sv-theme" title="Basculer en mode sombre"><span class="ms">dark_mode</span></button>
+            <button class="sv-btn" id="sv-export-project" title="Exporter la structure du projet (JSON, sans les médias)"><span class="ms">save</span> Projet</button>
             <button class="sv-btn primary" id="sv-export" title="Exporter la vidéo"><span class="ms">download</span> Exporter</button>
         </div>
     </header>
@@ -155,8 +156,19 @@
 
 <div class="sv-toast" id="sv-toast"><span class="ms ms-sm" id="sv-toast-icon">info</span><span id="sv-toast-text"></span></div>
 
-<!-- Modules : chargés à la demande, dans cet ordre (constant → dépendances → UI → rendu → bootstrap). -->
+<!-- Modules : constantes → dépendances → UI → bootstrap.
+     Scripts classiques (pas d'ES modules) pour rester exécutables hors navigateur. -->
 <script src="./render/capability.js"></script>
+<script src="./core/project-model.js"></script>
+<script src="./core/timeline-model.js"></script>
+<script src="./core/media-manager.js"></script>
+<script src="./storage/idb.js"></script>
+<script src="./storage/project-storage.js"></script>
+<script src="./storage/media-storage.js"></script>
+<script src="./render/compositor.js"></script>
+<script src="./ui/media-panel.js"></script>
+<script src="./ui/timeline-view.js"></script>
+<script src="./ui/preview.js"></script>
 <script src="./main.js"></script>
 </body>
 </html>

@@ -151,7 +151,113 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     check('tous les modules référencés existent', missing.length === 0, missing.join(','));
     check('index.html du studio sans <style> inline', !/<style>/.test(src));
 
-    console.log('\n=== 7. NON-RÉGRESSION DE L’APP PRINCIPALE ===');
+    console.log('\n=== 7. MODÈLE DE PROJET (M1) ===');
+    const PM = w.LSVStudio.ProjectModel;
+    check('ProjectModel exposé', !!PM);
+    const proj = PM.create({ name: 'Test M1' });
+    check('création : nom respecté', proj.name === 'Test M1');
+    check('création : séquence verticale 1080×1920 par défaut',
+        proj.sequence.width === 1080 && proj.sequence.height === 1920 && proj.sequence.fps === 30);
+    check('création : 2 pistes par défaut (vidéo + audio)', proj.tracks.length === 2);
+    check('création : schemaVersion = 1', proj.schemaVersion === 1);
+    check('création : aucun binaire dans le JSON',
+        !/blob|base64|data:image|data:video/i.test(JSON.stringify(proj)));
+    check('validate() accepte un projet créé', PM.validate(proj).ok === true);
+
+    /* Validation de données hostiles (§16.3). */
+    check('validate() refuse un non-objet', PM.validate(null).ok === false && PM.validate(42).ok === false);
+    check('validate() refuse un schéma futur',
+        PM.validate(Object.assign({}, proj, { schemaVersion: 99 })).ok === false);
+    check('validate() refuse __proto__', PM.validate(JSON.parse('{"__proto__":{"x":1},"schemaVersion":1,"name":"a","sequence":{"width":1,"height":1,"fps":1},"media":[],"tracks":[]}')).ok === false);
+    check('validate() refuse un média orphelin (clip pointant un mediaId absent)',
+        PM.validate({
+            schemaVersion: 1, name: 'x', sequence: { width: 100, height: 100, fps: 30 },
+            media: [], tracks: [{ id: 't', kind: 'video', clips: [{ id: 'c', mediaId: 'inconnu', start: 0, duration: 1 }] }]
+        }).ok === false);
+    check('validate() borne les dimensions',
+        PM.validate(Object.assign({}, proj, { sequence: { width: 999999, height: 100, fps: 30 } })).ok === false);
+    check('validate() refuse un fps hors limites',
+        PM.validate(Object.assign({}, proj, { sequence: { width: 100, height: 100, fps: 9999 } })).ok === false);
+
+    /* Migration : reconstruit proprement et borne tout. */
+    const migrated = PM.migrate({
+        schemaVersion: 1, name: 'Ancien', sequence: { width: 720, height: 1280, fps: 60 },
+        media: [{ id: 'm1', kind: 'video', name: 'a.mp4', duration: 3.2 }],
+        tracks: [{
+            id: 't1', kind: 'video',
+            clips: [{ id: 'c1', mediaId: 'm1', start: 0, duration: 2, speed: 99, volume: 99,
+                      effects: [null, { type: 'x', brightness: 999 }] }]
+        }]
+    });
+    check('migration : durée de média bornée / vitesse bornée',
+        migrated.media[0].duration === 3.2 && migrated.tracks[0].clips[0].speed === 8);
+    check('migration : volume borné à 4', migrated.tracks[0].clips[0].volume === 4);
+    check('migration : effets nettoyés (null retiré, brightness borné)',
+        migrated.tracks[0].clips[0].effects.length === 1 && migrated.tracks[0].clips[0].effects[0].brightness === 10);
+
+    console.log('\n=== 8. MODÈLE DE TIMELINE (M1) ===');
+    const TM = w.LSVStudio.TimelineModel;
+    check('TimelineModel exposé', !!TM);
+    const p2 = PM.create({ name: 'TL' });
+    const vidTrack = p2.tracks[0];
+    /* Faux média (pas de blob : le modèle est pur). */
+    const fakeMedia = { id: 'm1', kind: 'video', name: 'a.mp4', duration: 10, width: 720, height: 1280 };
+    p2.media.push(fakeMedia);
+
+    const clipA = TM.makeClip(fakeMedia, { start: 0 });
+    const addedA = TM.addClip(p2, vidTrack.id, clipA);
+    check('addClip accepte un clip sur piste compatible', addedA !== null && vidTrack.clips.length === 1);
+    check('makeClip : durée = durée source pour une vidéo', clipA.duration === 10 && clipA.in === 0 && clipA.out === 10);
+
+    const clipB = TM.makeClip(fakeMedia, { start: 2 });   // chevauche clipA (0→10)
+    check('addClip refuse un chevauchement', TM.addClip(p2, vidTrack.id, clipB) === null && vidTrack.clips.length === 1);
+
+    const clipC = TM.makeClip(fakeMedia, { start: 10 });
+    check('addClip accepte un clip collé à la fin', TM.addClip(p2, vidTrack.id, clipC) !== null && vidTrack.clips.length === 2);
+
+    /* moveClip : ne décale JAMAIS les autres clips (§7.3). */
+    const startA = clipA.start;
+    const mv = TM.moveClip(p2, clipC.id, vidTrack.id, 20);   // espace libre
+    check('moveClip déplace le clip demandé', mv.ok === true && clipC.start === 20);
+    check('moveClip ne décale pas les autres clips', clipA.start === startA);
+
+    const mvBad = TM.moveClip(p2, clipC.id, vidTrack.id, 5);   // retombe sur clipA (0→10)
+    check('moveClip refuse un chevauchement', mvBad.ok === false && clipC.start === 20);
+
+    /* splitClip : le morceau de droite garde la bonne source. */
+    clipA.start = 0; clipA.duration = 10; clipA.in = 0; clipA.out = 10;
+    vidTrack.clips = [clipA];
+    const right = TM.splitClip(p2, clipA.id, 4);
+    check('splitClip crée un second clip', right !== null && vidTrack.clips.length === 2);
+    check('splitClip : gauche = 0→4, droite = 4→10',
+        clipA.duration === 4 && right.start === 4 && right.duration === 6);
+    check('splitClip : source de droite = in 4 (pas de saut)',
+        Math.abs(right.in - 4) < 1e-6 && Math.abs(right.out - 10) < 1e-6);
+    check('splitClip refuse hors des bornes du clip',
+        TM.splitClip(p2, clipA.id, 0) === null && TM.splitClip(p2, clipA.id, 4) === null);
+
+    /* trimClip : négaire sur le bord droit = raccourcit ; positif = allonge
+       (et ne peut pas dépasser la fin du média source). */
+    const trimShorten = TM.trimClip(p2, right.id, 'right', -2);
+    check('trim right négatif raccourcit', trimShorten.ok === true && right.duration === 4 && right.out === 8);
+    const trimExtend = TM.trimClip(p2, right.id, 'right', 4);    // out deviendrait 12 > 10
+    check('trim ne peut pas dépasser la fin du média', trimExtend.ok === false && right.out === 8 && right.duration === 4);
+    const trimTooshort = TM.trimClip(p2, right.id, 'right', -100);
+    check('trim respecte une durée minimale', trimTooshort.ok === false && right.duration === 4);
+
+    /* snapTime : aimantation sur un bord de clip. */
+    const snap = TM.snapTime(p2, 4.02, { threshold: 0.5, ignoreClipId: right.id });
+    check('snapTime s’aligne sur un bord', snap === 4);
+    const noSnap = TM.snapTime(p2, 6, { threshold: 0.5 });
+    check('snapTime ignore les valeurs trop loin', noSnap === 6);
+
+    /* clipsAt : lecture d'une position. */
+    const at2 = TM.clipsAt(p2, 2);
+    check('clipsAt trouve le clip actif à t=2', at2.length === 1 && at2[0].items[0].clip.id === clipA.id);
+    check('clipsAt : sourceTime = in + t×speed', at2[0].items[0].sourceTime === 2);
+    check('clipsAt vide à t=20', TM.clipsAt(p2, 20).length === 0);
+
+    console.log('\n=== 9. NON-RÉGRESSION DE L’APP PRINCIPALE ===');
     const appScripts = (appHtml.match(/<script src="\.\/([^"]+)"><\/script>/g) || []).join(',');
     check('ordre des modules de l’app inchangé',
         appScripts.indexOf('scripts/constants.js') < appScripts.indexOf('scripts/core.js') &&
