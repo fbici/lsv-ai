@@ -88,11 +88,7 @@ h2 { font-family: 'Space Grotesk', sans-serif; font-size: 24px; letter-spacing: 
 p { color: var(--ink-2); margin-bottom: 14px; }
 p strong { color: var(--ink); }
 
-/* Fiche fondateur */
-.founder { display: flex; gap: 20px; align-items: flex-start; background: var(--bg-2); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: var(--shadow); }
-.avatar { flex: none; width: 76px; height: 76px; border-radius: 18px; background: linear-gradient(135deg, #0d9488, #14b8a6); color: #fff; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; overflow: hidden; }
-.founder h3 { font-family: 'Space Grotesk', sans-serif; font-size: 20px; margin-bottom: 2px; }
-.founder .role { color: var(--accent); font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+/* Fiche créateur : voir styles/contact.css (.creator) */
 
 /* Cartes compétences */
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; margin-top: 20px; }
@@ -118,6 +114,7 @@ footer p { font-size: 13px; color: var(--ink-3); margin: 0; }
 footer a { color: var(--accent); text-decoration: none; }
 footer a:hover { text-decoration: underline; }
 </style>
+<link rel="stylesheet" href="../styles/contact.css">
 
 <script type="application/ld+json">
 {
@@ -163,6 +160,7 @@ footer a:hover { text-decoration: underline; }
         <a class="brand" href="../"><img src="../lsv.jpg" alt="" class="brand-logo" width="28" height="28" onerror="this.remove()"> LSV<span>.ai</span></a>
         <nav>
             <a class="navlink" href="../">Studio</a>
+            <a class="navlink" href="#contact">Contact</a>
             <a class="btn" href="../">Ouvrir le studio</a>
         </nav>
     </div>
@@ -179,18 +177,34 @@ footer a:hover { text-decoration: underline; }
         et créateur de contenu.</p>
     </div>
 
-    <section aria-labelledby="fondateur">
-        <h2 id="fondateur">Le fondateur</h2>
-        <div class="founder">
-            <div class="avatar" aria-hidden="true">SS</div>
+    <!-- ═══════════ ESPACE CRÉATEUR ═══════════
+         Espace exclusivement dédié à Salaou Souleyman, en tant que créateur :
+         photo, positionnement, disciplines. -->
+    <section aria-labelledby="createur" id="createur" style="scroll-margin-top:80px">
+        <div class="creator">
+            <figure class="creator-photo">
+                <!-- PDG : portrait officiel du fondateur (assets/showcase/pdg.png) -->
+                <img src="../assets/showcase/pdg.png" width="480" height="600" loading="lazy" decoding="async"
+                     alt="Salaou Souleyman, fondateur de LeStudioViral">
+                <figcaption>Salaou Souleyman — fondateur</figcaption>
+            </figure>
             <div>
-                <h3>Salaou Souleyman</h3>
-                <p class="role">Développeur web &amp; mobile · Créateur de contenu · Fondateur de LeStudioViral</p>
-                <p>Je conçois et développe des applications web et mobiles de bout en bout :
-                interfaces soignées, architecture serveless (Supabase), API d'intelligence
-                artificielle, sécurité (comptes, liste blanche, RLS) et tests automatisés.
-                Côté création, je produis des images, des vidéos et des contenus IA —
-                et c'est exactement ce que <strong>LSV.ai</strong> rend accessible à tout le monde.</p>
+                <span class="creator-eyebrow">Salaou Souleyman · Le Studio Viral</span>
+                <h2>Un créateur. Plusieurs disciplines. Un univers.</h2>
+                <p>Salaou Souleyman est un <strong>développeur</strong>, <strong>créateur numérique</strong>
+                et <strong>entrepreneur créatif</strong> qui associe technologie, intelligence artificielle
+                et expression visuelle pour concevoir des applications, des projets web, des animations 3D,
+                des contenus et des produits numériques.</p>
+                <p>À travers <strong>Le Studio Viral</strong>, il rassemble ses compétences, ses créations
+                et ses projets dans un même univers, avec une ambition : transformer des idées en réalisations
+                concrètes et développer une identité créative qui lui ressemble.</p>
+                <div class="disciplines">
+                    <span class="discipline is-key">Software</span>
+                    <span class="discipline is-key">AI</span>
+                    <span class="discipline">3D</span>
+                    <span class="discipline">Content</span>
+                    <span class="discipline">Digital Products</span>
+                </div>
             </div>
         </div>
     </section>
@@ -276,18 +290,143 @@ footer a:hover { text-decoration: underline; }
         </div>
     </section>
 
+    <!-- ═══════════ CONTACT PERSONNEL DU FONDATEUR ═══════════
+         Destiné à celles et ceux qui veulent collaborer sur un projet ou
+         solliciter les services de Salaou Souleyman. Canaux « founder » de la
+         Edge Function lsv-contact → salaousouleyman@gmail.com. -->
+    <section aria-labelledby="contact" id="contact" style="scroll-margin-top:80px">
+        <h2>Travaillons ensemble</h2>
+        <p>Un projet à développer, une idée à lancer, une collaboration à construire ou
+        une prestation à confier ? Écris-moi directement — je lis tout.</p>
+
+        <div class="ct-grid">
+            <form class="ct-form" id="founder-form" data-contact="founder" autocomplete="on">
+                <h2>Écrire à Salaou Souleyman</h2>
+                <p class="ct-sub">Personnellement, sans intermédiaire. Les champs marqués * sont obligatoires.</p>
+
+                <div class="ct-hp" aria-hidden="true">
+                    <label for="founder-website">Ne pas remplir</label>
+                    <input type="text" id="founder-website" name="website" tabindex="-1" autocomplete="off">
+                </div>
+
+                <div class="ct-row">
+                    <div class="ct-field">
+                        <label class="ct-label" for="founder-name">Nom *</label>
+                        <input class="ct-input" type="text" id="founder-name" name="name" required maxlength="120"
+                               autocomplete="name" placeholder="Ton nom">
+                    </div>
+                    <div class="ct-field">
+                        <label class="ct-label" for="founder-email">E-mail *</label>
+                        <input class="ct-input" type="email" id="founder-email" name="email" required maxlength="200"
+                               autocomplete="email" inputmode="email" placeholder="toi@exemple.com">
+                    </div>
+                </div>
+
+                <div class="ct-field">
+                    <label class="ct-label" for="founder-subject">Objet *</label>
+                    <select class="ct-select" id="founder-subject" name="subject" required>
+                        <option value="" selected disabled>Choisis un sujet…</option>
+                        <option value="Collaboration sur un projet">Collaboration sur un projet</option>
+                        <option value="Prestation de développement">Prestation de développement</option>
+                        <option value="Application web ou mobile">Application web ou mobile</option>
+                        <option value="Animation 3D / contenu visuel">Animation 3D / contenu visuel</option>
+                        <option value="Conseil en IA ou automatisation">Conseil en IA ou automatisation</option>
+                        <option value="Autre">Autre</option>
+                    </select>
+                </div>
+
+                <div class="ct-field">
+                    <label class="ct-label" for="founder-message">Ton projet * <span class="opt">(10 à 4000 caractères)</span></label>
+                    <textarea class="ct-textarea" id="founder-message" name="message" required minlength="10" maxlength="4000"
+                              placeholder="Contexte, objectif, délai, budget indicatif… plus c'est précis, plus ma réponse le sera."></textarea>
+                </div>
+
+                <button class="ct-submit" type="submit">
+                    <span class="ms">send</span> Envoyer mon projet
+                </button>
+
+                <div class="ct-status" data-contact-status role="status" aria-live="polite" hidden></div>
+
+                <p class="ct-note">Ton e-mail sert uniquement à te répondre. Aucune newsletter,
+                aucun partage de tes coordonnées.</p>
+            </form>
+
+            <aside class="ct-aside">
+                <h3>À qui écrire</h3>
+                <p>Ce formulaire est <strong>personnel</strong> : il arrive dans la boîte de
+                Salaou Souleyman, pas dans une boîte générique.</p>
+                <ul class="ct-contacts">
+                    <li>
+                        <span class="ms">person</span>
+                        <span><b>Salaou Souleyman — fondateur</b>
+                        <a href="mailto:salaousouleyman@gmail.com">salaousouleyman@gmail.com</a></span>
+                    </li>
+                    <li>
+                        <span class="ms">support_agent</span>
+                        <span><b>LSV.ai — support du studio</b>
+                        <a href="../contact/">Formulaire officiel</a> ou
+                        <a href="mailto:lestudioviral@gmail.com">lestudioviral@gmail.com</a></span>
+                    </li>
+                </ul>
+                <div class="ct-times">
+                    <span class="ct-chip">Collaboration</span>
+                    <span class="ct-chip">Développement</span>
+                    <span class="ct-chip">IA &amp; 3D</span>
+                    <span class="ct-chip">Réponse sous 48 h</span>
+                </div>
+            </aside>
+        </div>
+    </section>
+
 </main>
 
-<footer>
+<footer class="site-footer">
     <div class="wrap">
-        <p>© <span id="year">2026</span> <strong>LeStudioViral</strong> — Studio de création de contenu IA.
-        Fondé par <strong>Salaou Souleyman</strong>, développeur web &amp; mobile.
-        · <a href="../">LSV.ai</a> ·
-        <!-- SITE_OFFICIEL : idem, remplace cette URL quand le site officiel est en ligne -->
-        <a href="https://lestudioviral.com" rel="noopener">Site officiel</a></p>
+        <div class="sf-grid">
+            <div class="sf-brand">
+                <a href="../">LSV<span>.ai</span></a>
+                <p class="sf-tag">Le Studio Viral — studio de création de contenu propulsé par l'IA : images, vidéos et chat en quelques secondes.</p>
+                <p class="sf-made">Fondé et développé par <strong>Salaou Souleyman</strong>.</p>
+            </div>
+            <div>
+                <h4>Le studio</h4>
+                <ul class="sf-links">
+                    <li><a href="../">Images IA</a></li>
+                    <li><a href="../">Vidéos IA</a></li>
+                    <li><a href="../">Chat IA</a></li>
+                    <li><a href="../studio/">Montage vidéo</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4>La marque</h4>
+                <ul class="sf-links">
+                    <li><a href="./">À propos</a></li>
+                    <li><a href="../contact/">Contact</a></li>
+                    <li><a href="https://rxorzera.mychariow.shop" target="_blank" rel="noopener">Boutique</a></li>
+                    <li><a href="https://blgbiwds.mychariow.shop" target="_blank" rel="noopener">Académie Digital</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4>Écrire à LSV.ai</h4>
+                <ul class="sf-links">
+                    <li><a href="mailto:lestudioviral@gmail.com">lestudioviral@gmail.com</a></li>
+                    <li><a href="mailto:salaousouleyman@gmail.com">salaousouleyman@gmail.com</a></li>
+                    <li><a href="#contact">Formulaire fondateur</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="sf-bottom">
+            <span>© <span id="year">2026</span> <strong>LeStudioViral</strong> — tous droits réservés.</span>
+            <span><a href="./">À propos</a> · <a href="../contact/">Contact</a> · <a href="../">Ouvrir LSV.ai</a></span>
+        </div>
+        <p class="sf-seo">LSV.ai est le studio IA de LeStudioViral : génération d'images IA, génération de vidéos IA,
+        chat IA, amélioration de prompts, storyboards et montage vidéo local — gratuit, sans installation.</p>
     </div>
 </footer>
 
+<script src="../shared/config.js"></script>
+<script src="../analytics/analytics.js"></script>
+<script src="../shared/contact.js"></script>
 <script>
 document.getElementById('year').textContent = new Date().getFullYear();
 </script>

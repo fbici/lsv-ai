@@ -283,8 +283,8 @@ a.nav-ext:active { color: var(--accent); }
 }
 .sidebar-quota.quota-suspended { border-color: rgba(248, 113, 113, 0.45); }
 .sidebar-quota.quota-suspended .sidebar-quota-reset { color: #f87171; }
-.sidebar-about { margin-top: 6px; padding: 0 0.5rem; white-space: nowrap; overflow: hidden; }
-.sidebar-about a { color: var(--ink-3); font-size: 0.68rem; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem; }
+.sidebar-about { margin-top: 6px; padding: 0 0.5rem; overflow: hidden; display: flex; flex-direction: column; gap: 4px; }
+.sidebar-about a { color: var(--ink-3); font-size: 0.68rem; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
 .sidebar-about a:hover { color: var(--accent); }
 .sidebar-about a .ms { font-size: 0.9rem; }
 .app.sidebar-collapsed .sidebar-about { display: none; }

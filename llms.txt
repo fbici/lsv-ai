@@ -9,7 +9,10 @@
 - [Accueil — Studio](https://fbici.github.io/lsv-ai/) : génération d'images IA,
   de vidéos IA et chat IA, sans installation.
 - [À propos — LeStudioViral](https://fbici.github.io/lsv-ai/a-propos/) : la
-  marque, son fondateur et ses boutiques en ligne.
+  marque, son créateur, ses boutiques en ligne et le formulaire de contact
+  personnel de Salaou Souleyman.
+- [Contact — LSV.ai](https://fbici.github.io/lsv-ai/contact/) : formulaire
+  officiel de contact de la marque.
 
 ## Boutiques
 
@@ -20,4 +23,7 @@
 
 ## Contact
 
-- Fondateur : Salaou Souleyman — https://fbici.github.io/lsv-ai/a-propos/
+- Support LSV.ai (marque) : lestudioviral@gmail.com —
+  https://fbici.github.io/lsv-ai/contact/
+- Fondateur : Salaou Souleyman — salaousouleyman@gmail.com —
+  https://fbici.github.io/lsv-ai/a-propos/#contact

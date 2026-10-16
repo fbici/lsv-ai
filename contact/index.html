@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     LSV.ai — page Contact
+     ───────────────────────────────────────────────────────────────────────────
+     Formulaire envoyé à l'adresse officielle de la marque :
+     lestudioviral@gmail.com  (canal « site » de la Edge Function lsv-contact).
+     Pour écrire à Salaou Souleyman personnellement (collaboration, prestation),
+     voir le formulaire de la page À propos : salaousouleyman@gmail.com.
+     Migration requise : supabase/upgrade-contact.sql.
+     Variables Edge Function : EMAIL_PROVIDER, EMAIL_API_KEY, EMAIL_FROM.
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#fafaf9">
+<link rel="icon" type="image/jpeg" href="../lsv.jpg">
+<title>Contact — LSV.ai · LeStudioViral</title>
+<meta name="description" content="Contacte LeStudioViral : question sur LSV.ai, signalement de bug, retour, partenariat ou collaboration. Formulaire sécurisé, réponse sous 48 heures ouvrées.">
+<meta name="keywords" content="contact LSV.ai, contacter LeStudioViral, support LSV.ai, message, collaboration">
+<meta name="author" content="LeStudioViral — Salaou Souleyman">
+<link rel="canonical" href="https://fbici.github.io/lsv-ai/contact/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="LSV.ai">
+<meta property="og:title" content="Contact — LSV.ai · LeStudioViral">
+<meta property="og:description" content="Une question, un bug à signaler ou une idée de collaboration ? Écris à LeStudioViral, réponse sous 48 heures.">
+<meta property="og:url" content="https://fbici.github.io/lsv-ai/contact/">
+<meta property="og:image" content="https://fbici.github.io/lsv-ai/lsv.jpg">
+<meta property="og:image:alt" content="Logo LeStudioViral">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Contact — LSV.ai · LeStudioViral">
+<meta name="twitter:description" content="Écris à LeStudioViral : réponse sous 48 heures.">
+<meta name="twitter:image" content="https://fbici.github.io/lsv-ai/lsv.jpg">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<link rel="apple-touch-icon" href="../lsv.jpg">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+
+<link rel="stylesheet" href="../styles/contact.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "ContactPage",
+  "name": "Contact — LSV.ai",
+  "url": "https://fbici.github.io/lsv-ai/contact/",
+  "description": "Page de contact de LSV.ai, studio de création de contenu IA édité par LeStudioViral.",
+  "publisher": {
+    "@type": "Organization",
+    "name": "LeStudioViral",
+    "alternateName": "Le Studio Viral",
+    "url": "https://fbici.github.io/lsv-ai/",
+    "email": "lestudioviral@gmail.com",
+    "founder": { "@type": "Person", "name": "Salaou Souleyman" }
+  }
+}
+</script>
+</head>
+<body>
+
+<header class="ct-topbar">
+    <div class="wrap">
+        <a class="ct-brand" href="../"><img src="../lsv.jpg" alt="" width="28" height="28" onerror="this.remove()"> LSV<span>.ai</span></a>
+        <nav class="ct-nav">
+            <a href="../">Studio</a>
+            <a href="../a-propos/">À propos</a>
+            <a class="is-btn" href="../">Ouvrir le studio</a>
+        </nav>
+    </div>
+</header>
+
+<main class="wrap">
+
+    <div class="ct-hero">
+        <span class="ct-eyebrow"><span class="ms" style="font-size:16px">mail</span> Contact</span>
+        <h1 class="ct-title">Écris à <em>LeStudioViral</em>.</h1>
+        <p class="ct-lead">Une question sur LSV.ai, un bug à signaler, une idée à partager ou
+        un partenariat à imaginer : ce formulaire arrive directement dans notre boîte mail.
+        Réponse sous <strong>48 heures ouvrées</strong>.</p>
+    </div>
+
+    <div class="ct-grid">
+
+        <!-- ════════ FORMULAIRE ════════ -->
+        <form class="ct-form" id="contact-form" data-contact="site" autocomplete="on">
+            <h2>Envoyer un message</h2>
+            <p class="ct-sub">Les champs marqués * sont obligatoires.</p>
+
+            <!-- Champ piège : les humains ne le voient pas, les robots le remplissent. -->
+            <div class="ct-hp" aria-hidden="true">
+                <label for="contact-website">Ne pas remplir</label>
+                <input type="text" id="contact-website" name="website" tabindex="-1" autocomplete="off">
+            </div>
+
+            <div class="ct-row">
+                <div class="ct-field">
+                    <label class="ct-label" for="contact-name">Nom *</label>
+                    <input class="ct-input" type="text" id="contact-name" name="name" required maxlength="120"
+                           autocomplete="name" placeholder="Ton nom">
+                </div>
+                <div class="ct-field">
+                    <label class="ct-label" for="contact-email">E-mail *</label>
+                    <input class="ct-input" type="email" id="contact-email" name="email" required maxlength="200"
+                           autocomplete="email" inputmode="email" placeholder="toi@exemple.com">
+                </div>
+            </div>
+
+            <div class="ct-field">
+                <label class="ct-label" for="contact-subject">Objet *</label>
+                <select class="ct-select" id="contact-subject" name="subject" required>
+                    <option value="" selected disabled>Choisis un sujet…</option>
+                    <option value="Question sur LSV.ai">Question sur LSV.ai</option>
+                    <option value="Signaler un bug ou un problème">Signaler un bug ou un problème</option>
+                    <option value="Suggestion de fonctionnalité">Suggestion de fonctionnalité</option>
+                    <option value="Partenariat">Partenariat</option>
+                    <option value="Presse / média">Presse / média</option>
+                    <option value="Autre">Autre</option>
+                </select>
+            </div>
+
+            <div class="ct-field">
+                <label class="ct-label" for="contact-message">Message * <span class="opt">(10 à 4000 caractères)</span></label>
+                <textarea class="ct-textarea" id="contact-message" name="message" required minlength="10" maxlength="4000"
+                          placeholder="Décris ton besoin ou ton problème : plus c'est précis, plus ta réponse le sera."></textarea>
+            </div>
+
+            <button class="ct-submit" type="submit">
+                <span class="ms">send</span> Envoyer le message
+            </button>
+
+            <div class="ct-status" data-contact-status role="status" aria-live="polite" hidden></div>
+
+            <p class="ct-note">Ton e-mail sert uniquement à te répondre : il n'est ni revendu ni ajouté
+            à une newsletter. Aucun compte n'est nécessaire pour écrire.</p>
+        </form>
+
+        <!-- ════════ À CÔTÉ ════════ -->
+        <aside class="ct-aside">
+            <h3>Autrement qu'en formulaire</h3>
+            <p>Si tu préfères écrire directement depuis ton application de messagerie,
+            notre adresse officielle est ouverte à tous.</p>
+
+            <ul class="ct-contacts">
+                <li>
+                    <span class="ms">support_agent</span>
+                    <span><b>Contact officiel — LSV.ai</b>
+                    <a href="mailto:lestudioviral@gmail.com">lestudioviral@gmail.com</a></span>
+                </li>
+                <li>
+                    <span class="ms">person</span>
+                    <span><b>Salaou Souleyman — fondateur</b>
+                    Collaboration, prestations, projets : <a href="../a-propos/#contact">formulaire dédié</a></span>
+                </li>
+                <li>
+                    <span class="ms">storefront</span>
+                    <span><b>Boutiques</b>
+                    <a href="https://rxorzera.mychariow.shop" target="_blank" rel="noopener">LeStudioViral</a> ·
+                    <a href="https://blgbiwds.mychariow.shop" target="_blank" rel="noopener">Académie Digital</a></span>
+                </li>
+            </ul>
+
+            <div class="ct-times">
+                <span class="ct-chip">Réponse sous 48 h</span>
+                <span class="ct-chip">Sans compte requis</span>
+                <span class="ct-chip">Pas de newsletter</span>
+            </div>
+        </aside>
+
+    </div>
+</main>
+
+<footer class="site-footer">
+    <div class="wrap">
+        <div class="sf-grid">
+            <div class="sf-brand">
+                <a href="../">LSV<span>.ai</span></a>
+                <p class="sf-tag">Le Studio Viral — studio de création de contenu propulsé par l'IA : images, vidéos et chat en quelques secondes.</p>
+                <p class="sf-made">Fondé et développé par <strong>Salaou Souleyman</strong>.</p>
+            </div>
+            <div>
+                <h4>Le studio</h4>
+                <ul class="sf-links">
+                    <li><a href="../">Images IA</a></li>
+                    <li><a href="../">Vidéos IA</a></li>
+                    <li><a href="../">Chat IA</a></li>
+                    <li><a href="../studio/">Montage vidéo</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4>La marque</h4>
+                <ul class="sf-links">
+                    <li><a href="../a-propos/">À propos</a></li>
+                    <li><a href="./">Contact</a></li>
+                    <li><a href="https://rxorzera.mychariow.shop" target="_blank" rel="noopener">Boutique</a></li>
+                    <li><a href="https://blgbiwds.mychariow.shop" target="_blank" rel="noopener">Académie Digital</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4>Écrire à LSV.ai</h4>
+                <ul class="sf-links">
+                    <li><a href="mailto:lestudioviral@gmail.com">lestudioviral@gmail.com</a></li>
+                    <li><a href="mailto:salaousouleyman@gmail.com">salaousouleyman@gmail.com</a></li>
+                    <li><a href="../a-propos/#contact">Formulaire fondateur</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="sf-bottom">
+            <span>© <span id="contact-year">2026</span> <strong>LeStudioViral</strong> — tous droits réservés.</span>
+            <span><a href="../a-propos/">À propos</a> · <a href="./">Contact</a> · <a href="../">Ouvrir LSV.ai</a></span>
+        </div>
+        <p class="sf-seo">LSV.ai est le studio IA de LeStudioViral : génération d'images IA, génération de vidéos IA,
+        chat IA, amélioration de prompts, storyboards et montage vidéo local — gratuit, sans installation.</p>
+    </div>
+</footer>
+
+<script src="../shared/config.js"></script>
+<script src="../analytics/analytics.js"></script>
+<script src="../shared/contact.js"></script>
+<script>
+document.getElementById('contact-year').textContent = new Date().getFullYear();
+</script>
+
+</body>
+</html>

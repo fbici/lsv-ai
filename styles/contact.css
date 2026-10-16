@@ -1,0 +1,151 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   LSV.ai — Contact + page « Le créateur »
+   Partagé par /contact/ et /a-propos/. Autonome : ni dépendance ni framework.
+   Mêmes tokens que le reste du site (styles/base.css) — les valeurs sont
+   redéclarées ici pour que /contact/ reste une page statique sans CSS global.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+    --bg: #fafaf9; --bg-2: #ffffff; --bg-3: #f4f4f2; --bg-4: #ebebe8;
+    --border: #e8e8e4; --border-2: #dcdcd7;
+    --ink: #18181b; --ink-2: #52525b; --ink-3: #8a8a94; --ink-4: #b8b8c0;
+    --accent: #0d9488; --accent-hover: #0f766e; --accent-soft: #f0fdfa;
+    --accent-light: #ccfbf1;
+    --red: #dc2626; --red-light: #fef2f2;
+    --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+    --shadow-md: 0 4px 6px rgba(0,0,0,.05), 0 2px 4px rgba(0,0,0,.03);
+    --radius: 12px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+    background: var(--bg); color: var(--ink);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6; -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.ms { font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; font-size: 20px; line-height: 1; letter-spacing: normal; text-transform: none; display: inline-block; white-space: nowrap; direction: ltr; -webkit-font-feature-settings: 'liga'; font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+.wrap { max-width: 860px; margin: 0 auto; padding: 0 20px; }
+.hidden { display: none !important; }
+
+/* ── Barre supérieure (page Contact) ─────────────────────────────────────── */
+.ct-topbar { position: sticky; top: 0; z-index: 10; background: rgba(250,250,249,.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
+.ct-topbar .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+.ct-brand { font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 700; letter-spacing: -.4px; color: var(--ink); text-decoration: none; display: flex; align-items: center; }
+.ct-brand:hover { text-decoration: none; }
+.ct-brand span { color: var(--accent); }
+.ct-brand img { width: 28px; height: 28px; object-fit: cover; border-radius: 7px; margin-right: 5px; }
+.ct-nav { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ct-nav a { color: var(--ink-2); font-size: 14px; font-weight: 500; padding: 8px 12px; border-radius: 8px; }
+.ct-nav a:hover { background: var(--bg-3); color: var(--ink); text-decoration: none; }
+.ct-nav a.is-btn { background: var(--accent); color: #fff; font-weight: 600; }
+.ct-nav a.is-btn:hover { background: var(--accent-hover); }
+
+/* ── En-tête de page ─────────────────────────────────────────────────────── */
+.ct-hero { padding: 64px 0 36px; }
+.ct-eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-light); border-radius: 999px; padding: 6px 14px; margin-bottom: 20px; }
+.ct-title { font-family: 'Space Grotesk', sans-serif; font-size: clamp(30px, 5vw, 44px); line-height: 1.12; letter-spacing: -1px; margin-bottom: 16px; }
+.ct-title em { font-style: normal; color: var(--accent); }
+.ct-lead { font-size: 17px; color: var(--ink-2); max-width: 660px; }
+
+/* ── Bloc « Le créateur » (page À propos) ────────────────────────────────── */
+.creator { display: grid; grid-template-columns: 240px 1fr; gap: 32px; align-items: start; background: var(--bg-2); border: 1px solid var(--border); border-radius: 18px; padding: 32px; box-shadow: var(--shadow-md); }
+.creator-photo { position: sticky; top: 84px; }
+.creator-photo img {
+    display: block; width: 100%; height: auto;
+    aspect-ratio: 4 / 5; object-fit: cover; object-position: 50% 20%;
+    border-radius: 16px; background: var(--bg-3);
+    border: 1px solid var(--border);
+}
+.creator-photo figcaption { margin-top: 10px; font-size: 12px; color: var(--ink-3); text-align: center; font-family: 'Space Grotesk', sans-serif; }
+.creator-eyebrow { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
+.creator h2 { font-family: 'Space Grotesk', sans-serif; font-size: clamp(24px, 3.4vw, 32px); line-height: 1.2; letter-spacing: -.7px; margin-bottom: 16px; }
+.creator p { color: var(--ink-2); font-size: 16px; margin-bottom: 14px; }
+.creator p strong { color: var(--ink); }
+.disciplines { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+.discipline { font-family: 'Space Grotesk', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1.3px; text-transform: uppercase; color: var(--ink-2); background: var(--bg-3); border: 1px solid var(--border); border-radius: 999px; padding: 7px 13px; }
+.discipline.is-key { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-light); }
+
+/* ── Grille « contact » (page Contact) ───────────────────────────────────── */
+.ct-grid { display: grid; grid-template-columns: 1.35fr .9fr; gap: 24px; align-items: start; padding-bottom: 8px; }
+
+/* ── Formulaire ──────────────────────────────────────────────────────────── */
+.ct-form { background: var(--bg-2); border: 1px solid var(--border); border-radius: 16px; padding: 26px; box-shadow: var(--shadow); }
+.ct-form h2 { font-family: 'Space Grotesk', sans-serif; font-size: 20px; letter-spacing: -.4px; margin-bottom: 6px; }
+.ct-form .ct-sub { font-size: 14px; color: var(--ink-3); margin-bottom: 20px; }
+.ct-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.ct-field { margin-bottom: 14px; }
+.ct-label { display: block; font-size: 13px; font-weight: 600; color: var(--ink-2); margin-bottom: 6px; }
+.ct-label .opt { color: var(--ink-4); font-weight: 500; }
+.ct-input, .ct-select, .ct-textarea {
+    width: 100%; padding: 11px 13px;
+    font-family: inherit; font-size: 14.5px; color: var(--ink);
+    background: var(--bg); border: 1px solid var(--border-2); border-radius: 10px;
+    transition: border-color .15s, box-shadow .15s;
+}
+.ct-input:focus, .ct-select:focus, .ct-textarea:focus {
+    outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.ct-input::placeholder, .ct-textarea::placeholder { color: var(--ink-4); }
+.ct-textarea { min-height: 148px; resize: vertical; line-height: 1.6; }
+.ct-select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--ink-3) 50%), linear-gradient(135deg, var(--ink-3) 50%, transparent 50%); background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
+.ct-invalid { border-color: var(--red) !important; background: var(--red-light); }
+
+/* Champ piège : masqué visuellement mais toujours « remplissable » par un
+   robot. Ne pas utiliser display:none : il serait ignoré. */
+.ct-hp { position: absolute !important; left: -9999px !important; top: auto !important; width: 1px; height: 1px; overflow: hidden; }
+
+.ct-status { display: none; align-items: flex-start; gap: 8px; margin-top: 16px; padding: 12px 14px; border-radius: 10px; font-size: 13.5px; line-height: 1.55; }
+.ct-status:not([hidden]) { display: flex; }
+.ct-status.is-ok { background: var(--accent-soft); border: 1px solid var(--accent-light); color: #0f766e; }
+.ct-status.is-error { background: var(--red-light); border: 1px solid #fecaca; color: #b91c1c; }
+.ct-status.is-busy { background: var(--bg-3); border: 1px solid var(--border); color: var(--ink-3); }
+.ct-status a { text-decoration: underline; font-weight: 600; }
+
+.ct-submit { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-top: 4px; padding: 13px 22px; font-family: inherit; font-size: 15px; font-weight: 600; color: #fff; background: var(--accent); border: none; border-radius: 10px; cursor: pointer; transition: background .15s, opacity .15s; }
+.ct-submit:hover { background: var(--accent-hover); }
+.ct-submit:disabled { opacity: .6; cursor: not-allowed; }
+.ct-note { margin-top: 14px; font-size: 12.5px; line-height: 1.6; color: var(--ink-3); }
+
+/* ── Panneau « à côté du formulaire » ────────────────────────────────────── */
+.ct-aside { background: var(--bg-2); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: var(--shadow); }
+.ct-aside h3 { font-family: 'Space Grotesk', sans-serif; font-size: 17px; letter-spacing: -.3px; margin-bottom: 12px; }
+.ct-aside p { font-size: 14px; color: var(--ink-2); margin-bottom: 12px; }
+.ct-contacts { list-style: none; margin: 16px 0 0; display: flex; flex-direction: column; gap: 10px; }
+.ct-contacts li { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--ink-2); }
+.ct-contacts .ms { color: var(--accent); font-size: 18px; flex: none; margin-top: 1px; }
+.ct-contacts b { display: block; color: var(--ink); font-size: 13px; }
+.ct-contacts a { word-break: break-all; }
+.ct-times { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+.ct-chip { font-size: 11.5px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase; color: var(--ink-2); background: var(--bg-3); border: 1px solid var(--border); border-radius: 999px; padding: 5px 11px; }
+
+/* ── Pied de page commun ─────────────────────────────────────────────────── */
+.site-footer { border-top: 1px solid var(--border); margin-top: 56px; padding: 40px 0 32px; background: var(--bg-2); }
+.site-footer .sf-grid { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 28px; }
+.sf-brand a { font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 700; letter-spacing: -.4px; color: var(--ink); }
+.sf-brand a:hover { text-decoration: none; }
+.sf-brand a span { color: var(--accent); }
+.sf-tag { font-size: 13.5px; color: var(--ink-3); margin-top: 10px; }
+.sf-made { font-size: 13px; color: var(--ink-2); margin-top: 8px; }
+.site-footer h4 { font-family: 'Space Grotesk', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--ink-3); margin-bottom: 12px; }
+.sf-links { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.sf-links a { font-size: 14px; color: var(--ink-2); }
+.sf-links a:hover { color: var(--accent); text-decoration: none; }
+.sf-bottom { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; justify-content: space-between; margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--ink-3); }
+.sf-bottom a { color: var(--ink-3); }
+.sf-bottom a:hover { color: var(--accent); }
+.sf-seo { margin-top: 14px; font-size: 12px; line-height: 1.7; color: var(--ink-4); }
+
+/* ── Adaptation mobile ───────────────────────────────────────────────────── */
+@media (max-width: 860px) {
+    .creator { grid-template-columns: 1fr; padding: 24px; gap: 22px; }
+    .creator-photo { position: static; max-width: 260px; }
+    .ct-grid { grid-template-columns: 1fr; }
+    .site-footer .sf-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 560px) {
+    .ct-row { grid-template-columns: 1fr; }
+    .site-footer .sf-grid { grid-template-columns: 1fr; }
+    .ct-nav a { padding: 7px 9px; font-size: 13px; }
+}

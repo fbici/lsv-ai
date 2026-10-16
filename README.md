@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.13.0
+# LSV.ai — Studio Viral v3.14.0
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -23,6 +23,8 @@ Extensions en place autour de l'application (non refaite) :
 - **Comptes utilisateurs** — inscription/connexion dans l'app (Supabase Auth) ;
 - **Analytics** anonymes et non bloquants ;
 - **Back-office admin** (`/admin`) avec authentification réelle **et liste blanche** ;
+- **Contact** (`/contact/` + formulaire du créateur sur `/a-propos/`) via la
+  Edge Function `lsv-contact` (§2.14) ;
 - **Architecture GitHub-ready** (front statique + service serverless).
 
 ```text
@@ -34,6 +36,9 @@ LSV.ai
 │
 ├── LSV API Gateway     → supabase/functions/lsv-gateway
 │   Clé fournisseur côté serveur · rate limit · quotas · erreurs sanitizées
+│
+├── Contact             → supabase/functions/lsv-contact
+│   /contact/ (marque) + /a-propos/ (créateur) · 2 canaux · e-mails Brevo/Resend
 │
 ├── Analytics           → analytics/analytics.js
 │
@@ -81,7 +86,8 @@ lsv-ai/
 │   ├── sidebar.css            #   navigation latérale + responsive
 │   ├── studio.css             #   dashboard de création (chat, cards, fields…)
 │   ├── account.css            #   modale de connexion / inscription
-│   ├── welcome.css            #   page d'accueil des visiteurs
+│   ├── welcome.css            #   page d'accueil des visiteurs + footer
+│   ├── contact.css            #   pages Contact / À propos (créateur, formulaires, footer)
 │   └── views.css              #   projets, bibliothèque, historique, mobile-nav
 │
 ├── scripts/                   # Application JS (scripts classiques, dans l'ordre)
@@ -102,15 +108,25 @@ lsv-ai/
 │   └── analytics.js           # Module Analytics indépendant et tolérant aux pannes
 │
 ├── shared/
-│   └── config.js              # URL Supabase + clé anon + URL LSV Gateway
+│   ├── config.js              # URL Supabase + clé anon + URL LSV Gateway
+│   └── contact.js             # envoi des formulaires → Edge Function lsv-contact
 │
 ├── admin/
 │   ├── index.html             # Back-office (connexion + dashboard)
 │   ├── admin.css              # Design admin (identité LSV.ai)
 │   └── admin.js               # Auth, chargement, agrégats, graphiques
 │
+├── studio/                   # LSV Studio — montage vidéo 100 % local (§12)
+│   ├── index.html            #   UI de l'éditeur
+│   ├── main.js               #   bootstrap
+│   ├── studio.css            #   design de l'éditeur
+│   ├── core/ render/ storage/ ui/   # modules (16 fichiers)
+│
 ├── a-propos/                 # Page « À propos » (URL propre : /a-propos/)
-│   └── index.html            #   LeStudioViral · Salaou Souleyman · boutiques
+│   └── index.html            #   LeStudioViral · Salaou Souleyman · section
+│                             #   créateur · formulaire personnel · boutiques
+├── contact/                  # Page Contact de la marque (URL propre : /contact/)
+│   └── index.html            #   Formulaire → canal « site », footer 4 colonnes
 ├── assets/showcase/          # 1.jpg…6.jpg + V1.mp4 + V2.mp4 (créations réelles) + replis SVG
 ├── lsv.jpg                   # Logo officiel de la marque
 ├── robots.txt               # SEO : robots autorisés, /admin/ interdit, sitemap
@@ -123,17 +139,24 @@ lsv-ai/
 │   ├── upgrade-activity-logs.sql    # Migration : user_id + admin_logs
 │   ├── upgrade-quotas.sql     # Migration : quotas journaliers + usage_counters
 │   ├── upgrade-multi-key.sql  # Migration : clés du fournisseur par outil
+│   ├── upgrade-contact.sql    # Migration : contact_messages + RPC submit_contact
 │   ├── email-confirm-signup.html    # Modèle d'e-mail « confirme ton compte »
 │   ├── email-reset-password.html    # Modèle d'e-mail « mot de passe oublié »
-│   └── functions/lsv-gateway/
-│       ├── index.ts           # Point d'entrée Edge Function (Deno)
-│       └── core.mjs           # Cœur de la passerelle (testable sous Node)
+│   ├── functions/lsv-gateway/
+│   │   ├── index.ts           # Point d'entrée Edge Function (Deno)
+│   │   └── core.mjs           # Cœur de la passerelle (testable sous Node)
+│   └── functions/lsv-contact/
+│       ├── index.ts           # Point d'entrée (env + dépendances injectables)
+│       ├── core.mjs           # Validation, anti-spam, routage des 2 canaux
+│       └── templates.mjs      # Modèles d'e-mail (notification + accusé)
 │
 ├── tests/
 │   ├── nonreg.test.js         # Non-régression LSV.ai + unités Analytics
 │   ├── public.test.js         # Interface publique + sécurité (§25-§26)
 │   ├── gateway.test.mjs       # Passerelle : routage, quotas, sanitisation
-│   └── admin.test.js          # Scénarios d'accès admin
+│   ├── admin.test.js          # Scénarios d'accès admin
+│   ├── studio.test.js         # LSV Studio (montage vidéo local)
+│   └── contact.test.mjs       # Formulaires + Edge Function lsv-contact
 │
 ├── package.json               # Scripts de test (devDependency : jsdom)
 ├── .env.example               # Modèle de variables (aucun secret réel)
@@ -143,7 +166,9 @@ lsv-ai/
 
 ---
 
-## 2. Changements de cette version : Gateway + comptes + clé en back-office
+## 2. Changements de version
+
+Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -519,6 +544,108 @@ donc plus de `<select>` de ratio, et la table `RATIOS` (`scripts/constants.js`)
 décrit chaque format. Accessible : `role="radiogroup"` + `aria-checked`.
 Vérifié par `tests/public.test.js` §13 (11 assertions).
 
+### 2.14 Espace créateur, page Contact & formulaires (nouveau) — v3.14.0
+
+Deux pages de contact distinctes, un auteur identifiable, et une passerelle
+d'envoi qui ne laisse aucun message se perdre.
+
+| | `/a-propos/` | `/contact/` |
+|---|---|---|
+| Canal | `founder` | `site` |
+| Destinataire | Salaou Souleyman | LeStudioViral |
+| Formulaire | dans la section « Créateur » | objet de la page |
+
+**Espace créateur** (`#createur` dans `a-propos/index.html`) : portrait
+(`assets/showcase/pdg.png`), le texte officiel « Un créateur. Plusieurs
+disciplines. Un univers. », les deux paragraphes de présentation et la ligne de
+disciplines `SOFTWARE · AI · 3D · CONTENT · DIGITAL PRODUCTS`. L'ancienne carte
+`.founder` (texte + avatar) est remplacée par cette section, dont le style vit
+dans `styles/contact.css` (`.creator`, `.creator-photo`, `.disciplines`).
+
+**Formulaire personnel du créateur** : champ honeypot `website` invisible,
+4 champs (`nom`, `e-mail`, `objet`, `message`), et `data-contact="founder"` qui
+choisit le destinataire **côté serveur** — le client n'envoie jamais d'adresse
+de destination, donc personne ne peut faire écrire au formulaire.
+
+**Page `/contact/`** : même structure, plus un `aside` avec les deux adresses
+officielles, un JSON-LD `ContactPage`, et un footer à 4 colonnes partagé avec
+`/a-propos/` (`.site-footer`, `styles/contact.css`). `/sitemap.xml` et `llms.txt`
+listent la nouvelle page ; la sidebar de l'app gagne le lien « Contact ».
+
+**Footer de l'accueil** : le `.w-foot` en `<div>` devient un vrai
+`<footer class="w-foot">` à 4 colonnes (marque + 2 `<nav>` + contact), avec
+`.w-foot-bottom` (mentions) et `.w-foot-seo` (phrases pour l'indexation).
+Le mot « clé API » disparaît du pied de page public.
+
+**Edge Function `lsv-contact`** — `supabase/functions/lsv-contact/` :
+
+- `core.mjs` (testable sous Node) : validation (bornes 2/120, 5/200, 3/160,
+  10/4000), honeypot, anti-bot temporel (< 3 s = robot), rate limit mémoire
+  (3/min, 20/j par IP) **puis** rate limit persistant en SQL ;
+- `templates.mjs` : notification (HTML + texte) et accusé de réception, thème
+  `#0d9488`, tout le contenu utilisateur échappé ;
+- `index.ts` : simple câblage d'env, logique testable séparément.
+
+Ordre de traitement, qui est le point important :
+
+```text
+validation → honeypot/anti-bot → rate limit mémoire
+    → INSERT en base (rate limit SQL)     ← PORTE D'ENTRÉE : rien ne passe avant
+    → notification au destinataire du canal
+    → mise à jour du statut (sent / stored / unconfigured)
+    → accusé de réception à l'expéditeur
+```
+
+Aucun e-mail ne part avant que la base ait accepté le message : un bot ne peut
+donc pas faire consommer des envois puis se voir refuser. Si le fournisseur
+d'e-mail n'est pas configuré, la réponse reste `200 {ok:true, reason:'stored'}` —
+le message est journalisé, rien n'est perdu et rien n'est simulé. Ni base ni
+e-mail → `502`, jamais de faux acquittement.
+
+**Canaux** : `founder` → `salaousouleyman@gmail.com`, `site` →
+`lestudioviral@gmail.com`. Fournisseurs **`brevo`** ou **`resend`** (HTTP API,
+sans dépendance) ; `EMAIL_FROM` au format `Nom <adresse@domaine>`.
+
+**Déploiement** (une fois) :
+
+```bash
+# 1) migration (table contact_messages + RPC submit_contact)
+#    Dashboard Supabase → SQL Editor → coller supabase/upgrade-contact.sql
+
+# 2) déployer la fonction
+npx supabase functions deploy lsv-contact
+
+# 3) secrets du fournisseur d'e-mail
+npx supabase secrets set \
+  EMAIL_PROVIDER=brevo \
+  EMAIL_API_KEY=... \
+  EMAIL_FROM="LeStudioViral <no-reply@ton-domaine>"
+
+# optionnel
+npx supabase secrets set CONTACT_AUTO_REPLY=1 CONTACT_RATE_PER_MIN=3 CONTACT_RATE_PER_DAY=20
+```
+
+La RPC `submit_contact` est `SECURITY DEFINER` mais **retirée de `anon` et
+`authenticated`** : la fonction n'y accède qu'avec la clé de service, comme le
+vérifie `tests/contact.test.mjs` §8.
+
+Vérifié par `tests/contact.test.mjs` (144 assertions) : validation, canaux,
+CORS, honeypot, double rate limit, pannes et replis, modèles d'e-mail,
+migration SQL, **et le rendu réel des deux pages sous jsdom** (chargement sans
+erreur, auto-initialisation, parcours de soumission, footer, portrait).
+
+**Checklist manuelle** (l'envoi réel d'e-mail n'est pas automatisable) :
+
+1. `/contact/` → soumettre un message → « Message bien reçu. Je te réponds
+   sous 48 h. » → `lestudioviral@gmail.com` reçoit la notification **et**
+   l'expéditeur son accusé de réception.
+2. `/a-propos/` → même parcours, mais la notification arrive sur
+   `salaousouleyman@gmail.com`.
+3. Soumettre 4 fois en 2 minutes → la 4ᵉ affiche « Trop de messages en peu de
+   temps ». Vérifier aussi `contact_messages` dans Supabase : le 4ᵉ n'y est pas.
+4. Vide `EMAIL_API_KEY` puis resoumettre → le visiteur est acquitté, la ligne
+   apparaît avec `status = 'unconfigured'`. Rien n'est perdu.
+
 ---
 
 ## 3. Installation locale
@@ -527,7 +654,7 @@ Vérifié par `tests/public.test.js` §13 (11 assertions).
 git clone <url-du-repo> lsv-ai
 cd lsv-ai
 npm install        # uniquement pour les tests (jsdom)
-npm test           # 4 suites : non-régression, interface, gateway, admin
+npm test           # 6 suites : non-régression, interface, gateway, admin, studio, contact
 ```
 
 Ouvrir simplement `index.html` (double-clic) : l'application s'affiche et
@@ -887,7 +1014,7 @@ try { LSVAnalytics.track('image_generated', {...}); } catch (e) { /* inert */ }
 ```bash
 git init
 git add .
-git commit -m "LSV.ai v3.1 : Analytics + back-office admin sécurisé"
+git commit -m "v3.14.0 : espace créateur, page Contact, Edge Function lsv-contact"
 git branch -M main
 git remote add origin https://github.com/<vous>/lsv-ai.git
 git push -u origin main
@@ -896,8 +1023,11 @@ git push -u origin main
 Vérifier avant commit :
 
 ```bash
-git status                 # aucun .env, aucun node_modules
-git grep -i "service_role" # ne doit rien trouver
+git status                    # aucun .env, aucun node_modules
+npm test                      # 817 assertions, 6 suites
+git grep -n "service_role" -- scripts shared analytics admin studio *.html
+                              # ne doit rien trouver : `service_role` n'existe
+                              # que dans supabase/ et tests/ (SQL + Edge Functions)
 ```
 
 ### 7.2 Activer GitHub Pages
@@ -916,10 +1046,13 @@ git grep -i "service_role" # ne doit rien trouver
 
 1. **Déployer la LSV API Gateway** (§2.4), puis saisir la **clé du
    fournisseur** dans `/admin/` → **Paramètres** (ou injecter `AGNES_API_KEY`).
-2. Remplir `shared/config.js` avec les vraies valeurs, committer, push.
-3. **Exécuter le SQL** (§4.2) puis **ajouter son e-mail dans `admin_emails`**.
-4. Ouvrir `https://<vous>.github.io/lsv-ai/` → générer une image (doit passer
-   par `…/functions/v1/lsv-gateway/v1/images/generations`).
+2. **Déployer `lsv-contact`** (§2.14) : migration SQL + fonction + secrets du
+   fournisseur d'e-mail.
+3. Remplir `shared/config.js` avec les vraies valeurs, committer, push.
+4. **Exécuter le SQL** (§4.2) puis **ajouter son e-mail dans `admin_emails`**.
+5. Ouvrir `https://<vous>.github.io/lsv-ai/` → générer une image (doit passer
+   par `…/functions/v1/lsv-gateway/v1/images/generations`) et soumettre un
+   message depuis `/contact/` (§2.14).
 5. Ouvrir `https://<vous>.github.io/lsv-ai/admin/` → se connecter, vérifier
    que le dashboard se remplit (sinon : « Compte non autorisé » → §4.2).
 
@@ -938,6 +1071,8 @@ un sous-dossier GitHub Pages (`/lsv-ai/`).
 | `.env` | éventuel, hors dépôt | ❌ non (`.gitignore`) |
 | `AGNES_API_KEY` | **secret serveur de secours** de la Gateway (Supabase Secrets) | ❌ non |
 | Clés du fournisseur | saisies dans `/admin` → Paramètres → table `app_settings` (RLS liste blanche) : une dédiée par outil + une clé partagée | ❌ non |
+| `EMAIL_PROVIDER` / `EMAIL_API_KEY` / `EMAIL_FROM` | fournisseur d'e-mail de `lsv-contact` (Brevo ou Resend) — la clé ne quitte jamais le serveur | ❌ non |
+| `CONTACT_AUTO_REPLY` / `CONTACT_RATE_PER_*` | réglages optionnels de `lsv-contact` | ❌ non |
 | `service_role` key | **jamais** utilisée par le front | ❌ non |
 | Mot de passe base | uniquement dans Supabase | ❌ non |
 | Mot de passe admin | uniquement dans Supabase Auth (haché) | ❌ non |
@@ -954,10 +1089,10 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 353 assertions (406 avec ORIG=… voir plus bas)
+npm test        # 817 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
-**`tests/nonreg.test.js`** (41 assertions, **53 avec `ORIG`**) — non-régression
+**`tests/nonreg.test.js`** (43 assertions, **55 avec `ORIG`**) — non-régression
 
 - structure HTML et `body.innerHTML` identiques à l'original, hors blocs
   volontairement supprimés (clé API, console, infos fournisseur) **et hors
@@ -970,7 +1105,7 @@ npm test        # 353 assertions (406 avec ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (191 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (202 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -1023,7 +1158,7 @@ npm test        # 353 assertions (406 avec ORIG=… voir plus bas)
   `public.test.js` verrouille la structure (pas de `<style>` ni de gros script
   inline, 14 modules présents et ordonnés).
 
-**`tests/gateway.test.mjs`** (49 assertions) — passerelle
+**`tests/gateway.test.mjs`** (123 assertions) — passerelle
 
 - routage (y compris préfixe `/functions/v1/lsv-gateway`), injection de la clé
   serveur, rejet de l'authorization client ;
@@ -1037,7 +1172,7 @@ npm test        # 353 assertions (406 avec ORIG=… voir plus bas)
   → 503 ; clé de service lue dans `SUPABASE_SERVICE_ROLE_KEY` ou
   `SUPABASE_SECRET_KEYS`.
 
-**`tests/admin.test.js`** (103 assertions)
+**`tests/admin.test.js`** (150 assertions)
 
 - configuration absente / non authentifié → dashboard inaccessible ;
 - mauvais identifiants → accès refusé ;
@@ -1063,6 +1198,33 @@ npm test        # 353 assertions (406 avec ORIG=… voir plus bas)
   synchronisation des icônes, mémorisation `localStorage`, aucun flash au
   démarrage ;
 - aucun mot de passe codé en dur, aucune `service_role`.
+
+**`tests/studio.test.js`** (155 assertions) — LSV Studio (`/studio/`, §12)
+
+- ouverture, rendu des panneaux, import de média, timeline ;
+- ratios visuels (`RATIOS`, grille rendue par `UI.renderRatioGrid`) ;
+- import depuis la bibliothèque LSV.ai (`studio/core/library-import.js`) :
+  dédup `media.sourceUrl`, signalement CORS, IndexedDB ;
+- aucune clé, aucun `sk-`, aucune `service_role` dans le bundle Studio.
+
+**`tests/contact.test.mjs`** (144 assertions) — formulaires + `lsv-contact`
+
+- validation (bornes, e-mail, CRLF, canal inconnu, troncatures) ;
+- canaux `founder` / `site` et leur destinataire respectif ;
+- CORS (origine autorisée vs refusée), OPTIONS, 405, corps trop volumineux ;
+- honeypot + anti-bot temporel (réponse identique à un succès) ;
+- double rate limit : mémoire (3/min, 20/j) et SQL (`submit_contact`) ;
+- ordre garanti : **base d'abord**, puis notification, puis diagnostic, puis
+  accusé — un bot ne peut pas faire consommer des envois puis être refusé ;
+- pannes : fournisseur absent → `stored`, fournisseur en panne → message en
+  base, ni base ni e-mail → `502`, rate limit SQL → 429 sans aucun e-mail ;
+- modèles d'e-mail : HTML complet, contenu utilisateur échappé, mailto codé,
+  aucun jeton, thème de la marque ;
+- migration `upgrade-contact.sql` : RLS, `revoke` de `anon`/`authenticated`,
+  bornes de longueur, canal contraint ;
+- **rendu réel sous jsdom** : `contact/` et `a-propos/` chargent sans erreur JS,
+  auto-initialisent le formulaire, soumettent et réinitialisent, footer rendu,
+  portrait `pdg.png` à la bonne source.
 
 ---
 

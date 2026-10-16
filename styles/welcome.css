@@ -106,7 +106,32 @@
 .w-final h2 { font-family: var(--font-display); font-size: clamp(1.5rem, 3.6vw, 2.3rem); color: #fff; letter-spacing: -0.03em; margin-bottom: 0.6rem; }
 .w-final p { color: #a1a1aa; max-width: 52ch; margin: 0 auto 1.4rem; font-size: 0.95rem; }
 
-.w-foot { display: flex; flex-wrap: wrap; gap: 0.6rem 1.2rem; align-items: center; justify-content: space-between; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 1.4rem; font-size: 0.76rem; color: #71717a; }
+.w-foot { display: flex; flex-direction: column; gap: 1.6rem; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 2.4rem; font-size: 0.82rem; color: #a1a1aa; }
 .w-foot a { color: #5eead4; text-decoration: none; }
 .w-foot a:hover { text-decoration: underline; }
+
+/* Grille : marque + 3 colonnes de liens (plan du site classique) */
+.w-foot-grid { display: grid; grid-template-columns: 1.7fr 1fr 1fr 1.15fr; gap: 1.6rem; }
+.w-foot-brand p { margin-top: 0.7rem; line-height: 1.65; color: #8b8b93; }
+.w-foot-brand .w-foot-made { color: #a1a1aa; }
+.w-foot-brand .w-foot-made strong { color: #e4e4e7; }
+.w-foot-logo { display: inline-block; font-family: var(--font-display); font-weight: 700; font-size: 1.3rem; letter-spacing: -0.03em; color: #fff; }
+.w-foot-logo:hover { text-decoration: none; color: #fff; }
+.w-foot-logo i { font-style: normal; color: #2dd4bf; }
+.w-foot-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 1rem; }
+.w-badge { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: #2dd4bf; background: rgba(45, 212, 191, 0.1); border: 1px solid rgba(45, 212, 191, 0.24); border-radius: 999px; padding: 0.3rem 0.6rem; }
+
+.w-foot-col h2 { font-family: var(--font-display); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #71717a; margin-bottom: 0.85rem; }
+.w-foot-links { list-style: none; display: flex; flex-direction: column; gap: 0.55rem; }
+.w-foot-links a { color: #a1a1aa; font-size: 0.82rem; }
+.w-foot-links a:hover { color: #5eead4; }
+
+.w-foot-bottom { display: flex; flex-wrap: wrap; gap: 0.6rem 1.4rem; align-items: center; justify-content: space-between; padding-top: 1.4rem; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 0.76rem; color: #71717a; }
+.w-foot-bottom strong { color: #d4d4d8; }
+.w-foot-legal { display: flex; flex-wrap: wrap; gap: 0.9rem; }
+.w-foot-seo { font-size: 0.73rem; line-height: 1.75; color: #52525b; }
+.w-foot-seo strong { color: #71717a; font-weight: 600; }
+
+@media (max-width: 900px) { .w-foot-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 520px) { .w-foot-grid { grid-template-columns: 1fr; } }
 
