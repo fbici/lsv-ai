@@ -426,7 +426,7 @@ console.log('\n=== 10. RENDU RÉEL (jsdom) ===');
         return { dom, errors };
     }
 
-    async function exercise(rel, canal) {
+    async function exercise(rel, canal, extra) {
         const { dom, errors } = await renderPage(rel);
         const w = dom.window;
         const doc = w.document;
@@ -460,6 +460,8 @@ console.log('\n=== 10. RENDU RÉEL (jsdom) ===');
                 before !== '' && form.querySelector('[name=name]').value === '');
         }
 
+        if (extra) await extra({ doc: doc, w: w });
+
         const snap = {
             text: doc.body.textContent,
             inner: doc.body.innerHTML,
@@ -471,7 +473,50 @@ console.log('\n=== 10. RENDU RÉEL (jsdom) ===');
     }
 
     const wContact = await exercise('contact/index.html', 'site');
-    const wAbout = await exercise('a-propos/index.html', 'founder');
+
+    /* ── Visionneuse du portrait (à propos) ──────────────────────────────
+       jsdom n'implémente pas <dialog> : on vérifie le repli `open` et
+       l'absence d'erreur, pas l'effet modal lui-même. */
+    const wAbout = await exercise('a-propos/index.html', 'founder', async ({ doc, w }) => {
+        const zoom = doc.getElementById('photo-zoom');
+        const dlg = doc.getElementById('photo-lightbox');
+        const closeBtn = doc.getElementById('photo-lightbox-close');
+
+        check('à propos : vignette cliquable = un vrai <button>',
+            !!zoom && zoom.tagName === 'BUTTON' && zoom.getAttribute('type') === 'button');
+        check('à propos : vignette annoncée comme ouvrant une boîte de dialogue',
+            !!zoom && zoom.getAttribute('aria-haspopup') === 'dialog' &&
+            zoom.getAttribute('aria-controls') === 'photo-lightbox');
+        check('à propos : visionneuse <dialog> aria-modal présente',
+            !!dlg && dlg.tagName === 'DIALOG' && !!dlg.getAttribute('aria-label'));
+        check('à propos : visionneuse affiche la même source que la vignette',
+            !!dlg && !!dlg.querySelector('img') &&
+            dlg.querySelector('img').getAttribute('src') === '../assets/showcase/pdg.png');
+        check('à propos : visionneuse sans alt vide',
+            !!dlg && (dlg.querySelector('img').getAttribute('alt') || '').length > 10);
+
+        /* Ouverture. */
+        zoom.click();
+        const opened = dlg.hasAttribute('open');
+        check('à propos : clic sur la vignette ouvre la visionneuse', opened === true);
+
+        /* Fermeture par le bouton, puis retour du focus sur la vignette. */
+        if (closeBtn) closeBtn.click();
+        check('à propos : bouton « Fermer » ferme la visionneuse', dlg.hasAttribute('open') === false);
+        check('à propos : le focus revient sur la vignette après fermeture',
+            doc.activeElement === zoom, doc.activeElement && doc.activeElement.id);
+
+        /* Fermeture par le clic sur le fond. */
+        zoom.click();
+        dlg.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+        check('à propos : clic sur le fond ferme la visionneuse', dlg.hasAttribute('open') === false);
+
+        /* Le clic sur l'image elle-même ne doit PAS fermer. */
+        zoom.click();
+        dlg.querySelector('img').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+        check('à propos : clic sur l\'image (pas le fond) laisse ouvert', dlg.hasAttribute('open') === true);
+        closeBtn.click();
+    });
 
     /* L'adresse du destinataire du bon canal doit être affichée. */
     check('contact : adresse de la marque affichée', /lestudioviral@gmail\.com/.test(wContact.text));

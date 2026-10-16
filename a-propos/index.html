@@ -183,9 +183,14 @@ footer a:hover { text-decoration: underline; }
     <section aria-labelledby="createur" id="createur" style="scroll-margin-top:80px">
         <div class="creator">
             <figure class="creator-photo">
-                <!-- PDG : portrait officiel du fondateur (assets/showcase/pdg.png) -->
-                <img src="../assets/showcase/pdg.png" width="480" height="600" loading="lazy" decoding="async"
-                     alt="Salaou Souleyman, fondateur de LeStudioViral">
+                <!-- PDG : portrait officiel du fondateur (assets/showcase/pdg.png)
+                     Cliqué → visionneuse plein écran (#photo-lightbox). -->
+                <button type="button" class="photo-zoom" id="photo-zoom"
+                        aria-haspopup="dialog" aria-controls="photo-lightbox"
+                        aria-label="Agrandir le portrait de Salaou Souleyman">
+                    <img src="../assets/showcase/pdg.png" width="480" height="600" loading="lazy" decoding="async"
+                         alt="Salaou Souleyman, fondateur de LeStudioViral">
+                </button>
                 <figcaption>Salaou Souleyman — fondateur</figcaption>
             </figure>
             <div>
@@ -424,11 +429,57 @@ footer a:hover { text-decoration: underline; }
     </div>
 </footer>
 
+<!-- ═══════════ VISIONNEUSE DU PORTRAIT ═══════════
+     Ouvrir : clic ou Entrée sur la vignette (voir #photo-zoom).
+     Fermer : bouton « Fermer », clic en dehors de l'image, ou Échap —
+     ces deux derniers sont assurés par <dialog> lui-même. -->
+<dialog class="lightbox" id="photo-lightbox" aria-label="Portrait de Salaou Souleyman">
+    <button type="button" class="lb-close" id="photo-lightbox-close" aria-label="Fermer la visionneuse">
+        <span class="ms">close</span>
+    </button>
+    <img class="lb-img" src="../assets/showcase/pdg.png"
+         alt="Salaou Souleyman, portrait en taille réelle">
+    <p class="lb-cap">Salaou Souleyman — fondateur de LeStudioViral</p>
+</dialog>
+
 <script src="../shared/config.js"></script>
 <script src="../analytics/analytics.js"></script>
 <script src="../shared/contact.js"></script>
 <script>
 document.getElementById('year').textContent = new Date().getFullYear();
+
+/* Visionneuse du portrait. <dialog> donne gratuitement le piège de focus,
+   la fermeture par Échap et l'inertie de l'arrière-plan ; on n'implémente
+   que l'ouverture et le clic sur le fond. */
+(function () {
+    var dlg = document.getElementById('photo-lightbox');
+    var zoom = document.getElementById('photo-zoom');
+    var close = document.getElementById('photo-lightbox-close');
+    if (!dlg || !zoom) return;
+
+    function open() {
+        try {
+            if (typeof dlg.showModal === 'function') dlg.showModal();
+            else dlg.setAttribute('open', '');
+        } catch (e) { dlg.setAttribute('open', ''); }
+    }
+    function shut() {
+        try {
+            if (typeof dlg.close === 'function') dlg.close();
+            else dlg.removeAttribute('open');
+        } catch (e) { dlg.removeAttribute('open'); }
+        zoom.focus();
+    }
+
+    zoom.addEventListener('click', open);
+    /* Clic sur le fond (la boîte elle-même) → fermeture ; le clic sur
+       l'image ou le bouton ne remonte pas jusqu'ici. */
+    dlg.addEventListener('click', function (e) { if (e.target === dlg) shut(); });
+    if (close) close.addEventListener('click', shut);
+    /* Échap : le navigateur ferme <dialog> lui-même et déclenche `close`,
+       sans passer par shut(). D'où ce rappel supplémentaire. */
+    dlg.addEventListener('close', function () { zoom.focus(); });
+})();
 </script>
 
 </body>

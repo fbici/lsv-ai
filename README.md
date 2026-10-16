@@ -562,6 +562,16 @@ disciplines `SOFTWARE · AI · 3D · CONTENT · DIGITAL PRODUCTS`. L'ancienne ca
 `.founder` (texte + avatar) est remplacée par cette section, dont le style vit
 dans `styles/contact.css` (`.creator`, `.creator-photo`, `.disciplines`).
 
+**Visionneuse du portrait** : la vignette est un vrai `<button class="photo-zoom">`
+(atteignable au clavier, `aria-haspopup="dialog"`) et ouvre un
+`<dialog class="lightbox">` plein écran. La source fait **1672×941** et la
+vignette l'affiche recadrée en 4:5 (`object-fit: cover`) ; la visionneuse
+montre donc le cliché **complet**, sans recadrage. Fermeture par le bouton,
+le clic sur le fond, ou `Échap` — ces deux derniers sont assurés par
+`<dialog>` lui-même ; le focus revient ensuite sur la vignette. Le repli
+`setAttribute('open')` couvre les moteurs sans `showModal` (et jsdom, utilisé
+par les tests).
+
 **Formulaire personnel du créateur** : champ honeypot `website` invisible,
 4 champs (`nom`, `e-mail`, `objet`, `message`), et `data-contact="founder"` qui
 choisit le destinataire **côté serveur** — le client n'envoie jamais d'adresse
@@ -629,7 +639,7 @@ La RPC `submit_contact` est `SECURITY DEFINER` mais **retirée de `anon` et
 `authenticated`** : la fonction n'y accède qu'avec la clé de service, comme le
 vérifie `tests/contact.test.mjs` §8.
 
-Vérifié par `tests/contact.test.mjs` (144 assertions) : validation, canaux,
+Vérifié par `tests/contact.test.mjs` (154 assertions) : validation, canaux,
 CORS, honeypot, double rate limit, pannes et replis, modèles d'e-mail,
 migration SQL, **et le rendu réel des deux pages sous jsdom** (chargement sans
 erreur, auto-initialisation, parcours de soumission, footer, portrait).
@@ -1024,7 +1034,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 817 assertions, 6 suites
+npm test                      # 827 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -1089,7 +1099,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 817 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 827 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (43 assertions, **55 avec `ORIG`**) — non-régression
@@ -1207,7 +1217,7 @@ npm test        # 817 assertions (6 suites, hors ORIG=… voir plus bas)
   dédup `media.sourceUrl`, signalement CORS, IndexedDB ;
 - aucune clé, aucun `sk-`, aucune `service_role` dans le bundle Studio.
 
-**`tests/contact.test.mjs`** (144 assertions) — formulaires + `lsv-contact`
+**`tests/contact.test.mjs`** (154 assertions) — formulaires + `lsv-contact`
 
 - validation (bornes, e-mail, CRLF, canal inconnu, troncatures) ;
 - canaux `founder` / `site` et leur destinataire respectif ;
@@ -1224,7 +1234,10 @@ npm test        # 817 assertions (6 suites, hors ORIG=… voir plus bas)
   bornes de longueur, canal contraint ;
 - **rendu réel sous jsdom** : `contact/` et `a-propos/` chargent sans erreur JS,
   auto-initialisent le formulaire, soumettent et réinitialisent, footer rendu,
-  portrait `pdg.png` à la bonne source.
+  portrait `pdg.png` à la bonne source ;
+- **visionneuse du portrait** : vignette en `<button>` avec `aria-haspopup`,
+  ouverture au clic, fermeture par le bouton et par le clic sur le fond,
+  focus restitué à la vignette, clic sur l'image (hors fond) sans fermeture.
 
 ---
 
