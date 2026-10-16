@@ -7,6 +7,11 @@
    Usage : node tests/gateway.test.mjs
    ═══════════════════════════════════════════════════════════════════════════ */
 import { createHandler, createMemoryStore, classifyRequest, subPath, imageUnits, requestUnits, tokenRole } from '../supabase/functions/lsv-gateway/core.mjs';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const PROJECT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const results = [];
 function check(label, cond, extra) {
@@ -590,6 +595,35 @@ async function run() {
     check('aucune clé d\'outil → clé partagée utilisée', kh5.seen[0].auth === 'Bearer ' + KEYS.shared, kh5.seen[0].auth);
     check('jamais la clé du client ni sk- dans l\'en-tête amont',
         kh5.seen[0].auth.indexOf('sk-') === -1, kh5.seen[0].auth);
+
+    console.log('\n=== 22. CONCURRENCE MULTI-UTILISATEURS (schéma SQL) ===');
+    /* Plusieurs utilisateurs peuvent monter en parallèle : les quotas doivent
+       rester justes. La garantie vient de `consume_quota`, une fonction
+       SECURITY DEFINER qui verrouille la ligne du compteur (`FOR UPDATE`)
+       avant de vérifier puis d'incrémenter — deux appels simultanés sont
+       sérialisés par Postgres, la limite ne peut donc pas être dépassée. */
+    const schema = readFileSync(join(PROJECT, 'supabase', 'schema.sql'), 'utf8');
+    const fnBody = schema.slice(schema.indexOf('function public.consume_quota'));
+    check('consume_quota est une fonction plpgsql', /language plpgsql security definer/.test(fnBody.slice(0, 300)));
+    check('verrouillage de la ligne du compteur (FOR UPDATE)',
+        /for update/.test(fnBody), (fnBody.match(/for update/g) || []).length + ' verrou(x)');
+    check('incrément atomique (UPDATE ... SET units = units + n)',
+        /update public\.usage_counters set units = units \+ v_units/.test(fnBody));
+    check('repli atomique si la ligne n\'existe pas encore (ON CONFLICT DO UPDATE)',
+        /on conflict \(user_id, day, kind\)\s*\n?\s*do update set units = public\.usage_counters\.units \+ excluded\.units/.test(fnBody));
+    check('compteur global verrouillé séparément (plafond partagé)',
+        /user_id = v_zero and day = v_day and kind = 'global' for update/.test(fnBody));
+    /* Invoquable uniquement par la Gateway (service_role) : un client ne peut
+       pas consommer/consommer deux fois en contournant la Gateway. */
+    check('consume_quota retiré à anon + authenticated',
+        /revoke execute on function public\.consume_quota\([^)]*\) from public, anon, authenticated;/.test(schema));
+    check('consume_quota accordé uniquement à service_role',
+        /grant\s+execute on function public\.consume_quota\([^)]*\) to service_role;/.test(schema));
+    check('usage_counters : RLS activé', /alter table public\.usage_counters enable row level security;/.test(schema));
+    check('usage_counters : aucun INSERT/UPDATE/DELETE pour anon',
+        !/grant (insert|update|delete|all)[^;]*on public\.usage_counters to (anon|authenticated)/i.test(schema));
+    check('refund_quota aussi réservé à service_role',
+        /revoke execute on function public\.refund_quota[^;]*from public, anon, authenticated;/.test(schema));
 
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');

@@ -436,6 +436,30 @@ Chaque modification est tracée dans le **journal d'audit** (`admin_logs`).
 Les valeurs sont lues par la passerelle avec un cache de 30 s : un changement
 est effectif en moins d'une minute, sans redéploiement.
 
+#### Concurrence multi-utilisateurs
+
+Rien n'est partagé côté client : `localStorage` est **par navigateur**, donc
+deux utilisateurs ne peuvent pas se marcher dessus. Le seul point partagé est
+la table `usage_counters`, et elle est protégée côté serveur.
+
+`consume_quota` est une fonction `SECURITY DEFINER` qui, **en une seule
+transaction** :
+
+1. verrouille la ligne du compteur avec `SELECT … FOR UPDATE`
+   (Postgres sérialise alors les requêtes simultanées) ;
+2. vérifie la limite (par compte + éventuelle limite globale) ;
+3. incrémente par `UPDATE … SET units = units + n`, avec un repli
+   `ON CONFLICT DO UPDATE` si la ligne n'existe pas encore.
+
+Deux appels simultanés ne peuvent donc pas faire dépasser la limite :
+le second attend le verrou du premier. Le compteur global (plafond partagé)
+est verrouillé séparément, dans le même ordre, pour éviter tout interblocage.
+
+Enfin, la fonction n'est **invoquable que par la Gateway** (`service_role`) :
+`revoke … from public, anon, authenticated`. Un client ne peut ni consommer
+son quota deux fois, ni le consommer sans passer par la Gateway. Vérifié par
+`tests/gateway.test.mjs` §20 (store mémoire) et §22 (schéma SQL).
+
 ---
 
 ### 2.12 Clés du fournisseur par outil (nouveau)
