@@ -192,6 +192,52 @@ body { font-size: 13px; }
 }
 .sv-media-del:hover { color: var(--red); background: var(--red-light); }
 
+/* ── Import direct depuis LSV.ai ───────────────────────────────────────────
+   La bibliothèque du site (localStorage, même origine) est listée ici pour
+   éviter le téléchargement puis le re-téléversement. */
+.sv-lib { margin-bottom: 0.75rem; }
+.sv-lib-head {
+    display: flex; align-items: center; gap: 0.4rem;
+    font-size: 0.72rem; font-weight: 700; color: var(--ink-2);
+    margin-bottom: 0.4rem;
+}
+.sv-lib-head .ms { font-size: 15px; color: var(--accent); }
+.sv-lib-head .sv-btn { margin-left: auto; }
+.sv-lib-list {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; flex-direction: column; gap: 0.35rem;
+    max-height: 210px; overflow-y: auto;
+}
+.sv-lib-item {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.35rem 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-2);
+}
+.sv-lib-item:hover { background: var(--bg-4); }
+.sv-lib-item.imported { opacity: 0.55; }
+.sv-lib-thumb {
+    width: 34px; height: 34px; flex-shrink: 0;
+    border-radius: var(--radius-xs);
+    background: var(--bg-4); color: var(--ink-3);
+    display: flex; align-items: center; justify-content: center;
+}
+.sv-lib-item.imported .sv-lib-thumb { color: var(--accent); }
+.sv-lib-meta { flex: 1; min-width: 0; }
+.sv-lib-name {
+    display: block;
+    font-size: 0.74rem; font-weight: 600; color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sv-lib-sub { display: block; font-size: 0.66rem; color: var(--ink-3); font-family: var(--font-mono); }
+.sv-lib-add {
+    border: none; background: transparent; color: var(--ink-3);
+    cursor: pointer; padding: 0.25rem; border-radius: var(--radius-xs);
+}
+.sv-lib-add:hover { color: var(--accent); background: var(--accent-soft); }
+.sv-lib-item.imported .sv-lib-add { color: var(--accent); cursor: default; }
+
 /* ── Moniteur d'aperçu ──────────────────────────────────────────────────── */
 .sv-preview { display: flex; flex-direction: column; min-height: 0; }
 .sv-monitor {

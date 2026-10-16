@@ -1,8 +1,10 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    LSV Studio — panneau Médias (bibliothèque du projet)
    Se branche sur le markup de studio/index.html (aucune structure générée) :
-   #sv-dropzone, #sv-media-list, #sv-file-input, #sv-import, #sv-import-btn.
-   Gère l'import disque, le drag vers la timeline et le relinking.
+   #sv-dropzone, #sv-media-list, #sv-file-input, #sv-import, #sv-import-btn,
+   #sv-lib, #sv-lib-list, #sv-lib-all.
+   Gère l'import disque, l'import direct depuis LSV.ai, le drag vers la
+   timeline et le relinking.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 (function () {
@@ -44,9 +46,13 @@
             this.els.input = q('sv-file-input');
             this.els.importBtn = q('sv-import-btn');
             this.els.import = q('sv-import');
+            this.els.lib = q('sv-lib');
+            this.els.libList = q('sv-lib-list');
+            this.els.libAll = q('sv-lib-all');
 
             if (this.els.importBtn) this.els.importBtn.addEventListener('click', () => this.els.input.click());
             if (this.els.import) this.els.import.addEventListener('click', () => this.els.input.click());
+            if (this.els.libAll) this.els.libAll.addEventListener('click', () => this.importFromLibrary());
             if (this.els.input) this.els.input.addEventListener('change', () => {
                 if (this.els.input.files.length) this.importFiles(this.els.input.files);
                 this.els.input.value = '';
@@ -87,8 +93,113 @@
             S.App.setSaveState('dirty');
         },
 
+        /* ── Import depuis LSV.ai ───────────────────────────────────────── */
+        /* Lit la bibliothèque locale du site (même origine) et propose chaque
+           création non encore importée. Un clic suffit : pas de
+           téléchargement puis re-téléversement. */
+        async importOneFromLibrary(asset) {
+            const project = S.App.project;
+            if (!project) return;
+            if (S.App.setProgress) S.App.setProgress(0.1, asset.name);
+            const r = await S.LibraryImport.import(project, asset);
+            if (S.App.setProgress) S.App.setProgress(0, '');
+            if (r.ok) {
+                S.App.toast('« ' + asset.name + ' » importé depuis LSV.ai', 'success');
+                S.HistoryManager.run(project, 'import-bibliothèque');
+                this.render();
+                if (S.TimelineView) S.TimelineView.render();
+                if (S.Preview) S.Preview.refresh();
+                S.App.setSaveState('dirty');
+            } else if (r.reason === 'cors') {
+                S.App.toast(
+                    '« ' + asset.name + ' » est hébergé chez le fournisseur : le navigateur refuse de le récupérer. ' +
+                    'Télécharge-le depuis la Bibliothèque, puis dépose-le ici.', 'error');
+            } else if (r.reason === 'déjà présent') {
+                S.App.toast('« ' + asset.name + ' » est déjà dans le projet', 'warn');
+            } else if (r.reason === 'limite') {
+                S.App.toast('Limite de médias du projet atteinte (' + S.ProjectModel.LIMITS.MAX_MEDIA + ')', 'error');
+            } else {
+                S.App.toast('Import impossible — ' + S.LibraryImport.reasonLabel(r.reason), 'error');
+            }
+        },
+
+        async importFromLibrary() {
+            const project = S.App.project;
+            if (!project || !S.LibraryImport) return;
+            const done = this.importedUrls();
+            const pending = S.LibraryImport.list().filter(a => !done.has(a.url));
+            if (!pending.length) {
+                S.App.toast('Aucune création à importer — tout est déjà dans le projet', 'warn');
+                return;
+            }
+            const res = await S.LibraryImport.importMany(project, pending, (p, name) => {
+                if (S.App.setProgress) S.App.setProgress(p, name);
+            });
+            if (S.App.setProgress) S.App.setProgress(0, '');
+            if (res.added.length) {
+                S.HistoryManager.run(project, 'import-bibliothèque');
+                S.App.toast(
+                    res.added.length + ' média' + (res.added.length > 1 ? 's importés' : ' importé') +
+                    ' depuis LSV.ai' + (res.failed.length ? ' — ' + res.failed.length + ' échec(s)' : ''),
+                    res.failed.length ? 'warn' : 'success');
+            } else if (res.failed.length) {
+                const f = res.failed[0];
+                S.App.toast('Import impossible — « ' + f.asset.name + ' » : ' + S.LibraryImport.reasonLabel(f.reason), 'error');
+            }
+            this.render();
+            if (S.TimelineView) S.TimelineView.render();
+            if (S.Preview) S.Preview.refresh();
+            S.App.setSaveState('dirty');
+        },
+
+        importedUrls() {
+            const project = S.App.project;
+            return S.LibraryImport.importedSet(project);
+        },
+
+        renderLibrary() {
+            const lib = this.els.lib, list = this.els.libList, all = this.els.libAll;
+            if (!lib || !S.LibraryImport) return;
+            const assets = S.LibraryImport.list();
+            if (!assets.length) { lib.hidden = true; return; }
+            lib.hidden = false;
+
+            const done = this.importedUrls();
+            list.innerHTML = assets.map(a =>
+                '<li class="sv-lib-item' + (done.has(a.url) ? ' imported' : '') + '" data-url="' + esc(a.url) + '">' +
+                '  <span class="sv-lib-thumb">' + (a.type === 'video'
+                    ? '<span class="ms">movie</span>'
+                    : '<span class="ms">image</span>') + '</span>' +
+                '  <span class="sv-lib-meta">' +
+                '    <span class="sv-lib-name" title="' + esc(a.name) + '">' + esc(a.name) + '</span>' +
+                '    <span class="sv-lib-sub">' + (a.ratio || a.type) +
+                (a.duration ? ' · ' + fmtDuration(a.duration) : '') + '</span>' +
+                '  </span>' +
+                '  <button class="sv-lib-add" type="button" title="' +
+                (done.has(a.url) ? 'Déjà dans le projet' : 'Ajouter au projet') + '">' +
+                '    <span class="ms ms-sm">' + (done.has(a.url) ? 'check' : 'add') + '</span></button>' +
+                '</li>'
+            ).join('');
+
+            list.querySelectorAll('.sv-lib-add').forEach(btn => {
+                btn.addEventListener('click', e => {
+                    e.stopPropagation();
+                    const url = btn.closest('[data-url]').dataset.url;
+                    const asset = assets.find(x => x.url === url);
+                    if (asset) this.importOneFromLibrary(asset);
+                });
+            });
+
+            const pending = assets.filter(a => !done.has(a.url)).length;
+            if (all) {
+                all.hidden = pending === 0;
+                all.textContent = 'Tout importer (' + pending + ')';
+            }
+        },
+
         /* ── Rendu ──────────────────────────────────────────────────────── */
         render() {
+            this.renderLibrary();
             const project = S.App.project;
             const list = this.els.list, dz = this.els.dropzone;
             if (!list) return;

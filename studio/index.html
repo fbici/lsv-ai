@@ -51,6 +51,13 @@
                 <button class="sv-btn icon sm" id="sv-import" title="Importer des fichiers"><span class="ms">add</span></button>
             </div>
             <div class="sv-panel-body">
+                <div class="sv-lib" id="sv-lib" hidden>
+                    <div class="sv-lib-head">
+                        <span class="ms">cloud_done</span> Depuis LSV.ai
+                        <button class="sv-btn sm" id="sv-lib-all" type="button" hidden>Tout importer</button>
+                    </div>
+                    <ul class="sv-lib-list" id="sv-lib-list"></ul>
+                </div>
                 <div class="sv-dropzone" id="sv-dropzone">
                     <span class="ms ms-lg">upload_file</span>
                     <p>Dépose tes images, vidéos ou audio ici</p>
@@ -167,6 +174,7 @@
 <script src="./storage/idb.js"></script>
 <script src="./storage/project-storage.js"></script>
 <script src="./storage/media-storage.js"></script>
+<script src="./core/library-import.js"></script>
 <script src="./render/compositor.js"></script>
 <script src="./render/audio-mixer.js"></script>
 <script src="./render/exporter.js"></script>

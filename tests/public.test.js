@@ -559,6 +559,51 @@ async function load(html, url) {
         source.indexOf('./scripts/chat.js') < source.indexOf('./scripts/views.js') &&
         source.indexOf('./scripts/views.js') < source.indexOf('./scripts/handlers.js'));
 
+    console.log('\n=== 13. SÉLECTEUR DE RATIO VISUEL ===');
+    /* Remplace l'ancien <select> : chaque ratio est un rectangle aux
+       proportions réelles, plus lisible qu'une liste de ratios. */
+    check('conteneurs de ratio présents (image + vidéo)',
+        !!wb.document.getElementById('image-ratio') && !!wb.document.getElementById('video-ratio'));
+    const imgOpts = wb.document.querySelectorAll('#image-ratio [data-ratio]');
+    const vidOpts = wb.document.querySelectorAll('#video-ratio [data-ratio]');
+    check('image : 5 ratios rendus', imgOpts.length === 5, imgOpts.length);
+    check('vidéo : 3 ratios seulement (16:9, 9:16, 1:1)', vidOpts.length === 3,
+        Array.from(vidOpts).map(b => b.dataset.ratio).join(','));
+    check('ratios image = ceux prévus (16:9, 9:16, 1:1, 4:3, 3:4)',
+        Array.from(imgOpts).map(b => b.dataset.ratio).sort().join(',') ===
+        ['16:9', '9:16', '1:1', '4:3', '3:4'].sort().join(','),
+        Array.from(imgOpts).map(b => b.dataset.ratio).join(','));
+    check('chaque option expose un rectangle à la bonne proportion',
+        Array.from(imgOpts).every(b => {
+            const s = b.querySelector('.ratio-shape');
+            if (!s) return false;
+            const ar = (s.getAttribute('style') || '').match(/aspect-ratio:\s*(\d+)\/(\d+)/);
+            if (!ar) return false;
+            const parts = b.dataset.ratio.split(':');
+            return Number(ar[1]) === Number(parts[0]) && Number(ar[2]) === Number(parts[1]);
+        }));
+    check('ratio image par défaut = 9:16 (verticale)',
+        wb.eval('UIState.imageRatio') === '9:16' &&
+        !!wb.document.querySelector('#image-ratio [data-ratio="9:16"].selected'));
+    check('ratio vidéo par défaut = 9:16',
+        wb.eval('UIState.videoRatio') === '9:16' &&
+        !!wb.document.querySelector('#video-ratio [data-ratio="9:16"].selected'));
+    /* Clic = changement de ratio, sans renvoyer vers le serveur. */
+    const before16 = wb.eval('UIState.imageRatio');
+    wb.document.querySelector('#image-ratio [data-ratio="16:9"]').click();
+    check('clic → UIState.imageRatio mis à jour', wb.eval('UIState.imageRatio') === '16:9',
+        before16 + ' → ' + wb.eval('UIState.imageRatio'));
+    check('la sélection visuelle suit le clic',
+        !!wb.document.querySelector('#image-ratio [data-ratio="16:9"].selected') &&
+        !wb.document.querySelector('#image-ratio [data-ratio="9:16"].selected'));
+    check('accessibilité : rôle radiogroup + aria-checked',
+        wb.document.getElementById('image-ratio').getAttribute('role') === 'radiogroup' &&
+        wb.document.querySelector('#image-ratio [data-ratio="16:9"]').getAttribute('aria-checked') === 'true');
+    /* La génération utilise bien le ratio choisi (table IMG_RES, constante globale). */
+    check('conversion ratio → pixels via IMG_RES',
+        wb.eval('IMG_RES["2K"]["16:9"]') === '2624x1472' &&
+        wb.eval('IMG_RES["2K"]["9:16"]') === '1472x2624');
+
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');
     console.log((results.length - failed.length) + '/' + results.length + ' tests interface/sécurité OK');

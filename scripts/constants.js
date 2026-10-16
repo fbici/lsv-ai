@@ -79,6 +79,17 @@ const VID_RES = Object.freeze({
     '2K': { '16:9': '2560x1440', '9:16': '1440x2560', '1:1': '1920x1920' }
 });
 
+/* Ratios proposés à l'utilisateur, avec les proportions réelles (`w`/`h`)
+   pour dessiner un rectangle-aperçu, et l'usage courant pour le libellé.
+   L'ordre est celui de l'interface (le vertical d'abord, cible principale). */
+const RATIOS = Object.freeze([
+    { id: '9:16', w: 9, h: 16, use: 'TikTok · Reels · Shorts' },
+    { id: '16:9', w: 16, h: 9, use: 'YouTube · Paysage' },
+    { id: '1:1', w: 1, h: 1, use: 'Publication carrée' },
+    { id: '4:3', w: 4, h: 3, use: 'Classique paysage' },
+    { id: '3:4', w: 3, h: 4, use: 'Classique portrait' }
+]);
+
 const ENHANCER_STYLE_PROMPTS = {
     cinematic: 'cinematic film look, dramatic lighting, shallow depth of field, anamorphic lens, film grain, professional color grading',
     photoreal: 'photorealistic, ultra-detailed, natural lighting, 8K quality, hyperrealistic textures',

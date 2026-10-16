@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.12.0
+# LSV.ai — Studio Viral v3.13.0
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -476,6 +476,24 @@ un champ par outil, `Enregistrer les 3 clés` (champ vide ignoré) et
 
 > Rien ne casse si seule l'ancienne clé partagée est renseignée : c'est le
 > comportement par défaut, et le repli automatique.
+
+### 2.13 Sélecteur de ratio visuel (nouveau) — v3.13.0
+
+Les deux `<select>` de ratio (image et vidéo) sont remplacés par une grille de
+boutons, chacun représenté par **un rectangle aux proportions réelles** — comme
+sur les plateformes d'IA grand public. Plus rapide à lire qu'une liste
+`16:9 / 9:16 / 1:1`.
+
+| | Image | Vidéo |
+|---|---|---|
+| Ratios | 16:9, **9:16**, 1:1, 4:3, 3:4 | 16:9, **9:16**, 1:1 |
+| Défaut | **9:16** | **9:16** |
+
+Implémentation : `UI.renderRatioGrid()` (`scripts/ui.js`) auto-remplit des
+`<div class="ratio-grid" id="image-ratio">` vides — `index.html` ne contient
+donc plus de `<select>` de ratio, et la table `RATIOS` (`scripts/constants.js`)
+décrit chaque format. Accessible : `role="radiogroup"` + `aria-checked`.
+Vérifié par `tests/public.test.js` §13 (11 assertions).
 
 ---
 
@@ -1079,6 +1097,15 @@ IA. Tout (projets, médias, export) reste sur l'appareil.
   import d'un fichier `.lsvstudio.json` (sans les médias).
 - **Import** de vidéos (MP4, MOV, WEBM), images (PNG, JPG, WEBP) et sons
   (MP3, WAV, M4A) par glisser-déposer ou sélecteur de fichiers.
+- **Import direct depuis LSV.ai** (v3.13.0) : le panneau Médias affiche une
+  section « Depuis LSV.ai » listant les créations déjà générées sur le site
+  (même origine → lecture du `localStorage` du site, aucun compte requis).
+  Un clic ou `Tout importer` récupère le média **en Blob** et le stocke dans
+  IndexedDB : plus besoin de télécharger puis re-téléverser, et une URL
+  signée qui expirerait chez le fournisseur n'entraîne plus la perte du média.
+  Si le navigateur refuse la récupération (CORS), un message explicite propose
+  le repli « télécharger depuis la Bibliothèque, puis déposer » — l'import
+  n'est jamais simulé. Déduplication sur l'URL source (`media.sourceUrl`).
 - **Timeline multipiste** (vidéo, overlay, texte, audio) : déplacement,
   recadrage aux poignées, scission à la tête de lecture (touche `S`),
   duplication (`Ctrl+D`), suppression (`Suppr`), aimantation sur les bords.
@@ -1119,8 +1146,10 @@ structure des 5 zones, détection des capacités, thème partagé, absence
 d'appel réseau et de clé secrète, ordre de chargement des modules, modèle de
 projet (validations d'imports hostiles), modèle de timeline (chevauchements,
 scission, recadrage, aimantation), historique, effets/transitions, export
-(preflight) et mixage audio. L'export réel et le rendu canvas ne sont pas
-automatisables sous jsdom : voir la checklist manuelle du dépôt.
+(preflight), mixage audio et **import depuis la bibliothèque LSV.ai** (lecture
+du `localStorage` du site, déduplication, échec CORS signalé, `importMany`).
+L'export réel et le rendu canvas ne sont pas automatisables sous jsdom : voir
+la checklist manuelle du dépôt.
 
 ### 12.5 Checklist manuelle (avant une release)
 
@@ -1136,3 +1165,9 @@ automatisables sous jsdom : voir la checklist manuelle du dépôt.
    conteneur annoncé à l'accueil, la vidéo est lisible.
 9. Recharger la page → le projet est toujours dans la liste, état intact.
 10. Basculer le mode sombre → l'application principale suit au retour.
+11. **Ratio** : sur l'onglet Image, vérifier que 5 rectangles aux proportions
+    réelles s'affichent (9:16 sélectionné par défaut) ; en cliquant sur 16:9,
+    la génération produit bien 2624×1472. Même chose en Vidéo (3 ratios).
+12. **Bibliothèque** : générer au moins une image sur LSV.ai, ouvrir
+    `/studio/` → la section « Depuis LSV.ai » liste la création ; un clic
+    l'importe sans téléchargement. Un déjà-importé affiche une coche.

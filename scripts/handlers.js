@@ -392,7 +392,7 @@ function init() {
     });
     UI.renderStyleGrid('image-style-grid', UIState.imageStyle, id => { UIState.imageStyle = id; });
     document.getElementById('image-size').addEventListener('change', e => { UIState.imageSize = e.target.value; });
-    document.getElementById('image-ratio').addEventListener('change', e => { UIState.imageRatio = e.target.value; });
+    UI.renderRatioGrid('image-ratio', UIState.imageRatio, id => { UIState.imageRatio = id; });
     document.getElementById('image-generate').addEventListener('click', () => Handlers.runImageGeneration());
 
     // VIDEO
@@ -433,7 +433,8 @@ function init() {
     });
     UI.renderStyleGrid('video-style-grid', UIState.videoStyle, id => { UIState.videoStyle = id; });
     document.getElementById('video-size').addEventListener('change', e => { UIState.videoSize = e.target.value; });
-    document.getElementById('video-ratio').addEventListener('change', e => { UIState.videoRatio = e.target.value; });
+    UI.renderRatioGrid('video-ratio', UIState.videoRatio, id => { UIState.videoRatio = id; },
+        ['9:16', '16:9', '1:1']);   // la vidéo ne propose que ces trois formats
     document.querySelectorAll('#video-duration-grid .mode-tile').forEach(t => {
         t.addEventListener('click', () => {
             document.querySelectorAll('#video-duration-grid .mode-tile').forEach(x => x.classList.remove('selected'));

@@ -686,6 +686,53 @@ input:focus, textarea:focus, select:focus {
 .style-tile .style-name { font-size: 0.78rem; font-weight: 600; color: var(--ink); }
 .style-tile .style-desc { font-size: 0.65rem; color: var(--ink-3); margin-top: 0.1rem; }
 
+/* ── Sélecteur de ratio visuel ──────────────────────────────────────────────
+   Chaque ratio est représenté par un rectangle aux proportions réelles,
+   comme sur les plateformes d'IA grand public : plus rapide à lire qu'une
+   liste de « 16:9 / 9:16 / 1:1 ». */
+.ratio-grid {
+    display: flex; flex-wrap: wrap; gap: 0.4rem;
+}
+.ratio-opt {
+    display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+    flex: 1 1 54px; min-width: 54px; max-width: 76px;
+    padding: 0.45rem 0.3rem 0.35rem;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+}
+.ratio-opt:hover { border-color: var(--border-2); background: var(--bg-4); }
+.ratio-opt.selected { border-color: var(--accent); background: var(--accent-light); }
+/* Le rectangle garde exactement les proportions du ratio choisi. */
+.ratio-shape {
+    display: block;
+    height: 20px; max-width: 42px;
+    border: 1.5px solid var(--ink-3);
+    border-radius: 2px;
+    background: var(--bg);
+    transition: all 0.15s;
+}
+.ratio-opt.selected .ratio-shape {
+    border-color: var(--accent);
+    background: var(--accent);
+}
+.ratio-label {
+    font-family: var(--font-mono);
+    font-size: 0.66rem; font-weight: 600;
+    color: var(--ink-2);
+    line-height: 1;
+}
+.ratio-opt.selected .ratio-label { color: var(--accent); }
+.ratio-use {
+    font-size: 0.55rem; color: var(--ink-3);
+    text-align: center; line-height: 1.15;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
 /* UPLOAD */
 .upload-zone {
     position: relative;

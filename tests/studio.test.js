@@ -394,7 +394,73 @@ function S_ProjectModel_addTextTrack(project) {
             tracks: [{ id: 't', kind: 'text', clips: [{ id: 'c', kind: 'text', mediaId: '', start: 0, duration: 1, text: 'a' }] }]
         }).ok === true);
 
-    console.log('\n=== 14. NON-RÉGRESSION DE L’APP PRINCIPALE ===');
+    console.log('\n=== 15. IMPORT DEPUIS LA BIBLIOTHÈQUE LSV.ai ===');
+    check('conteneur « Depuis LSV.ai » dans le panneau médias', !!doc.getElementById('sv-lib'));
+    check('liste des créations du site', !!doc.getElementById('sv-lib-list'));
+    check('bouton « Tout importer »', !!doc.getElementById('sv-lib-all'));
+    check('module core/library-import.js chargé', !!w.LSVStudio.LibraryImport);
+    check('module chargé AVANT media-panel (dépendance)',
+        src.indexOf('./core/library-import.js') < src.indexOf('./ui/media-panel.js'));
+    check('storage/media-storage.js chargé avant library-import',
+        src.indexOf('./storage/media-storage.js') < src.indexOf('./core/library-import.js'));
+
+    const LI = w.LSVStudio.LibraryImport;
+    const siteAssets = [
+        { id: 'a1', type: 'image', url: 'https://cdn.example/img1.png', name: 'Tour Eiffel', metadata: { ratio: '9:16', size: '2K', style: 'cinématique' }, createdAt: 3 },
+        { id: 'a2', type: 'video', url: 'https://cdn.example/vid1.mp4', name: 'Cascade', metadata: { ratio: '16:9', duration: 4.5 }, createdAt: 2 },
+        { id: 'a3', type: 'audio', url: 'https://cdn.example/a.mp3', name: 'Ignoré', metadata: {}, createdAt: 1 },
+        { id: 'a4', type: 'image', url: '', name: 'Sans URL', metadata: {}, createdAt: 0 }
+    ];
+    w.localStorage.setItem('lsv4_assets', JSON.stringify(siteAssets));
+
+    check('list() lit localStorage du site (même origine)', LI.list().length === 2, LI.list().length);
+    check('les entrées non image/vidéo sont écartées', LI.list().every(a => a.type === 'image' || a.type === 'video'));
+    check('les entrées sans URL sont écartées', LI.list().every(a => !!a.url));
+    check('ordre : plus récent d’abord', LI.list()[0].url === 'https://cdn.example/img1.png');
+    check('métadonnées ratio/style/reportées', LI.list()[0].ratio === '9:16' && LI.list()[0].style === 'cinématique');
+    check('bibliothèque vide → [] sans erreur', (w.localStorage.removeItem('lsv4_assets'), LI.list().length === 0));
+    w.localStorage.setItem('lsv4_assets', JSON.stringify(siteAssets));
+    w.localStorage.setItem('lsv4_assets', '{corrompu');
+    check('JSON corrompu côté site → [] (pas d’exception)', LI.list().length === 0);
+    w.localStorage.setItem('lsv4_assets', JSON.stringify(siteAssets));
+
+    /* On simule un média déjà importé : la déduplication se fait sur l’URL. */
+    const libProj = w.LSVStudio.ProjectModel.create({ name: 'P' });
+    libProj.media.push({ id: 'm-x', kind: 'image', sourceUrl: 'https://cdn.example/img1.png' });
+    const doneSet = LI.importedSet(libProj);
+    check('importedSet repère l’URL déjà dans le projet', doneSet.has('https://cdn.example/img1.png'));
+    check('import d’un asset déjà présent → refus sans fetch',
+        (await LI.import(libProj, { url: 'https://cdn.example/img1.png', name: 'Tour Eiffel' })).reason === 'déjà présent');
+
+    /* fetch refuse (CORS) : on signale, on ne simule pas. */
+    w.fetch = () => Promise.reject(new TypeError('Failed to fetch'));
+    const cors = await LI.import(libProj, { url: 'https://cdn.example/vid1.mp4', name: 'Cascade' });
+    check('CORS → ok:false + raison cors', cors.ok === false && cors.reason === 'cors');
+    check('message CORS lisible (pas technique)',
+        /fournisseur/.test(LI.reasonLabel('cors')) && !/TypeError|Failed to fetch/.test(LI.reasonLabel('cors')));
+
+    /* fetch réussit : le Blob est stocké, pas l’URL. */
+    w.fetch = () => Promise.resolve({ ok: true, blob: () => Promise.resolve(new w.Blob(['x'], { type: 'image/png' })) });
+    w.LSVStudio.MediaStorage.import = () => Promise.resolve({ ok: true, media: { id: 'm-imp', kind: 'image', name: 'import.png' } });
+    const okRes = await LI.import(libProj, { url: 'https://cdn.example/vid1.mp4', name: 'Cascade', type: 'video' });
+    check('import réussi → media ajouté au projet', okRes.ok === true && libProj.media.length === 2);
+    check('URL source conservée (déduplication + provenance)', libProj.media[1].sourceUrl === 'https://cdn.example/vid1.mp4');
+    check('nom de la bibliothèque appliqué', libProj.media[1].name === 'Cascade');
+
+    /* importMany : séquentiel, avec compteurs (projet neuf pour éviter la dédup). */
+    w.LSVStudio.MediaStorage.import = () => Promise.resolve({ ok: true, media: { id: 'm-b', kind: 'image', name: 'b' } });
+    const fresh = w.LSVStudio.ProjectModel.create({ name: 'P2' });
+    const many = await LI.importMany(fresh, LI.list());
+    check('importMany rapporte ajoutés / échecs', many.added.length === 2 && many.skipped.length === 0,
+        JSON.stringify({ a: many.added.length, s: many.skipped.length, f: many.failed.length }));
+    let lastP = -1;
+    await LI.importMany(w.LSVStudio.ProjectModel.create({ name: 'P3' }), [], p => { lastP = p; });
+    check('progression appelée jusqu’à 1', lastP === 1, lastP);
+    /* Un média importé en masse n’apparaît plus comme « à importer ». */
+    check('après importMany, importedSet couvre toute la bibliothèque',
+        LI.list().every(a => LI.importedSet(fresh).has(a.url)));
+
+    console.log('\n=== 16. NON-RÉGRESSION DE L’APP PRINCIPALE ===');
     const appScripts = (appHtml.match(/<script src="\.\/([^"]+)"><\/script>/g) || []).join(',');
     check('ordre des modules de l’app inchangé',
         appScripts.indexOf('scripts/constants.js') < appScripts.indexOf('scripts/core.js') &&

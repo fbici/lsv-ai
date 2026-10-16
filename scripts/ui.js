@@ -95,6 +95,32 @@ const UI = {
             });
         });
     },
+    /* Sélecteur de ratio visuel : chaque option montre un rectangle aux
+       proportions réelles (comme les plateformes d'IA grand public), plus
+       lisible qu'un menu déroulant de ratios. `allowed` filtre la liste
+       (la vidéo n'accepte que 16:9 / 9:16 / 1:1). */
+    renderRatioGrid(containerId, current, onChange, allowed) {
+        const grid = document.getElementById(containerId);
+        if (!grid) return;
+        const list = allowed ? RATIOS.filter(r => allowed.indexOf(r.id) !== -1) : RATIOS;
+        grid.innerHTML = list.map(r => {
+            const on = r.id === current;
+            return '<button type="button" class="ratio-opt ' + (on ? 'selected' : '') + '" ' +
+                'data-ratio="' + r.id + '" role="radio" aria-checked="' + on + '" ' +
+                'title="' + Utils.escapeHtml(r.use) + '">' +
+                '<span class="ratio-shape" style="aspect-ratio:' + r.w + '/' + r.h + '"></span>' +
+                '<span class="ratio-label">' + r.id + '</span>' +
+                '<span class="ratio-use">' + Utils.escapeHtml(r.use) + '</span>' +
+                '</button>';
+        }).join('');
+        grid.setAttribute('role', 'radiogroup');
+        grid.querySelectorAll('[data-ratio]').forEach(el => {
+            el.addEventListener('click', () => {
+                onChange(el.dataset.ratio);
+                this.renderRatioGrid(containerId, el.dataset.ratio, onChange, allowed);
+            });
+        });
+    },
     renderUploadPreview(arr, previewId) {
         const c = document.getElementById(previewId);
         if (!c) return;
