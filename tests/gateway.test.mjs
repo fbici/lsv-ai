@@ -6,7 +6,7 @@
    sanitisation des erreurs amont, clé absente.
    Usage : node tests/gateway.test.mjs
    ═══════════════════════════════════════════════════════════════════════════ */
-import { createHandler, createMemoryStore, classifyRequest, subPath, imageUnits, requestUnits, tokenRole, resolveMediaRef, resolveVideoRefs, newRequestId } from '../supabase/functions/lsv-gateway/core.mjs';
+import { createHandler, createMemoryStore, classifyRequest, subPath, imageUnits, requestUnits, tokenRole, resolveMediaRef, resolveVideoRefs, newRequestId, classifyValidation } from '../supabase/functions/lsv-gateway/core.mjs';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -903,9 +903,13 @@ async function run() {
         v400.headers.get('x-lsv-upstream-code'));
     check('400 amont → paramètre refusé remonté', v400.headers.get('x-lsv-upstream-param') === 'num_frames',
         v400.headers.get('x-lsv-upstream-param'));
-    check('les deux en-têtes sont exposés au navigateur',
-        String(v400.headers.get('access-control-expose-headers') || '').indexOf('x-lsv-upstream-code') !== -1 &&
-        String(v400.headers.get('access-control-expose-headers') || '').indexOf('x-lsv-upstream-param') !== -1);
+    check('les en-têtes sont exposés au navigateur',
+        ['x-lsv-upstream-code', 'x-lsv-upstream-param', 'x-lsv-upstream-reason', 'x-lsv-upstream-allowed']
+            .every(n => String(v400.headers.get('access-control-expose-headers') || '').indexOf(n) !== -1));
+    check('nature du refus remontée', v400.headers.get('x-lsv-upstream-reason') === 'forbidden',
+        v400.headers.get('x-lsv-upstream-reason'));
+    check('« forbidden field » sans liste → allowed vide',
+        !v400.headers.get('x-lsv-upstream-allowed'), v400.headers.get('x-lsv-upstream-allowed'));
     check('le message utilisateur reste générique',
         bV400.error.message === 'Impossible de générer le contenu pour le moment. Veuillez réessayer dans quelques instants.',
         bV400.error.message);
@@ -946,6 +950,61 @@ async function run() {
     const vArr = await mkVal(400, '[{"code":"invalid_request"}]')(vidPost({ model: 'm', prompt: 'p' }));
     check('corps table → aucun en-tête, aucun crash',
         vArr.status === 400 && !vArr.headers.get('x-lsv-upstream-code'));
+
+    /* Une valeur admise est énoncée dans le message : on la remonte, filtrée. */
+    const ENUM = JSON.stringify({
+        code: 'invalid_request',
+        message: '"mode" must be one of ["t2v","i2v"]',
+        data: { param: 'mode' }
+    });
+    const vEnum = await mkVal(400, ENUM)(vidPost({ model: 'm', prompt: 'p' }));
+    check('valeurs admises remontées', vEnum.headers.get('x-lsv-upstream-allowed') === 't2v,i2v',
+        vEnum.headers.get('x-lsv-upstream-allowed'));
+    check('valeur admise → reason=invalid', vEnum.headers.get('x-lsv-upstream-reason') === 'invalid',
+        vEnum.headers.get('x-lsv-upstream-reason'));
+    check('paramètre de la valeur admise', vEnum.headers.get('x-lsv-upstream-param') === 'mode',
+        vEnum.headers.get('x-lsv-upstream-param'));
+    const bEnum = await vEnum.json();
+    check('valeur admise : aucun texte du fournisseur dans la réponse',
+        !/must be one of|"t2v"|"i2v"/.test(JSON.stringify(bEnum)), JSON.stringify(bEnum));
+
+    /* Champ absent. */
+    const REQ = JSON.stringify({
+        code: 'invalid_request', message: '"image" is required', data: { param: 'image' }
+    });
+    const vReq = await mkVal(400, REQ)(vidPost({ model: 'm', prompt: 'p' }));
+    check('champ manquant → reason=required', vReq.headers.get('x-lsv-upstream-reason') === 'required',
+        vReq.headers.get('x-lsv-upstream-reason'));
+    check('champ manquant → allowed vide', !vReq.headers.get('x-lsv-upstream-allowed'));
+
+    /* Unitaires : la classification ne laisse jamais passer de texte libre. */
+    check('classifyValidation: message non-string → rien',
+        classifyValidation(null).reason === '' && classifyValidation(42).reason === '');
+    check('classifyValidation: « forbidden field »',
+        classifyValidation('num_frames is a forbidden field').reason === 'forbidden');
+    check('classifyValidation: « is required »',
+        classifyValidation('"duration" is required').reason === 'required');
+    check('classifyValidation: « must be one of » + liste filtrée',
+        classifyValidation('size must be one of ["720x1280","1080x1920"]').allowed === '720x1280,1080x1920',
+        classifyValidation('size must be one of ["720x1280","1080x1920"]').allowed);
+    check('classifyValidation: liste bornée à 8 valeurs',
+        classifyValidation('x must be one of ["a1","b2","c3","d4","e5","f6","g7","h8","i9","j0"]').allowed.split(',').length === 8);
+    check('classifyValidation: aucune phrase reprise telle quelle',
+        classifyValidation('Your account has been suspended for abuse. Contact support@example.com').allowed === '',
+        classifyValidation('Your account has been suspended for abuse. Contact support@example.com').allowed);
+    check('classifyValidation: phrase non reconnue → raison vide (pas de devinette)',
+        classifyValidation('something odd happened').reason === '',
+        classifyValidation('something odd happened').reason);
+    check('classifyValidation: valeurs hors liste de caractères ignorées',
+        classifyValidation('x must be one of ["ok value","ok2"]').allowed === 'ok2',
+        classifyValidation('x must be one of ["ok value","ok2"]').allowed);
+    check('classifyValidation: le nom du champ n’est jamais une valeur admise',
+        classifyValidation('"mode" must be one of ["mode","t2v","i2v"]', 'mode').allowed === 't2v,i2v',
+        classifyValidation('"mode" must be one of ["mode","t2v","i2v"]', 'mode').allowed);
+    check('classifyValidation: pas d’énumération → pas de liste inventée',
+        classifyValidation('"mode" is required', 'mode').allowed === '');
+    check('classifyValidation: casse du champ ignorée dans le filtre',
+        classifyValidation('"Mode" must be one of ["MODE","t2v"]', 'mode').allowed === 't2v');
 
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');

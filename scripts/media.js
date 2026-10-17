@@ -11,16 +11,24 @@ const AgnesProvider = {
     /* Erreur levée sur une réponse non-2xx. Le message est destiné au journal
        d'analyse (où l'admin le lit en entier), JAMAIS à l'utilisateur, qui
        reçoit un texte générique via Utils.friendlyError.
-       `x-lsv-upstream-code` / `x-lsv-upstream-param` sont deux champs
-       STRUCTURÉS que la passerelle extrait du refus de validation : ils disent
-       quel réglage est fausse sans rien exposer du fournisseur. */
+       Les quatre en-têtes `x-lsv-upstream-*` sont des champs STRUCTURÉS que la
+       passerelle extrait du refus de validation : code, paramètre, nature du
+       refus et valeurs admises. On voit donc « le réglage X est interdit » ou
+       « le réglage X attend l'une de ces valeurs » sans rien exposer du
+       fournisseur ni rouvrir les journaux. */
     async fail(res) {
         let body = '';
         try { body = await res.text(); } catch (e) {}
         const id = this.reqId(res);
-        const code = this.header(res, 'x-lsv-upstream-code');
-        const param = this.header(res, 'x-lsv-upstream-param');
-        const why = code ? ' (' + code + (param ? ':' + param : '') + ')' : '';
+        const bits = [
+            this.header(res, 'x-lsv-upstream-code'),
+            this.header(res, 'x-lsv-upstream-param'),
+            this.header(res, 'x-lsv-upstream-reason'),
+            this.header(res, 'x-lsv-upstream-allowed')
+        ];
+        const allowed = bits[3];
+        bits[3] = allowed ? 'valeurs ' + allowed : '';
+        const why = bits.filter(Boolean).length ? ' (' + bits.filter(Boolean).join(' · ') + ')' : '';
         return new Error('HTTP ' + res.status + (id ? ' [' + id + ']' : '') + why + ' — ' + body.slice(0, 200));
     },
     async fetch(url, options = {}, label = 'API') {

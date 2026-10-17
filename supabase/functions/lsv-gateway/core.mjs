@@ -117,6 +117,39 @@ export function newRequestId() {
     return Date.now().toString(36).slice(-6) + '-' + (tail + '000000').slice(0, 6);
 }
 
+/** Traduit le message d'un refus de validation 400 en DEUX informations
+    non ambiguës, sans jamais faire transiter de texte libre :
+    - `reason` — un énuméré fermé (`forbidden` / `required` / `invalid`) ;
+    - `allowed` — la liste de valeurs admises, UNIQUEMENT si le message
+      l'énonce explicitement (« must be one of ["t2v","i2v"] »), filtrée
+      caractère par caractère, 8 valeurs de 16 caractères maximum, et à
+      l'exclusion du nom du champ lui-même (« "mode" must be one of … » :
+      `mode` est le paramètre, pas une valeur).
+    Ensemble, `param` + `reason` + `allowed` répondent aux trois questions qui
+    comptent : quel réglage est fausse, en quoi, et quoi mettre à la place. */
+export function classifyValidation(message, param) {
+    const out = { reason: '', allowed: '' };
+    if (typeof message !== 'string' || !message) return out;
+
+    if (/is a forbidden field/i.test(message)) out.reason = 'forbidden';
+    else if (/\bis required\b|\bis missing\b|\bmissing\b/i.test(message)) out.reason = 'required';
+    else if (/must be|invalid|not allowed|unsupported|unknown/i.test(message)) out.reason = 'invalid';
+
+    /* Pas d'énumération dans le message → pas de liste inventée. */
+    if (!/one of|one of the following|allowed values|possible values/i.test(message)) return out;
+
+    const self = typeof param === 'string' ? param.toLowerCase() : '';
+    const seen = [];
+    const quoted = /["'`]([A-Za-z0-9_-]{1,16})["'`]/g;
+    let m;
+    while ((m = quoted.exec(message)) !== null && seen.length < 8) {
+        if (m[1].toLowerCase() === self) continue;
+        if (seen.indexOf(m[1]) === -1) seen.push(m[1]);
+    }
+    if (seen.length) out.allowed = seen.join(',');
+    return out;
+}
+
 function clientIp(request) {
     const fwd = request.headers.get('x-forwarded-for');
     if (fwd) {
@@ -476,6 +509,7 @@ export function createHandler(options = {}) {
         if (allowed) {
             headers['Access-Control-Expose-Headers'] =
                 'x-lsv-request-id, x-lsv-upstream-code, x-lsv-upstream-param, ' +
+                'x-lsv-upstream-reason, x-lsv-upstream-allowed, ' +
                 'x-lsv-quota, x-lsv-quota-scope, ' +
                 'x-lsv-quota-image, x-lsv-quota-video, x-lsv-quota-chat, ' +
                 'x-lsv-quota-motion, x-lsv-quota-global, retry-after';
@@ -720,19 +754,24 @@ export function createHandler(options = {}) {
         } catch (e) {}
         log('amont-status', res.status, path, reqId, snippet);
 
-        /* ── Refus de validation : deux champs STRUCTURÉS, jamais de texte ─
+        /* ── Refus de validation : des champs STRUCTURÉS, jamais de texte ──
            Quand le fournisseur rejette un paramètre (« num_frames is a
            forbidden field »), renvoyer uniquement « Impossible de générer »
            rend l'intégration indiagnostiquable : il faut ouvrir les journaux à
-           la main pour chaque erreur. On extrait donc UNIQUEMENT `code` et
-           `data.param`, filtrés caractère par caractère — pas d'URL, pas de
-           modèle, pas d'identifiant, pas de texte libre du fournisseur. */
+           la main, à chaque erreur. On extrait donc UNIQUEMENT :
+             - `code` et `data.param`  — quel réglage est fausse ;
+             - `reason` et `allowed`   — en quoi, et quoi mettre à la place ;
+           tout filtré caractère par caractère. Pas d'URL, pas de modèle, pas
+   d'identifiant, pas de phrase du fournisseur. */
         if (res.status === 400 && upstream && typeof upstream === 'object' && !Array.isArray(upstream)) {
             const code = String(upstream.code || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
             const param = String((upstream.data && upstream.data.param) || upstream.param || '')
                 .replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 60);
+            const v = classifyValidation(upstream.message, param);
             if (code) h['x-lsv-upstream-code'] = code;
             if (param) h['x-lsv-upstream-param'] = param;
+            if (v.reason) h['x-lsv-upstream-reason'] = v.reason;
+            if (v.allowed) h['x-lsv-upstream-allowed'] = v.allowed;
         }
 
         /* Aucune génération n'a été lancée : on rembourse les unités. */
