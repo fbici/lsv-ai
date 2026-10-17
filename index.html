@@ -706,11 +706,24 @@
                 <div class="card-header">
                     <div class="card-title"><span class="ms">attach_file</span> Images sources</div>
                 </div>
-                <div class="upload-zone">
+                <div class="ref-tabs" id="ref-tabs" role="tablist" aria-label="Source des images de référence">
+                    <button type="button" class="ref-tab is-selected" role="tab" id="ref-tab-device"
+                            aria-selected="true" aria-controls="ref-zone-device" data-ref-source="device">
+                        <span class="ms">photo_camera</span> Mon appareil
+                    </button>
+                    <button type="button" class="ref-tab" role="tab" id="ref-tab-library"
+                            aria-selected="false" aria-controls="ref-zone-library" data-ref-source="library">
+                        <span class="ms">auto_stories</span> Bibliothèque
+                    </button>
+                </div>
+                <div class="upload-zone" id="ref-zone-device" role="tabpanel" aria-labelledby="ref-tab-device">
                     <input type="file" accept="image/*" id="video-ref-input" multiple>
                     <span class="ms">cloud_upload</span>
                     <div class="up-title">Cliquer pour ajouter</div>
                     <div class="up-hint">1 image (Image→Vidéo) · 2 images (Keyframes)</div>
+                </div>
+                <div class="ref-library hidden" id="ref-zone-library" role="tabpanel" aria-labelledby="ref-tab-library">
+                    <div class="ref-library-grid" id="ref-library-grid"></div>
                 </div>
                 <div class="upload-preview" id="video-ref-preview"></div>
             </div>

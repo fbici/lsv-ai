@@ -604,6 +604,108 @@ async function load(html, url) {
         wb.eval('IMG_RES["2K"]["16:9"]') === '2624x1472' &&
         wb.eval('IMG_RES["2K"]["9:16"]') === '1472x2624');
 
+    console.log('\n=== 14. IMAGE DE RÉFÉRENCE : APPAREIL OU BIBLIOTHÈQUE ===');
+    /* Image→Vidéo peut partir d'un fichier local, mais aussi d'une création
+       déjà générée sur LSV.ai : le sélecteur de source doit permettre les
+       deux sans toucher au parcours fichier existant. */
+    check('deux onglets de source présents',
+        !!wb.document.getElementById('ref-tab-device') && !!wb.document.getElementById('ref-tab-library'));
+    check('les deux panneaux existent',
+        !!wb.document.getElementById('ref-zone-device') && !!wb.document.getElementById('ref-zone-library'));
+    check('l\'appareil est la source active au chargement',
+        wb.document.getElementById('ref-tab-device').classList.contains('is-selected') &&
+        wb.document.getElementById('ref-zone-library').classList.contains('hidden'));
+    check('accessibilité : aria-selected + aria-controls',
+        wb.document.getElementById('ref-tab-device').getAttribute('aria-selected') === 'true' &&
+        wb.document.getElementById('ref-tab-library').getAttribute('aria-controls') === 'ref-zone-library');
+
+    /* Mode Image→Vidéo : le panneau de référence doit être visible. */
+    wb.document.querySelector('.mode-tile[data-mode="image-to-video"]').click();
+    check('mode image-to-video → carte de référence affichée',
+        !wb.document.getElementById('video-ref-card').classList.contains('hidden'));
+    check('limite = 1 image en image-to-video', wb.eval('Handlers.refLimit()') === 1);
+
+    /* Bascule vers la bibliothèque. Les sections précédentes ont déjà généré
+       des créations : on vide le magasin pour vérifier l'état vide, puis on
+       le restaure. */
+    const savedAssets = wb.eval('StorageService.getAssets()');
+    wb.eval('StorageService.setAssets([]); AssetService._cache = null; Handlers.renderRefLibrary();');
+    wb.document.getElementById('ref-tab-library').click();
+    check('clic Bibliothèque → panneau montré, appareil masqué',
+        !wb.document.getElementById('ref-zone-library').classList.contains('hidden') &&
+        wb.document.getElementById('ref-zone-device').classList.contains('hidden'));
+    check('bibliothèque vide → état vide affiché',
+        !!wb.document.querySelector('#ref-library-grid .ref-empty'));
+    check('état vide oriente vers l\'onglet Image',
+        wb.document.querySelector('#ref-library-grid .ref-empty').textContent.indexOf('Image') !== -1);
+
+    /* Deux créations images de test dans la bibliothèque. */
+    wb.eval('AssetService.add({type:"image", url:"data:image/png;base64,iVBOR", name:"Création alpha"});' +
+            'AssetService.add({type:"image", url:"data:image/png;base64,iVBOR2", name:"Création bêta"});' +
+            'AssetService.add({type:"video", url:"https://cdn.test/v.mp4", name:"Vidéo"});' +
+            'Handlers.renderRefLibrary();');
+    const libBtns = wb.document.querySelectorAll('#ref-library-grid [data-ref-pick]');
+    const imgCount = wb.eval('AssetService.filter({type:"image"}).length');
+    check('la grille ne montre que les images', libBtns.length === imgCount && imgCount === 2, libBtns.length);
+    /* Aucun bouton ne pointe vers l'asset vidéo injecté. */
+    const videoId = wb.eval('AssetService.filter({type:"video"})[0].id');
+    check('aucune vidéo proposée comme source',
+        Array.from(libBtns).every(b => b.dataset.refPick !== videoId));
+
+    /* Sélection d'une image de la bibliothèque. */
+    libBtns[0].click();
+    const refs = wb.eval('JSON.stringify(UIState.videoRefs)');
+    check('sélection → 1 référence enregistrée', wb.eval('UIState.videoRefs.length') === 1, refs);
+    check('la référence porte son identifiant de bibliothèque',
+        wb.eval('UIState.videoRefs[0].source') === 'library' &&
+        !!wb.eval('UIState.videoRefs[0].assetId'));
+    /* La vignette reprend l'URL de la création, telle quelle : c'est la
+       passerelle qui l'encodera, jamais le navigateur. */
+    const picked = wb.eval('JSON.parse(JSON.stringify(UIState.videoRefs[0]))');
+    check('la vignette de prévisualisation utilise l\'URL de la création',
+        picked.preview === picked.dataUri && /^data:image\//.test(picked.preview), picked.preview);
+    check('l\'URL est aussi portée dans dataUri (prête pour la passerelle)',
+        picked.dataUri === wb.eval('AssetService.get("' + picked.assetId + '").url'));
+    check('élément de la grille marqué sélectionné',
+        !!wb.document.querySelector('#ref-library-grid [data-ref-pick].is-selected'));
+    check('l\'élément sélectionné est annoncé (aria-pressed)',
+        wb.document.querySelector('#ref-library-grid [data-ref-pick].is-selected')
+            .getAttribute('aria-pressed') === 'true');
+
+    /* En image-to-video, une seule image : la seconde doit être refusée. */
+    wb.document.querySelectorAll('#ref-library-grid [data-ref-pick]')[1].click();
+    check('image-to-video : deuxième image refusée', wb.eval('UIState.videoRefs.length') === 1);
+    check('refus annoncé à l\'utilisateur',
+        wb.document.getElementById('toast-text').textContent.indexOf('Une seule image') !== -1,
+        wb.document.getElementById('toast-text').textContent);
+
+    /* Le même asset ne peut pas être ajouté deux fois. */
+    wb.document.querySelectorAll('#ref-library-grid [data-ref-pick]')[0].click();
+    check('doublon refusé', wb.eval('UIState.videoRefs.length') === 1);
+
+    /* Keyframes autorise deux images. */
+    wb.document.querySelector('.mode-tile[data-mode="keyframes"]').click();
+    check('mode keyframes → limite 2', wb.eval('Handlers.refLimit()') === 2);
+    wb.document.querySelectorAll('#ref-library-grid [data-ref-pick]')[1].click();
+    check('keyframes : deuxième image acceptée', wb.eval('UIState.videoRefs.length') === 2);
+    check('compteur d\'usage mis à jour',
+        wb.document.querySelector('#ref-library-grid .ref-limit').textContent.indexOf('2 / 2') !== -1,
+        wb.document.querySelector('#ref-library-grid .ref-limit').textContent);
+
+    /* Retour appareil : le parcours fichier historique est intact. */
+    wb.document.getElementById('ref-tab-device').click();
+    check('retour appareil : zone d\'upload à nouveau visible',
+        !wb.document.getElementById('ref-zone-device').classList.contains('hidden') &&
+        wb.document.getElementById('ref-zone-library').classList.contains('hidden'));
+    check('l\'input fichier est toujours en place (non cassé)',
+        !!wb.document.getElementById('video-ref-input') &&
+        wb.document.getElementById('video-ref-input').multiple === true);
+
+    /* Une URL de bibliothèque est déjà un data-URI ou une URL : la
+       passerelle se charge de la conversion, jamais le navigateur. */
+    check('aucun fetch de l\'URL côté client',
+        wb.eval('JSON.stringify(UIState.videoRefs)').indexOf('fetch') === -1);
+
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');
     console.log((results.length - failed.length) + '/' + results.length + ' tests interface/sécurité OK');

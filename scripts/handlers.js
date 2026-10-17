@@ -151,6 +151,62 @@ const Handlers = {
         }
         UI.renderUploadPreview(arr, previewId);
         UI.updateButtons();
+        this.renderRefLibrary();
+    },
+    /* Nombre d'images de référence autorisées pour le mode courant :
+       1 pour Image→Vidéo, 2 pour Keyframes. */
+    refLimit() { return UIState.videoMode === 'keyframes' ? 2 : 1; },
+    /* Ajoute une création de la bibliothèque comme image de référence.
+       On stocke l'URL telle quelle : c'est la passerelle qui la télécharge
+       et l'encode, le navigateur ne pouvant pas (CORS). */
+    addRefFromLibrary(assetId) {
+        const asset = AssetService.get(assetId);
+        if (!asset || asset.type !== 'image') return;
+        const max = this.refLimit();
+        if (UIState.videoRefs.some(r => r.assetId === asset.id)) {
+            UI.showToast('Image déjà ajoutée', 'warn');
+            return;
+        }
+        if (UIState.videoRefs.length >= max) {
+            UI.showToast(max === 2 ? 'Deux images maximum (Keyframes)' : 'Une seule image pour Image→Vidéo', 'warn');
+            return;
+        }
+        UIState.videoRefs.push({
+            id: Date.now() + Math.random(),
+            assetId: asset.id,
+            source: 'library',
+            name: asset.name,
+            dataUri: asset.url,
+            preview: asset.url
+        });
+        UI.renderUploadPreview(UIState.videoRefs, 'video-ref-preview');
+        UI.updateButtons();
+        this.renderRefLibrary();
+    },
+    renderRefLibrary() {
+        const grid = document.getElementById('ref-library-grid');
+        if (!grid) return;
+        const items = AssetService.filter({ type: 'image' });
+        if (!items.length) {
+            grid.innerHTML = '<div class="ref-empty"><span class="ms">image_search</span>' +
+                '<p>Aucune image dans ta bibliothèque.</p>' +
+                '<p class="ref-empty-hint">Génère d\'abord une image sur l\'onglet Image : elle apparaîtra ici.</p></div>';
+            return;
+        }
+        const chosen = UIState.videoRefs.map(r => r.assetId);
+        grid.innerHTML = items.map(a => {
+            const on = chosen.indexOf(a.id) >= 0;
+            return '<button type="button" class="ref-lib-item' + (on ? ' is-selected' : '') + '"' +
+                ' data-ref-pick="' + a.id + '" aria-pressed="' + (on ? 'true' : 'false') + '">' +
+                '<img src="' + a.url + '" alt="" loading="lazy">' +
+                '<span class="ref-lib-mark"><span class="ms">' + (on ? 'check_circle' : 'add_circle') + '</span></span>' +
+                '<span class="ref-lib-name">' + Utils.escapeHtml(Utils.truncate(a.name, 28)) + '</span>' +
+                '</button>';
+        }).join('') +
+        '<p class="ref-limit">' + UIState.videoRefs.length + ' / ' + this.refLimit() + ' image(s) utilisée(s)</p>';
+        grid.querySelectorAll('[data-ref-pick]').forEach(btn => {
+            btn.addEventListener('click', () => Handlers.addRefFromLibrary(btn.dataset.refPick));
+        });
     },
     _saveCounters() {
         StorageService.setCounters({ image: Runtime.imageCount, video: Runtime.videoCount });
@@ -406,6 +462,13 @@ function init() {
             if (UIState.videoMode === 'text-to-video') { refCard.classList.add('hidden'); motionCard.classList.add('hidden'); }
             else if (UIState.videoMode === 'image-to-video') { refCard.classList.remove('hidden'); motionCard.classList.remove('hidden'); }
             else { refCard.classList.remove('hidden'); motionCard.classList.add('hidden'); }
+            /* Le maximum d'images dépend du mode : le sélecteur de la
+               bibliothèque doit s'y conformer tout de suite. */
+            if (UIState.videoRefs.length > Handlers.refLimit()) {
+                UIState.videoRefs.splice(Handlers.refLimit());
+                UI.renderUploadPreview(UIState.videoRefs, 'video-ref-preview');
+            }
+            Handlers.renderRefLibrary();
             UI.updateButtons();
         });
     });
@@ -414,8 +477,29 @@ function init() {
         UI.updateButtons();
     });
     document.getElementById('video-ref-input').addEventListener('change', e => {
-        Handlers.handleImageUpload(e.target.files, UIState.videoRefs, 'video-ref-preview', 2);
+        Handlers.handleImageUpload(e.target.files, UIState.videoRefs, 'video-ref-preview', Handlers.refLimit());
         e.target.value = '';
+    });
+    /* Bascule entre le fichier local et la bibliothèque de créations. */
+    document.querySelectorAll('#ref-tabs .ref-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('#ref-tabs .ref-tab').forEach(x => {
+                x.classList.remove('is-selected');
+                x.setAttribute('aria-selected', 'false');
+            });
+            tab.classList.add('is-selected');
+            tab.setAttribute('aria-selected', 'true');
+            const device = document.getElementById('ref-zone-device');
+            const library = document.getElementById('ref-zone-library');
+            if (tab.dataset.refSource === 'library') {
+                device.classList.add('hidden');
+                library.classList.remove('hidden');
+                Handlers.renderRefLibrary();
+            } else {
+                library.classList.add('hidden');
+                device.classList.remove('hidden');
+            }
+        });
     });
     document.querySelectorAll('#motion-camera-grid .motion-chip').forEach(chip => {
         chip.addEventListener('click', () => {

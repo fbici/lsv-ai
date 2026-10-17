@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.14.0
+# LSV.ai — Studio Viral v3.15.0
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -36,6 +36,7 @@ LSV.ai
 │
 ├── LSV API Gateway     → supabase/functions/lsv-gateway
 │   Clé fournisseur côté serveur · rate limit · quotas · erreurs sanitizées
+│   Image de référence (§2.15) : URL de bibliothèque → image encodée amont
 │
 ├── Contact             → supabase/functions/lsv-contact
 │   /contact/ (marque) + /a-propos/ (créateur) · 2 canaux · e-mails Brevo/Resend
@@ -168,7 +169,8 @@ lsv-ai/
 
 ## 2. Changements de version
 
-Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0.
+Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
+§2.15 = v3.15.0.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -656,6 +658,44 @@ erreur, auto-initialisation, parcours de soumission, footer, portrait).
 4. Vide `EMAIL_API_KEY` puis resoumettre → le visiteur est acquitté, la ligne
    apparaît avec `status = 'unconfigured'`. Rien n'est perdu.
 
+### 2.15 Image de référence depuis la bibliothèque — v3.15.0
+
+Une image d'image-en-vidéo ne vient plus seulement du disque de l'utilisateur :
+elle peut être **une création déjà générée sur LSV.ai**. Le sélecteur de la
+carte « Images sources » comporte désormais deux onglets.
+
+| Onglet | Contenu | Plafond |
+|---|---|---|
+| Mon appareil | zone d'upload historique (inchangée) | 1 en Image→Vidéo, 2 en Keyframes |
+| Bibliothèque | grille des créations `type: image` | identique |
+
+**Le navigateur ne télécharge jamais l'image.** Une création est stockée comme
+`{id, type, url, …}` (`AssetService`, `scripts/core.js`) : l'URL seule ne peut
+pas être lue depuis une autre origine (CORS) ni convertie en `File`. Le client
+pousse donc dans `UIState.videoRefs` une référence `{assetId, source:'library',
+name, dataUri: <url>, preview: <url>}` et laisse la conversion à la passerelle,
+qui a le droit de faire ce téléchargement.
+
+Côté passerelle (`supabase/functions/lsv-gateway/core.mjs`) :
+
+- `resolveMediaRef(value)` — renvoie un `data:` tel quel, sinon télécharge
+  l'URL (`image/*` uniquement, 20 Mo max) et la renvoie en `data:<mime>;base64,…` ;
+- `resolveVideoRefs(bodyText)` — applique `resolveMediaRef` aux champs **`image`
+  et `last_frame` seulement** (un seul générateur d'image à la fois, deux
+  keyframes), en préservant tous les autres champs du corps ;
+- étape **« 6. Image de référence »** du handler : pour `type === 'video'` uniquement,
+  juste avant l'appel fournisseur. URL morte → `400` avec un message lisible
+  (`MSG_MEDIA`), **remboursement du quota**, libération du verrou d'inflight,
+  et aucun détail technique ni URL de CDN dans la réponse. `/v1/images/generations`
+  n'est pas touché.
+
+Le fichier de l'appareil continue de circuler **en base64 depuis le navigateur**,
+sans modification ni téléchargement supplémentaire.
+
+Vérifié par `tests/gateway.test.mjs` §23 (23 assertions) et
+`tests/public.test.js` §14 (26 assertions : rendu des onglets, état vide de la
+bibliothèque, sélection, dédup, plafond par mode, parcours fichier intact).
+
 ---
 
 ## 3. Installation locale
@@ -1024,7 +1064,7 @@ try { LSVAnalytics.track('image_generated', {...}); } catch (e) { /* inert */ }
 ```bash
 git init
 git add .
-git commit -m "v3.14.0 : espace créateur, page Contact, Edge Function lsv-contact"
+git commit -m "v3.15.0 : image de référence depuis la bibliothèque"
 git branch -M main
 git remote add origin https://github.com/<vous>/lsv-ai.git
 git push -u origin main
@@ -1034,7 +1074,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 827 assertions, 6 suites
+npm test                      # 876 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -1063,8 +1103,12 @@ git grep -n "service_role" -- scripts shared analytics admin studio *.html
 5. Ouvrir `https://<vous>.github.io/lsv-ai/` → générer une image (doit passer
    par `…/functions/v1/lsv-gateway/v1/images/generations`) et soumettre un
    message depuis `/contact/` (§2.14).
-5. Ouvrir `https://<vous>.github.io/lsv-ai/admin/` → se connecter, vérifier
+6. Ouvrir `https://<vous>.github.io/lsv-ai/admin/` → se connecter, vérifier
    que le dashboard se remplit (sinon : « Compte non autorisé » → §4.2).
+7. **Redéployer la Gateway** après toute modification de
+   `supabase/functions/lsv-gateway/` — §2.15 (image de référence depuis la
+   bibliothèque) en fait partie : sans redéploiement, une URL de création
+   transmise à l'amont reste une URL et n'est pas encodée.
 
 **Note sur les chemins** : tous les liens sont **relatifs** (`./admin/`,
 `../shared/config.js`) → le site fonctionne aussi bien à la racine que dans
@@ -1099,7 +1143,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 827 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 876 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (43 assertions, **55 avec `ORIG`**) — non-régression
@@ -1115,7 +1159,7 @@ npm test        # 827 assertions (6 suites, hors ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (202 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (228 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -1161,6 +1205,12 @@ npm test        # 827 assertions (6 suites, hors ORIG=… voir plus bas)
   `WebSite` + `Organization` (avec logo) + `SoftwareApplication`, `llms.txt`
   (indexation IA), `sitemap.xml` avec `lastmod`, images avec `alt` descriptifs,
   `loading="lazy"` + `decoding="async"` + `width`/`height` (anti-CLS).
+- **image de référence depuis la bibliothèque** (§2.15) : onglets
+  appareil/bibliothèque avec `role="tab"` + `aria-selected`, état vide
+  orientant vers l'onglet Image, grille limitée aux créations d'image,
+  sélection unique en Image→Vidéo et double en Keyframes, dédup, refus
+  annoncé par toast, parcours fichier historique intact — et **aucun `fetch`
+  de l'URL côté client**.
 - **architecture modulaire** : `index.html` réduit à un squelette HTML
   (~1 230 lignes au lieu de ~7 000) ; CSS en 6 fichiers `styles/`, JS en 8
   modules `scripts/` chargés dans un ordre fixe ; `window.LSV` et toute l'API
@@ -1168,7 +1218,7 @@ npm test        # 827 assertions (6 suites, hors ORIG=… voir plus bas)
   `public.test.js` verrouille la structure (pas de `<style>` ni de gros script
   inline, 14 modules présents et ordonnés).
 
-**`tests/gateway.test.mjs`** (123 assertions) — passerelle
+**`tests/gateway.test.mjs`** (146 assertions) — passerelle
 
 - routage (y compris préfixe `/functions/v1/lsv-gateway`), injection de la clé
   serveur, rejet de l'authorization client ;
@@ -1180,7 +1230,13 @@ npm test        # 827 assertions (6 suites, hors ORIG=… voir plus bas)
   cache), injectée dans l'en-tête amont, jamais renvoyée au client ; table
   vide ou lecture en échec → repli sur le secret serveur ; ni l'un ni l'autre
   → 503 ; clé de service lue dans `SUPABASE_SERVICE_ROLE_KEY` ou
-  `SUPABASE_SECRET_KEYS`.
+  `SUPABASE_SECRET_KEYS` ;
+- **image de référence** (§2.15) : `data:` transmis tel quel, URL http(s)
+  téléchargée une seule fois, borne de 20 Mo, refus d'un corps non image ou
+  vide, échec réseau/HTTP signalé ; `resolveVideoRefs` ne convertit que
+  `image` et `last_frame`, JSON illisible sans effet de bord ; dans le handler,
+  fichier d'appareil inchangé, `/v1/images/generations` non converti, URL
+  morte → 400 **avant** tout appel au fournisseur et sans fuite de détail.
 
 **`tests/admin.test.js`** (150 assertions)
 

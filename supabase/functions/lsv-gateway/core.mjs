@@ -26,11 +26,82 @@ const MSG_FORBIDDEN = 'Acc\u00e8s non autoris\u00e9.';
 const MSG_NO_KEY = 'Service momentan\u00e9ment indisponible.';
 const MSG_QUOTA = 'Quota du jour atteint. Reviens demain — ton compteur se r\u00e9initialise \u00e0 minuit.';
 const MSG_SUSPENDED = 'Les g\u00e9n\u00e9rations sont momentan\u00e9ment suspendues. R\u00e9essaie dans quelques instants.';
+const MSG_MEDIA = 'Impossible de r\u00e9cup\u00e9rer l\u2019image de r\u00e9f\u00e9rence. V\u00e9rifie qu\u2019elle existe toujours dans ta biblioth\u00e8que.';
 
 const DEFAULT_AGNES_BASE = 'https://apihub.agnes-ai.com';
 const FUNCTION_MOUNT = '/functions/v1/lsv-gateway';
 const SHORT_MOUNT = '/lsv-gateway';
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
+
+/* Une image de bibliothèque peut être lourde ; on borne la récupération. */
+const MAX_MEDIA_BYTES = 20 * 1024 * 1024;
+const MEDIA_CHUNK = 0x8000;
+
+function bytesToBase64(bytes) {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += MEDIA_CHUNK) {
+        bin += String.fromCharCode.apply(null, bytes.subarray(i, i + MEDIA_CHUNK));
+    }
+    return btoa(bin);
+}
+
+/** Résout une référence d'image :
+    - `data:…` / tout ce qui n'est pas une URL → renvoyé tel quel (le cas
+      d'un fichier choisi sur l'appareil est STRICTEMENT inchangé) ;
+    - `https://…` → récupéré ICI, côté serveur, où aucun CORS ne s'applique,
+      puis encodé en data-URI, seul format accepté en aval. */
+export async function resolveMediaRef(value, fetchImpl) {
+    if (typeof value !== 'string' || !value) return { ok: true, value: value, converted: false };
+    if (!/^https?:\/\//i.test(value)) return { ok: true, value: value, converted: false };
+
+    let res;
+    try {
+        res = await fetchImpl(value, { method: 'GET', headers: { Accept: 'image/*' } });
+    } catch (e) {
+        return { ok: false, reason: 'network' };
+    }
+    if (!res || !res.ok) return { ok: false, reason: 'status', status: res ? res.status : 0 };
+
+    const ct = String((res.headers && res.headers.get && res.headers.get('content-type')) || '').toLowerCase();
+    if (ct && ct.indexOf('image/') !== 0) return { ok: false, reason: 'type', detail: ct.split(';')[0] };
+
+    let bytes;
+    try {
+        bytes = new Uint8Array(await res.arrayBuffer());
+    } catch (e) {
+        return { ok: false, reason: 'body' };
+    }
+    if (!bytes.length) return { ok: false, reason: 'empty' };
+    if (bytes.length > MAX_MEDIA_BYTES) return { ok: false, reason: 'size', size: bytes.length };
+
+    const mime = (ct.split(';')[0] || '').trim() || 'image/jpeg';
+    return { ok: true, value: 'data:' + mime + ';base64,' + bytesToBase64(bytes), converted: true };
+}
+
+/** Applique resolveMediaRef aux champs d'image d'une requête vidéo.
+    Ne touche qu'à `image` et `last_frame` ; tout le reste du corps est
+    préservé à l'identique. */
+export async function resolveVideoRefs(bodyText, fetchImpl) {
+    let payload;
+    try {
+        payload = JSON.parse(bodyText || '');
+    } catch (e) {
+        return { ok: true, body: bodyText, converted: false };
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        return { ok: true, body: bodyText, converted: false };
+    }
+
+    const fields = ['image', 'last_frame'];
+    let touched = false;
+    for (const key of fields) {
+        if (typeof payload[key] !== 'string') continue;
+        const r = await resolveMediaRef(payload[key], fetchImpl);
+        if (!r.ok) return { ok: false, reason: r.reason, detail: r.detail || r.status || '' };
+        if (r.converted) { payload[key] = r.value; touched = true; }
+    }
+    return { ok: true, body: touched ? JSON.stringify(payload) : bodyText, converted: touched };
+}
 
 function toInt(value, fallback) {
     const n = parseInt(value, 10);
@@ -563,6 +634,22 @@ export function createHandler(options = {}) {
                 const hdrs = Object.assign({ 'x-lsv-quota': 'exhausted', 'x-lsv-quota-scope': exhaustedScope }, c.headers);
                 return json(429, MSG_QUOTA, hdrs);
             }
+        }
+
+        /* ── 6. Image de référence : URL de bibliothèque → image encodée ────
+              Un fichier choisi sur l'appareil arrive déjà encodé (data:…) et
+              traverse ce bloc sans y être touché. Une création reprise de la
+              bibliothèque n'est qu'une URL : le navigateur ne pourrait pas la
+              récupérer (CORS), donc on la télécharge ici. ───────────────── */
+        if (type === 'video' && body) {
+            const media = await resolveVideoRefs(body, doFetch);
+            if (!media.ok) {
+                log('media-injoignable', media.reason, String(media.detail || ''));
+                if (consumed && user) await dbRefund(user, type, units);
+                if (user && type && enabled) store.leave('inflight:' + user.id);
+                return json(400, MSG_MEDIA, c.headers);
+            }
+            if (media.converted) body = media.body;
         }
 
         const fwdHeaders = {

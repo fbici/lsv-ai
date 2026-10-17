@@ -6,7 +6,7 @@
    sanitisation des erreurs amont, clé absente.
    Usage : node tests/gateway.test.mjs
    ═══════════════════════════════════════════════════════════════════════════ */
-import { createHandler, createMemoryStore, classifyRequest, subPath, imageUnits, requestUnits, tokenRole } from '../supabase/functions/lsv-gateway/core.mjs';
+import { createHandler, createMemoryStore, classifyRequest, subPath, imageUnits, requestUnits, tokenRole, resolveMediaRef, resolveVideoRefs } from '../supabase/functions/lsv-gateway/core.mjs';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -624,6 +624,124 @@ async function run() {
         !/grant (insert|update|delete|all)[^;]*on public\.usage_counters to (anon|authenticated)/i.test(schema));
     check('refund_quota aussi réservé à service_role',
         /revoke execute on function public\.refund_quota[^;]*from public, anon, authenticated;/.test(schema));
+
+    console.log('\n=== 23. IMAGE DE RÉFÉRENCE DEPUIS LA BIBLIOTHÈQUE ===');
+    /* Une création reprise de la bibliothèque n'est qu'une URL distante : le
+       navigateur ne peut pas la récupérer (CORS). La passerelle la télécharge
+       donc elle-même et l'encode. Un fichier choisi sur l'appareil arrive déjà
+       sous forme de data-URI et doit traverser ce chemin sans être touché. */
+    const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const DATA_URI = 'data:image/jpeg;base64,' + btoa('fichier-local');
+    let imgCalls = [];
+    const imgFetch = url => { imgCalls.push(url); return Promise.resolve(new Response(PNG, { status: 200, headers: { 'content-type': 'image/png' } })); };
+
+    /* — resolveMediaRef — */
+    const rData = await resolveMediaRef(DATA_URI, () => { imgCalls.push('ne-doit-pas'); return Promise.resolve(null); });
+    check('data-URI renvoyé tel quel (aucun téléchargement)',
+        rData.ok === true && rData.converted === false && rData.value === DATA_URI && imgCalls.length === 0);
+
+    const rEmpty = await resolveMediaRef('', imgFetch);
+    check('chaine vide ignorée', rEmpty.ok === true && rEmpty.converted === false && imgCalls.length === 0);
+
+    imgCalls = [];
+    const rUrl = await resolveMediaRef('https://cdn.test/creation.png', imgFetch);
+    check('URL http encodée en data-URI',
+        rUrl.ok === true && rUrl.converted === true && /^data:image\/png;base64,/.test(rUrl.value), rUrl.value && rUrl.value.slice(0, 30));
+    check('URL téléchargée exactement une fois', imgCalls.length === 1, imgCalls.join(','));
+    check('payload base64 non vide', rUrl.value.split(',')[1].length > 0);
+
+    const m404 = await resolveMediaRef('https://cdn.test/parti.png', () => Promise.resolve(new Response('nope', { status: 404 })));
+    check('404 amont → échec signalé', m404.ok === false && m404.reason === 'status' && m404.status === 404);
+
+    const mNet = await resolveMediaRef('https://cdn.test/x.png', () => Promise.reject(new Error('ENOTFOUND')));
+    check('réseau en échec → échec signalé', mNet.ok === false && mNet.reason === 'network');
+
+    const mType = await resolveMediaRef('https://cdn.test/page.html', () =>
+        Promise.resolve(new Response('<html></html>', { status: 200, headers: { 'content-type': 'text/html' } })));
+    check('réponse non-image refusée', mType.ok === false && mType.reason === 'type');
+
+    const mZero = await resolveMediaRef('https://cdn.test/vide.png', () =>
+        Promise.resolve(new Response(new Uint8Array(0), { status: 200, headers: { 'content-type': 'image/png' } })));
+    check('corps vide refusé', mZero.ok === false && mZero.reason === 'empty');
+
+    /* — resolveVideoRefs — */
+    const untouched = '{"prompt":"un film","model":"agnes-video-v2.0"}';
+    const rNoop = await resolveVideoRefs(untouched, imgFetch);
+    check('corps sans référence d\'image inchangé (même chaîne)',
+        rNoop.ok === true && rNoop.converted === false && rNoop.body === untouched);
+
+    const rBadJson = await resolveVideoRefs('{pas-du-json', imgFetch);
+    check('JSON illisible : aucun effet de bord', rBadJson.ok === true && rBadJson.body === '{pas-du-json');
+
+    imgCalls = [];
+    const rBoth = await resolveVideoRefs(JSON.stringify({
+        model: 'agnes-video-v2.0', prompt: 'un film',
+        image: 'https://cdn.test/debut.png', last_frame: 'https://cdn.test/fin.png',
+        num_frames: 12, frame_rate: 24
+    }), imgFetch);
+    const parsed = JSON.parse(rBoth.body);
+    check('image ET last_frame convertis', rBoth.converted === true && /^data:image\/png/.test(parsed.image) && /^data:image\/png/.test(parsed.last_frame));
+    check('les autres champs sont préservés', parsed.prompt === 'un film' && parsed.num_frames === 12 && parsed.frame_rate === 24 && parsed.model === 'agnes-video-v2.0');
+    check('deux téléchargements', imgCalls.length === 2, imgCalls.length);
+
+    const rFailField = await resolveVideoRefs(JSON.stringify({ image: 'data:image/jpeg;base64,AAA', last_frame: 'https://cdn.test/mort.png' }),
+        () => Promise.reject(new Error('boom')));
+    check('un champ en échec fait échouer la requête', rFailField.ok === false && rFailField.reason === 'network');
+
+    /* — à travers le handler — */
+    const vEnv = Object.assign({}, env, { RATE_LIMIT_PER_MIN: '50' });
+    const vCalls = [];
+    const handleVid = createHandler({
+        env: vEnv, store: createMemoryStore(), now: () => t, log: () => {},
+        fetchImpl: async (url, init) => {
+            vCalls.push({ url: url, init: init });
+            if (String(url).indexOf('https://cdn.test/') === 0) {
+                return new Response(PNG, { status: 200, headers: { 'content-type': 'image/png' } });
+            }
+            return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+    });
+    const vidReq = body => makeReq(GW + '/v1/videos', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body)
+    });
+
+    const rVid = await handleVid(vidReq({ model: 'agnes-video-v2.0', prompt: 'un film', image: 'https://cdn.test/creation.png' }));
+    const upstreamVid = vCalls.find(c => String(c.url).indexOf(UP) === 0);
+    check('vidéo avec URL de bibliothèque relayée', rVid.status === 200 && !!upstreamVid, rVid.status);
+    check('l\'amont reçoit une image encodée, jamais une URL',
+        !!upstreamVid && /^data:image\/png;base64,/.test(JSON.parse(upstreamVid.init.body).image), upstreamVid && JSON.parse(upstreamVid.init.body).image.slice(0, 24));
+
+    vCalls.length = 0;
+    const rVidLocal = await handleVid(vidReq({ model: 'agnes-video-v2.0', prompt: 'un film', image: DATA_URI }));
+    const upstreamLocal = vCalls.find(c => String(c.url).indexOf(UP) === 0);
+    check('fichier d\'appareil transmis SANS modification',
+        rVidLocal.status === 200 && upstreamLocal && JSON.parse(upstreamLocal.init.body).image === DATA_URI);
+    check('fichier d\'appareil : aucun téléchargement amont supplémentaire',
+        vCalls.filter(c => String(c.url).indexOf('https://cdn.test/') === 0).length === 0);
+
+    vCalls.length = 0;
+    const rImgUrl = await handleVid(makeReq(GW + '/v1/images/generations', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt: 'x', image: 'https://cdn.test/ignoré.png' })
+    }));
+    check('génération d\'image : URL NON convertie (champ vidéo seulement)',
+        rImgUrl.status === 200 && vCalls.filter(c => String(c.url).indexOf('https://cdn.test/') === 0).length === 0);
+
+    vCalls.length = 0;
+    const handleDead = createHandler({
+        env: vEnv, store: createMemoryStore(), now: () => t, log: () => {},
+        fetchImpl: async url => {
+            vCalls.push({ url: url });
+            if (String(url).indexOf('https://cdn.test/') === 0) throw new Error('ENOTFOUND cdn.test');
+            return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+    });
+    const rDead = await handleDead(vidReq({ model: 'agnes-video-v2.0', prompt: 'un film', image: 'https://cdn.test/disparu.png' }));
+    const bDead = await rDead.json();
+    check('image injoignable → 400 avant tout appel au fournisseur',
+        rDead.status === 400 && vCalls.filter(c => String(c.url).indexOf(UP) === 0).length === 0, rDead.status);
+    check('aucun détail technique ni URL de CDN dans la réponse',
+        !/cdn\.test|ENOTFOUND|https?:/.test(JSON.stringify(bDead)), JSON.stringify(bDead));
+    check('message lisible pour l\'utilisateur', /image/i.test(bDead.error.message), bDead.error.message);
 
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');
