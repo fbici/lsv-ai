@@ -9,9 +9,13 @@ const ADMIN_HTML = path.join(PROJECT, 'admin/index.html');
 const EVENTS = [
     { created_at: new Date().toISOString(), visitor_id: 'v1', session_id: 's1', user_id: null, event: 'page_view', props: { path: '/' } },
     { created_at: new Date().toISOString(), visitor_id: 'v1', session_id: 's1', user_id: 'u1', event: 'image_generated', props: { model: 'agnes-image-2.1-flash', ratio: '16:9', size: '1312x736', style: 'cinematic' } },
-    { created_at: new Date().toISOString(), visitor_id: 'v2', session_id: 's2', user_id: 'u2', event: 'video_generated', props: { model: 'agnes-video-v2.0', mode: 'text-to-video', duration: 5, segments: 2 } },
+    { created_at: new Date().toISOString(), visitor_id: 'v2', session_id: 's2', user_id: 'u2', event: 'video_generated', props: { model: 'agnes-video-2.5-flash', mode: 'text-to-video', duration: 5, segments: 2 } },
     { created_at: new Date().toISOString(), visitor_id: 'v2', session_id: 's2', user_id: 'u2', event: 'chat_used', props: { status: 'success' } },
     { created_at: new Date().toISOString(), visitor_id: 'v1', session_id: 's1', user_id: 'u1', event: 'generation_error', props: { feature: 'video', detail: 'HTTP 500 — Internal error' } },
+    /* Détails tels que le client les envoie réellement : code HTTP, id de
+       requête posé par la passerelle, puis le message sanitisé. */
+    { created_at: new Date().toISOString(), visitor_id: 'v1', session_id: 's1', user_id: 'u1', event: 'generation_error', props: { feature: 'video', detail: 'HTTP 503 [csa1mt-mal7ka] — {"error":{"message":"Impossible de générer le contenu pour le moment. Veuillez réessayer dans quelques instants."}}' } },
+    { created_at: new Date().toISOString(), visitor_id: 'v1', session_id: 's1', user_id: 'u1', event: 'generation_error', props: { feature: 'image', detail: 'HTTP 502 [csa1my-byc3he] — {"error":{"message":"Impossible de générer le contenu pour le moment. Veuillez réessayer dans quelques instants."}}' } },
     { created_at: new Date().toISOString(), visitor_id: 'v3', session_id: 's3', user_id: 'u1', event: 'project_created', props: { type: 'pub' } },
     { created_at: new Date().toISOString(), visitor_id: 'v3', session_id: 's3', user_id: null, event: 'tab_view', props: { tab: 'motion' } }
 ];
@@ -303,6 +307,40 @@ async function login(dom, email, password) {
     await sleep(60);
     check('table erreurs remplie', w.document.getElementById('errors-table').innerHTML.indexOf('VIDEO') !== -1 || w.document.getElementById('errors-table').innerHTML.indexOf('video') !== -1);
     check('badge type erreur', w.document.getElementById('errors-table').innerHTML.indexOf('GENERATION_ERROR') !== -1);
+
+    /* ── E2. DÉTAIL DES ERREURS : NI TRONCATURE, NI FUSION ────────────────
+       Un admin ne peut rien corriger s'il ne voit que « HTTP 503 — {"error":
+       {"message":"Impossible de g… ». Le message complet, le code HTTP et
+       l'id de requête doivent être lisibles d'un coup d'œil. */
+    console.log('\n=== E2. DÉTAIL DES ERREURS DANS LE BACK-OFFICE ===');
+    const errHTML = w.document.getElementById('errors-table').innerHTML;
+    check('détail complet affiché (pas de troncature à 70 caractères)',
+        errHTML.indexOf('Veuillez réessayer dans quelques instants') !== -1,
+        'longueur de la table : ' + errHTML.length);
+    check('colonne HTTP avec code lisible',
+        errHTML.indexOf('>503</span>') !== -1 && errHTML.indexOf('>502</span>') !== -1);
+    check('503 et 502 regroupés SÉPARÉMENT (pas fusionnés)',
+        (errHTML.match(/GENERATION_ERROR/g) || []).length >= 3,
+        (errHTML.match(/GENERATION_ERROR/g) || []).length + ' signature(s)');
+    check('identifiant de requête isolé et copiable',
+        errHTML.indexOf('csa1mt-mal7ka') !== -1 && errHTML.indexOf('csa1my-byc3he') !== -1);
+    check('signature en texte qui se replie (classe err-sig)',
+        errHTML.indexOf('class="mono err-sig"') !== -1);
+    check('renvoi vers les journaux de la passerelle',
+        errHTML.indexOf('amont-status') !== -1 && errHTML.indexOf('lsv-gateway') !== -1);
+    check('l\'explication dit que le détail amont n\'est jamais renvoyé au client',
+        errHTML.indexOf('jamais renvoyés au navigateur') !== -1);
+
+    /* Le fil d'activité doit conserver le texte complet au survol. */
+    w.document.querySelector('.nav-item[data-page="activity"]').dispatchEvent(new w.Event('click', { bubbles: true }));
+    await sleep(60);
+    const errFeed = Array.from(w.document.querySelectorAll('#activity-feed .feed-item[title]'))
+        .filter(el => /HTTP 50\d/.test(el.getAttribute('title')));
+    check('fil d\'activité : détail complet dans le survol (title)',
+        errFeed.length > 0 && errFeed.some(el => el.getAttribute('title').indexOf('csa1mt-mal7ka') !== -1),
+        errFeed.length + ' item(s) avec titre');
+    w.document.querySelector('.nav-item[data-page="errors"]').dispatchEvent(new w.Event('click', { bubbles: true }));
+    await sleep(60);
 
     w.document.querySelector('.nav-item[data-page="images"]').dispatchEvent(new w.Event('click', { bubbles: true }));
     await sleep(60);

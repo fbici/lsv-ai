@@ -1,4 +1,22 @@
 const AgnesProvider = {
+    /* Identifiant posé par la passerelle (en-tête `x-lsv-request-id`). Il relie
+       une erreur du back-office à la LIGNE DE JOURNAL de la fonction Edge, où
+       figurent le vrai statut amont et un extrait de sa réponse. */
+    reqId(res) {
+        try {
+            return (res && res.headers && res.headers.get && res.headers.get('x-lsv-request-id')) || '';
+        } catch (e) { return ''; }
+    },
+    /* Erreur levée sur une réponse non-2xx. Le message est destiné au journal
+       d'analyse (où l'admin le lit en entier), JAMAIS à l'utilisateur, qui
+       reçoit un texte générique via Utils.friendlyError. L'id est placé juste
+       après le code HTTP pour rester visible même si le texte est tronqué. */
+    async fail(res) {
+        let body = '';
+        try { body = await res.text(); } catch (e) {}
+        const id = this.reqId(res);
+        return new Error('HTTP ' + res.status + (id ? ' [' + id + ']' : '') + ' — ' + body.slice(0, 200));
+    },
     async fetch(url, options = {}, label = 'API') {
         // Création réservée aux comptes connectés (image, vidéo, enhancer, batch…)
         if (!(await AccountView.ensure())) throw new Error('Connexion requise');
@@ -129,10 +147,7 @@ const ImageService = {
             },
             'Image'
         );
-        if (!res.ok) {
-            const err = await res.text();
-            throw new Error('HTTP ' + res.status + ' — ' + err.slice(0, 200));
-        }
+        if (!res.ok) throw await AgnesProvider.fail(res);
         const data = await res.json();
         const item = data.data && data.data[0];
         if (!item) throw new Error('Pas de donnée image');
@@ -158,10 +173,7 @@ const VideoService = {
             },
             'Video'
         );
-        if (!res.ok) {
-            const err = await res.text();
-            throw new Error('HTTP ' + res.status + ' — ' + err.slice(0, 200));
-        }
+        if (!res.ok) throw await AgnesProvider.fail(res);
         const data = await res.json();
         const id = data.video_id || data.id || data.task_id;
         if (!id) throw new Error('Pas de video_id');
@@ -190,8 +202,18 @@ const VideoService = {
                 }
             }
             const url = CONFIG.POLL_BASE + '?video_id=' + encodeURIComponent(id) + '&model_name=' + encodeURIComponent(CONFIG.MODEL_VIDEO);
-            const res = await AgnesProvider.fetch(url, { method: 'GET' }, 'Polling');
-            const d = await res.json();
+            /* Un sondage qui échoue ne doit pas détruire une génération déjà
+               acceptée par le fournisseur : on note la panne et on réessaie à
+               la prochaine itération (la boucle est bornée). */
+            let d = null;
+            try {
+                const res = await AgnesProvider.fetch(url, { method: 'GET' }, 'Polling');
+                if (res.ok) d = await res.json();
+                else DebugService.log('warn', 'POLL', 'HTTP ' + res.status + ' ' + AgnesProvider.reqId(res));
+            } catch (e) {
+                DebugService.log('warn', 'POLL', e.message);
+            }
+            if (!d) { onProgress('Connexion…'); continue; }
             const status = d.status || 'unknown';
             const progress = d.progress || 0;
             onProgress('Création — ' + progress + '%');
@@ -200,7 +222,14 @@ const VideoService = {
                 if (!videoUrl) throw new Error('Terminé mais pas d\'URL');
                 return videoUrl;
             }
-            if (status === 'failed' || status === 'error' || status === 'cancelled') throw new Error('Échec (' + status + ')');
+            if (status === 'failed' || status === 'error' || status === 'cancelled') {
+                /* Le fournisseur donne souvent la vraie raison : on la garde
+                   pour le journal d'analyse (l'utilisateur voit un texte
+                   générique, cf. Utils.friendlyError). */
+                const why = (d.error && (d.error.message || d.error)) ||
+                    (d.metadata && (d.metadata.error || d.metadata.message)) || d.message || '';
+                throw new Error('Échec (' + status + ')' + (why ? ' — ' + String(why).slice(0, 200) : ''));
+            }
         }
         throw new Error('Timeout');
     },
@@ -339,10 +368,7 @@ const EnhancerService = {
             },
             'Enhancer'
         );
-        if (!res.ok) {
-            const err = await res.text();
-            throw new Error('HTTP ' + res.status + ' — ' + err.slice(0, 200));
-        }
+        if (!res.ok) throw await AgnesProvider.fail(res);
         const data = await res.json();
         const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
         return this._extractJson(content);

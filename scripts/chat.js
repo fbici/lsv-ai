@@ -118,7 +118,7 @@ const ChatService = {
             },
             'Chat'
         );
-        if (!res.ok) throw new Error('HTTP ' + res.status);
+        if (!res.ok) throw await AgnesProvider.fail(res);
         const data = await res.json();
         const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
         if (!content) throw new Error('Réponse vide');

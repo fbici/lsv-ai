@@ -528,5 +528,5 @@ on conflict (key) do nothing;
 -- insert into public.analytics_events (visitor_id, session_id, event, props) values
 --   ('demo_visitor_1', 'demo_session_1', 'page_view', '{"path":"/"}'),
 --   ('demo_visitor_1', 'demo_session_1', 'image_generated', '{"model":"agnes-image-2.1-flash","ratio":"16:9"}'),
---   ('demo_visitor_2', 'demo_session_2', 'video_generated', '{"model":"agnes-video-v2.0","mode":"text-to-video"}'),
+--   ('demo_visitor_2', 'demo_session_2', 'video_generated', '{"model":"agnes-video-2.5-flash","mode":"text-to-video"}'),
 --   ('demo_visitor_2', 'demo_session_2', 'generation_error', '{"feature":"video","detail":"HTTP 500"}');

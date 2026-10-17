@@ -6,7 +6,7 @@
    sanitisation des erreurs amont, clé absente.
    Usage : node tests/gateway.test.mjs
    ═══════════════════════════════════════════════════════════════════════════ */
-import { createHandler, createMemoryStore, classifyRequest, subPath, imageUnits, requestUnits, tokenRole, resolveMediaRef, resolveVideoRefs } from '../supabase/functions/lsv-gateway/core.mjs';
+import { createHandler, createMemoryStore, classifyRequest, subPath, imageUnits, requestUnits, tokenRole, resolveMediaRef, resolveVideoRefs, newRequestId } from '../supabase/functions/lsv-gateway/core.mjs';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -63,8 +63,8 @@ async function run() {
     check('authorization CLIENT jamais transmise', calls[0] && !JSON.stringify(calls[0].init.headers).includes('sk-client'), JSON.stringify(calls[0] && calls[0].init.headers));
     check('corps préservé (modèle inclus)', calls[0] && calls[0].init.body.includes('agnes-image-2.1-flash'));
 
-    const rPoll = await handle(makeReq(GW + '/agnesapi?video_id=abc&model_name=agnes-video-v2.0', { method: 'GET' }));
-    check('polling relayé', rPoll.status === 200 && calls[1].url === UP + '/agnesapi?video_id=abc&model_name=agnes-video-v2.0', calls[1] && calls[1].url);
+    const rPoll = await handle(makeReq(GW + '/agnesapi?video_id=abc&model_name=agnes-video-2.5-flash', { method: 'GET' }));
+    check('polling relayé', rPoll.status === 200 && calls[1].url === UP + '/agnesapi?video_id=abc&model_name=agnes-video-2.5-flash', calls[1] && calls[1].url);
 
     console.log('\n=== 2. PRÉFIXE SUPABASE / CHEMINS ===');
     check('subPath déployé', subPath('/functions/v1/lsv-gateway/v1/videos') === '/v1/videos');
@@ -665,7 +665,7 @@ async function run() {
     check('corps vide refusé', mZero.ok === false && mZero.reason === 'empty');
 
     /* — resolveVideoRefs — */
-    const untouched = '{"prompt":"un film","model":"agnes-video-v2.0"}';
+    const untouched = '{"prompt":"un film","model":"agnes-video-2.5-flash"}';
     const rNoop = await resolveVideoRefs(untouched, imgFetch);
     check('corps sans référence d\'image inchangé (même chaîne)',
         rNoop.ok === true && rNoop.converted === false && rNoop.body === untouched);
@@ -675,13 +675,13 @@ async function run() {
 
     imgCalls = [];
     const rBoth = await resolveVideoRefs(JSON.stringify({
-        model: 'agnes-video-v2.0', prompt: 'un film',
+        model: 'agnes-video-2.5-flash', prompt: 'un film',
         image: 'https://cdn.test/debut.png', last_frame: 'https://cdn.test/fin.png',
         num_frames: 12, frame_rate: 24
     }), imgFetch);
     const parsed = JSON.parse(rBoth.body);
     check('image ET last_frame convertis', rBoth.converted === true && /^data:image\/png/.test(parsed.image) && /^data:image\/png/.test(parsed.last_frame));
-    check('les autres champs sont préservés', parsed.prompt === 'un film' && parsed.num_frames === 12 && parsed.frame_rate === 24 && parsed.model === 'agnes-video-v2.0');
+    check('les autres champs sont préservés', parsed.prompt === 'un film' && parsed.num_frames === 12 && parsed.frame_rate === 24 && parsed.model === 'agnes-video-2.5-flash');
     check('deux téléchargements', imgCalls.length === 2, imgCalls.length);
 
     const rFailField = await resolveVideoRefs(JSON.stringify({ image: 'data:image/jpeg;base64,AAA', last_frame: 'https://cdn.test/mort.png' }),
@@ -705,14 +705,14 @@ async function run() {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body)
     });
 
-    const rVid = await handleVid(vidReq({ model: 'agnes-video-v2.0', prompt: 'un film', image: 'https://cdn.test/creation.png' }));
+    const rVid = await handleVid(vidReq({ model: 'agnes-video-2.5-flash', prompt: 'un film', image: 'https://cdn.test/creation.png' }));
     const upstreamVid = vCalls.find(c => String(c.url).indexOf(UP) === 0);
     check('vidéo avec URL de bibliothèque relayée', rVid.status === 200 && !!upstreamVid, rVid.status);
     check('l\'amont reçoit une image encodée, jamais une URL',
         !!upstreamVid && /^data:image\/png;base64,/.test(JSON.parse(upstreamVid.init.body).image), upstreamVid && JSON.parse(upstreamVid.init.body).image.slice(0, 24));
 
     vCalls.length = 0;
-    const rVidLocal = await handleVid(vidReq({ model: 'agnes-video-v2.0', prompt: 'un film', image: DATA_URI }));
+    const rVidLocal = await handleVid(vidReq({ model: 'agnes-video-2.5-flash', prompt: 'un film', image: DATA_URI }));
     const upstreamLocal = vCalls.find(c => String(c.url).indexOf(UP) === 0);
     check('fichier d\'appareil transmis SANS modification',
         rVidLocal.status === 200 && upstreamLocal && JSON.parse(upstreamLocal.init.body).image === DATA_URI);
@@ -735,13 +735,143 @@ async function run() {
             return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
         }
     });
-    const rDead = await handleDead(vidReq({ model: 'agnes-video-v2.0', prompt: 'un film', image: 'https://cdn.test/disparu.png' }));
+    const rDead = await handleDead(vidReq({ model: 'agnes-video-2.5-flash', prompt: 'un film', image: 'https://cdn.test/disparu.png' }));
     const bDead = await rDead.json();
     check('image injoignable → 400 avant tout appel au fournisseur',
         rDead.status === 400 && vCalls.filter(c => String(c.url).indexOf(UP) === 0).length === 0, rDead.status);
     check('aucun détail technique ni URL de CDN dans la réponse',
         !/cdn\.test|ENOTFOUND|https?:/.test(JSON.stringify(bDead)), JSON.stringify(bDead));
     check('message lisible pour l\'utilisateur', /image/i.test(bDead.error.message), bDead.error.message);
+
+    console.log('\n=== 24. IDENTIFIANT DE REQUÊTE ET DIAGNOSTIC AMONT ===');
+    /* Un échec affiché dans le back-office n'a aucune valeur si on ne peut pas
+       le retrouver dans les journaux de la fonction. Chaque réponse porte donc
+       un id que la passerelle écrit aussi dans ses logs, à côté du VRAI statut
+       amont et de son extrait — que le client ne reçoit jamais. */
+
+    const id1 = newRequestId();
+    const id2 = newRequestId();
+    check('identifiant court (13 caractères)', id1.length === 13, id1);
+    check('identifiant non répété', id1 !== id2, id1 + ' / ' + id2);
+    check('identifiant sans caractère sensible', /^[a-z0-9-]+$/.test(id1), id1);
+
+    const logs24 = [];
+    const t24 = 1700000000000;
+    const env24 = {
+        AGNES_API_KEY: SECRET,
+        ALLOWED_ORIGINS: 'https://fbici.github.io',
+        RATE_LIMIT_PER_MIN: '50',
+        IMAGE_LIMIT: '0', VIDEO_LIMIT: '0', CHAT_LIMIT: '0', MOTION_LIMIT: '0'
+    };
+    const upStatus = { code: 503, body: '{"error":"upstream busy","trace":"agnes-video-2.5-flash"}' };
+    const handle24 = createHandler({
+        env: env24, store: createMemoryStore(), now: () => t24,
+        log: (...a) => logs24.push(a.join(' ')),
+        fetchImpl: async () => new Response(upStatus.body, {
+            status: upStatus.code, headers: { 'content-type': 'application/json' }
+        })
+    });
+
+    const ok24 = await handle24(makeReq(GW + '/v1/images/generations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'origin': 'https://fbici.github.io' },
+        body: JSON.stringify({ prompt: 'un chat', model: 'agnes-image-2.1-flash' })
+    }));
+    const ridOk = ok24.headers.get('x-lsv-request-id');
+    check('réussite : id de requête présent', /^[a-z0-9-]{6,}$/.test(ridOk || ''), ridOk);
+    check('en-têtes CORS exposés au navigateur (cross-origin)',
+        String(ok24.headers.get('access-control-expose-headers') || '').indexOf('x-lsv-request-id') !== -1 &&
+        String(ok24.headers.get('access-control-expose-headers') || '').indexOf('x-lsv-quota-video') !== -1,
+        ok24.headers.get('access-control-expose-headers'));
+    /* Invariant : tout en-tête `x-lsv-*` réellement porté par une réponse doit
+       figurer dans `Access-Control-Expose-Headers`, sinon le navigateur le
+       masque et le client croit à tort que la donnée n'a pas été envoyée. */
+    const exposed = String(ok24.headers.get('access-control-expose-headers') || '').toLowerCase();
+    const carried = Array.from(ok24.headers.keys()).filter(n => n.toLowerCase().indexOf('x-lsv-') === 0);
+    check('tous les en-têtes x-lsv-* portés sont exposés au navigateur',
+        carried.length > 0 && carried.every(n => exposed.indexOf(n.toLowerCase()) !== -1),
+        carried.join(',') || 'aucun');
+
+    const err24 = await handle24(makeReq(GW + '/v1/videos', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'origin': 'https://fbici.github.io' },
+        body: JSON.stringify({ model: 'agnes-video-2.5-flash', prompt: 'un film' })
+    }));
+    const b24 = await err24.json();
+    const ridErr = err24.headers.get('x-lsv-request-id');
+    check('échec amont → 503 conservé (statut utile pour le client)',
+        err24.status === 503, err24.status);
+    check('échec amont : id de requête renvoyé', /^[a-z0-9-]{6,}$/.test(ridErr || ''), ridErr);
+    check('id différent d\'une requête à l\'autre', ridOk !== ridErr, ridOk + ' vs ' + ridErr);
+    const line24 = logs24.filter(l => l.indexOf('amont-status') === 0).pop() || '';
+    check('le journal cite le même identifiant que la réponse',
+        line24.indexOf(ridErr) !== -1, line24);
+    check('le journal porte le VRAI statut amont (503)',
+        line24.indexOf(' 503 ') !== -1 || /amont-status 503/.test(line24), line24);
+    check('le journal cite le chemin concerné', line24.indexOf('/v1/videos') !== -1, line24);
+    check('le journal contient un extrait de la réponse amont',
+        line24.indexOf('upstream busy') !== -1, line24);
+    check('la réponse client ne contient AUCUN détail amont',
+        !/upstream busy|agnes-video|trace/.test(JSON.stringify(b24)), JSON.stringify(b24));
+
+    /* Les trois 503 possibles restent distinguables par leur message : le
+       back-office peut séparer « pas de clé », « suspendu » et « amont ». */
+    const noKey24 = createHandler({
+        env: { AGNES_API_KEY: '', ALLOWED_ORIGINS: 'https://fbici.github.io' },
+        store: createMemoryStore(), now: () => t24, log: (...a) => logs24.push(a.join(' ')),
+        fetchImpl: async () => new Response('{}', { status: 200 })
+    });
+    const nk24 = await noKey24(makeReq(GW + '/v1/videos', {
+        method: 'POST', headers: { 'content-type': 'application/json', 'origin': 'https://fbici.github.io' },
+        body: JSON.stringify({ model: 'agnes-video-2.5-flash', prompt: 'x' })
+    }));
+    const bNk = await nk24.json();
+    check('503 « pas de clé » = message distinct',
+        nk24.status === 503 && /indisponible/i.test(bNk.error.message) && !/suspendu/i.test(bNk.error.message),
+        bNk.error.message);
+    check('503 « pas de clé » : id de requête présent',
+        /^[a-z0-9-]{6,}$/.test(nk24.headers.get('x-lsv-request-id') || ''),
+        nk24.headers.get('x-lsv-request-id'));
+
+    /* 502 : tout statut amont hors 400/429/503 est sanitisé côté client mais
+       le vrai code reste dans le journal. */
+    upStatus.code = 500;
+    upStatus.body = 'Internal Server Error at /agnesapi/videos';
+    const err500 = await handle24(makeReq(GW + '/v1/videos', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'origin': 'https://fbici.github.io' },
+        body: JSON.stringify({ model: 'agnes-video-2.5-flash', prompt: 'un film' })
+    }));
+    const b500 = await err500.json();
+    const line500 = logs24.filter(l => l.indexOf('amont-status') === 0).pop() || '';
+    check('500 amont → 502 sanitisé pour le client', err500.status === 502, err500.status);
+    check('500 amont : vrai statut conservé dans le journal',
+        /amont-status 500/.test(line500), line500);
+    check('500 amont : extrait serveur dans le journal',
+        line500.indexOf('Internal Server Error') !== -1, line500);
+    check('500 amont : rien de ce détail dans la réponse',
+        !/Internal Server Error|agnesapi/.test(JSON.stringify(b500)), JSON.stringify(b500));
+
+    /* Panne réseau : jamais atteint le fournisseur, journalisée avec l'id. */
+    logs24.length = 0;
+    const handleNet24 = createHandler({
+        env: env24, store: createMemoryStore(), now: () => t24,
+        log: (...a) => logs24.push(a.join(' ')),
+        fetchImpl: async () => { throw new Error('ECONNREFUSED'); }
+    });
+    const net24 = await handleNet24(makeReq(GW + '/v1/videos', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'origin': 'https://fbici.github.io' },
+        body: JSON.stringify({ model: 'agnes-video-2.5-flash', prompt: 'x' })
+    }));
+    const netBody = await net24.json();
+    const netLine = logs24.filter(l => l.indexOf('amont-reseau') === 0).pop() || '';
+    check('panne réseau → 502 + id dans le journal',
+        net24.status === 502 && /^[a-z0-9-]{6,}$/.test(net24.headers.get('x-lsv-request-id') || '') &&
+        netLine.indexOf(net24.headers.get('x-lsv-request-id')) !== -1,
+        net24.status + ' | ' + netLine);
+    check('panne réseau : aucune fuite technique dans la réponse',
+        !/ECONNREFUSED/.test(JSON.stringify(netBody)), JSON.stringify(netBody));
 
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');

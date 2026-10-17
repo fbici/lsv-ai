@@ -126,6 +126,17 @@
             (row.event === 'chat_used' && p.status === 'error') ||
             (row.event === 'enhancer_used' && p.status === 'error');
     }
+    /* Décompose un message d'erreur de génération. Le client envoie
+       `HTTP <code> [<id de requête>] — <message sanitisé>` : le code dit où ça
+       a cassé, l'id permet de retrouver la ligne `amont-status` des journaux de
+       la fonction Edge, où figurent le VRAI statut amont et un extrait. */
+    function parseErrorDetail(raw) {
+        var s = String(raw || '');
+        return {
+            status: (s.match(/HTTP\s+(\d{3})/) || [])[1] || '',
+            reqId: (s.match(/\[\s*([a-z0-9]+-[a-z0-9]+)\s*\]/) || [])[1] || ''
+        };
+    }
 
     /* ── Authentification ───────────────────────────────────────────────── */
     function isConfigured() {
@@ -608,7 +619,7 @@
 
     function feedItem(row) {
         var p = row.props || {};
-        var icon = 'circle', cls = 'tab', title = row.event, meta = '';
+        var icon = 'circle', cls = 'tab', title = row.event, meta = '', full = '';
         switch (row.event) {
             case 'page_view': icon = 'visibility'; cls = 'tab'; title = 'Page ouverte'; meta = p.path || '/'; break;
             case 'tab_view': icon = 'tab'; cls = 'tab'; title = 'Onglet · ' + (TAB_NAMES[p.tab] || p.tab || '—'); break;
@@ -625,11 +636,15 @@
                 cls = p.status === 'error' ? 'error' : 'chat';
                 title = p.status === 'error' ? 'Erreur Chat IA' : 'Chat IA utilisé';
                 meta = p.detail ? String(p.detail).slice(0, 90) : '';
+                full = p.detail ? String(p.detail) : '';
                 break;
             case 'project_created': icon = 'folder'; cls = 'project'; title = 'Projet créé'; meta = 'type ' + (p.type || 'general'); break;
             case 'generation_error':
                 icon = 'error'; cls = 'error'; title = 'Erreur · ' + (p.feature || 'inconnu');
                 meta = String(p.detail || '').slice(0, 110);
+                /* Le texte affiché reste court, mais le survol donne le détail
+                   complet — code HTTP et identifiant de requête compris. */
+                full = String(p.detail || '');
                 break;
             case 'enhancer_used':
                 icon = p.status === 'error' ? 'error' : 'auto_fix_high';
@@ -642,7 +657,7 @@
             case 'account_signed_in': icon = 'verified_user'; cls = 'tab'; title = 'Connexion compte'; break;
             default: icon = 'bolt'; title = row.event;
         }
-        return '<div class="feed-item">' +
+        return '<div class="feed-item"' + (full ? ' title="' + esc(full) + '"' : '') + '>' +
             '<div class="feed-icon ' + cls + '"><span class="ms">' + icon + '</span></div>' +
             '<div class="feed-body">' +
                 '<div class="feed-title">' + esc(title) + '</div>' +
@@ -843,9 +858,13 @@
             var raw = String(p.detail || r.event || '').trim();
             var type = r.event === 'generation_error' ? 'GENERATION_ERROR'
                 : (r.event === 'chat_used' ? 'CHAT_API_ERROR' : 'ENHANCER_API_ERROR');
-            var norm = raw.replace(/\d{2,}/g, '#').slice(0, 70) || 'erreur sans détail';
-            var key = feature + '|' + type + '|' + norm;
-            if (!grouped[key]) grouped[key] = { feature: feature, type: type, sample: raw, count: 0, last: null };
+            var norm = raw.replace(/\[[a-z0-9]+-[a-z0-9]+\]/g, '').replace(/\d{2,}/g, '#').slice(0, 70) || 'erreur sans détail';
+            /* Le code HTTP est extrait AVANT la normalisation : sans lui, un
+               503 (service indisponible) et un 502 (passerelle) se
+               regrouperaient en une seule signature indistincte. */
+            var pd = parseErrorDetail(raw);
+            var key = feature + '|' + type + '|' + pd.status + '|' + norm;
+            if (!grouped[key]) grouped[key] = { feature: feature, type: type, status: pd.status, reqId: pd.reqId, sample: raw, count: 0, last: null };
             grouped[key].count++;
             if (!grouped[key].last || r.created_at > grouped[key].last) grouped[key].last = r.created_at;
         });
@@ -862,18 +881,26 @@
             kpi('Fonctionnalités touchées', num(featList.length), featList.slice(0, 2).join(', ') || '—', 'interests', COLORS.chat) +
             kpi('Dernière erreur', errs.length ? fmtTime(errs[0].created_at) : '—', errs.length ? fmtDateTime(errs[0].created_at) : 'aucune', 'schedule', COLORS.motion);
 
+        /* Le détail n'est PLUS tronqué : c'est la seule façon de savoir ce qui
+           s'est réellement passé. La signature complète tient sur plusieurs
+           lignes ; l'id de requête est isolé dessous pour être copiable. */
         $('errors-table').innerHTML = tableHTML(
-            [{ label: 'Fonctionnalité' }, { label: 'Type' }, { label: 'Signature' }, { label: 'Occurrences', num: true }, { label: 'Dernière' }],
+            [{ label: 'Fonctionnalité' }, { label: 'Type' }, { label: 'HTTP' }, { label: 'Signature' }, { label: 'Occurrences', num: true }, { label: 'Dernière' }],
             list.slice(0, 50).map(function (g) {
                 return [
                     '<span class="badge info">' + esc(g.feature) + '</span>',
                     '<span class="mono">' + esc(g.type) + '</span>',
-                    '<span class="mono" title="' + esc(g.sample) + '">' + esc(g.sample.slice(0, 70) || '—') + '</span>',
+                    g.status ? '<span class="badge ' + (g.status === '429' ? 'info' : (g.status === '400' ? 'warn' : 'err')) + '">' + esc(g.status) + '</span>'
+                             : '<span class="mono">—</span>',
+                    '<span class="mono err-sig" title="' + esc(g.sample) + '">' + esc(g.sample || '—') + '</span>' +
+                        (g.reqId ? '<span class="err-req">requête&nbsp;: ' + esc(g.reqId) + '</span>' : ''),
                     num(g.count),
                     g.last ? fmtDateTime(g.last) : '—'
                 ];
             })
-        );
+        ) + (list.length ? '<p class="err-note">L\'identifiant « requête » correspond à la ligne <code>amont-status</code> des ' +
+            'journaux de la fonction <code>lsv-gateway</code> (Supabase → Functions → lsv-gateway → Logs). ' +
+            'C\'est là que figurent le vrai statut amont et un extrait de sa réponse — détails jamais renvoyés au navigateur.</p>' : '');
 
         $('chart-errors').innerHTML = chartHTML(State.rows.filter(isErrorRow).length
             ? bucketize(State.rows.filter(isErrorRow), State.range === 'today').map(function (b) { return { label: b.label, bar: b.total }; })

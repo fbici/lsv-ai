@@ -11,7 +11,11 @@ const CONFIG = Object.freeze({
     API_BASE: GATEWAY_URL ? GATEWAY_URL + '/v1' : '',
     POLL_BASE: GATEWAY_URL ? GATEWAY_URL + '/agnesapi' : '',
     MODEL_IMAGE: 'agnes-image-2.1-flash',
-    MODEL_VIDEO: 'agnes-video-v2.0',
+    /* Le fournisseur renvoie un 503 générique pour tout modèle inconnu — ce
+       qui se traduisait par « Impossible de générer le contenu » sur TOUTES
+       les vidéos. La liste réelle se lit via GET /v1/models ; ne jamais
+       renommer sans la vérifier. */
+    MODEL_VIDEO: 'agnes-video-2.5-flash',
     MODEL_CHAT: 'agnes-2.5-flash',
     FRAME_RATE: 24,
     MAX_IMAGE_DIMENSION: 4096,

@@ -108,6 +108,15 @@ function toInt(value, fallback) {
     return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
+/** Identifiant de requête, court et sans secret. Il est renvoyé au client
+    (en-tête `x-lsv-request-id`) ET écrit dans les logs serveur : un échec
+    affiché dans le back-office devient retrouvable ligne à ligne dans les
+    journaux de la fonction, où le vrai statut amont et son extrait figurent. */
+export function newRequestId() {
+    const tail = Math.random().toString(36).slice(2, 8);
+    return Date.now().toString(36).slice(-6) + '-' + (tail + '000000').slice(0, 6);
+}
+
 function clientIp(request) {
     const fwd = request.headers.get('x-forwarded-for');
     if (fwd) {
@@ -460,6 +469,16 @@ export function createHandler(options = {}) {
             'Cache-Control': 'no-store'
         };
         if (allowed) headers['Access-Control-Allow-Origin'] = origin || '*';
+        /* Sans cette ligne, le navigateur masque TOUS les en-têtes `x-lsv-*`
+           d'une réponse cross-origin : les compteurs de quota et l'id de
+           requête seraient invisibles côté client alors qu'ils sont bien
+           envoyés. */
+        if (allowed) {
+            headers['Access-Control-Expose-Headers'] =
+                'x-lsv-request-id, x-lsv-quota, x-lsv-quota-scope, ' +
+                'x-lsv-quota-image, x-lsv-quota-video, x-lsv-quota-chat, ' +
+                'x-lsv-quota-motion, x-lsv-quota-global, retry-after';
+        }
         return { allowed, headers };
     }
 
@@ -495,9 +514,13 @@ export function createHandler(options = {}) {
     return async function handle(request) {
         const origin = request.headers.get('origin') || '';
         const c = cors(origin);
+        /* `h` = en-têtes CORS + identifiant de requête : chaque réponse porte
+           le même id que la ligne de journal correspondante. */
+        const reqId = newRequestId();
+        const h = Object.assign({}, c.headers, { 'x-lsv-request-id': reqId });
 
-        if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: c.headers });
-        if (!c.allowed) return json(403, MSG_FORBIDDEN, c.headers);
+        if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: h });
+        if (!c.allowed) return json(403, MSG_FORBIDDEN, h);
 
         const url = new URL(request.url);
         const path = subPath(url.pathname);
@@ -508,21 +531,21 @@ export function createHandler(options = {}) {
             const map = await allSettings();
             const enabled = map.quota_enabled === undefined ? true : map.quota_enabled === '1';
             const suspended = map.quota_suspended === '1';
-            if (!user) return okJson({ enabled: enabled, suspended: suspended, anonymous: true }, c.headers);
+            if (!user) return okJson({ enabled: enabled, suspended: suspended, anonymous: true }, h);
             const state = await dbQuotaState(user);
-            if (!state) return okJson({ enabled: enabled, suspended: suspended }, c.headers);
-            return okJson(state, c.headers);
+            if (!state) return okJson({ enabled: enabled, suspended: suspended }, h);
+            return okJson(state, h);
         }
 
         const isProxy = path === '/v1' || path.startsWith('/v1/') || path.startsWith('/agnesapi');
-        if (!isProxy) return json(404, MSG_NOT_FOUND, c.headers);
+        if (!isProxy) return json(404, MSG_NOT_FOUND, h);
 
         /* Clé dédiée à l'outil concerné (images / vidéos / chat), avec repli
            sur la clé partagée puis sur le secret serveur. */
         const agnesKey = await resolveKey(keyKind(path, request.method));
         if (!agnesKey) {
-            log('clé du fournisseur absente (back-office ou secret serveur)');
-            return json(503, MSG_NO_KEY, c.headers);
+            log('clé du fournisseur absente (back-office ou secret serveur)', reqId);
+            return json(503, MSG_NO_KEY, h);
         }
 
         const ip = clientIp(request);
@@ -537,7 +560,7 @@ export function createHandler(options = {}) {
             const r = store.allowWindow(k, ratePerMin, 60000, t);
             if (!r.ok) {
                 log('rate-limit', k);
-                return json(429, MSG_LIMIT, Object.assign({ 'Retry-After': String(r.retryAfter) }, c.headers));
+                return json(429, MSG_LIMIT, Object.assign({ 'Retry-After': String(r.retryAfter) }, h));
             }
         }
 
@@ -546,8 +569,8 @@ export function createHandler(options = {}) {
         const enabled = map.quota_enabled === undefined ? true : map.quota_enabled === '1';
         const suspended = map.quota_suspended === '1';
         if (suspended) {
-            log('generations-suspendues');
-            return json(503, MSG_SUSPENDED, Object.assign({ 'x-lsv-quota': 'suspended' }, c.headers));
+            log('generations-suspendues', reqId);
+            return json(503, MSG_SUSPENDED, Object.assign({ 'x-lsv-quota': 'suspended' }, h));
         }
 
         /* ── 3. Identification du compte ─────────────────────────────────── */
@@ -561,9 +584,9 @@ export function createHandler(options = {}) {
                 body = await request.text();
             } catch (e) {
                 log('body-illisible', (e && e.message) || '');
-                return json(400, MSG_UPSTREAM, c.headers);
+                return json(400, MSG_UPSTREAM, h);
             }
-            if (body && body.length > maxBodyBytes) return json(413, MSG_LIMIT, c.headers);
+            if (body && body.length > maxBodyBytes) return json(413, MSG_LIMIT, h);
         }
 
         const type = classifyRequest(path, request.method);
@@ -579,7 +602,7 @@ export function createHandler(options = {}) {
                sinon il pourrait dépasser son quota entre deux verrous. */
             if (user && !store.enter('inflight:' + user.id, maxConcurrent)) {
                 log('concurrence', user.id);
-                return json(429, MSG_LIMIT, Object.assign({ 'Retry-After': '5' }, c.headers));
+                return json(429, MSG_LIMIT, Object.assign({ 'Retry-After': '5' }, h));
             }
 
             const globalLimit = toInt(map.quota_global_daily, envGlobal);
@@ -631,7 +654,7 @@ export function createHandler(options = {}) {
 
             if (!allowed) {
                 if (user) store.leave('inflight:' + user.id);
-                const hdrs = Object.assign({ 'x-lsv-quota': 'exhausted', 'x-lsv-quota-scope': exhaustedScope }, c.headers);
+                const hdrs = Object.assign({ 'x-lsv-quota': 'exhausted', 'x-lsv-quota-scope': exhaustedScope }, h);
                 return json(429, MSG_QUOTA, hdrs);
             }
         }
@@ -644,10 +667,10 @@ export function createHandler(options = {}) {
         if (type === 'video' && body) {
             const media = await resolveVideoRefs(body, doFetch);
             if (!media.ok) {
-                log('media-injoignable', media.reason, String(media.detail || ''));
+                log('media-injoignable', reqId, media.reason, String(media.detail || ''));
                 if (consumed && user) await dbRefund(user, type, units);
                 if (user && type && enabled) store.leave('inflight:' + user.id);
-                return json(400, MSG_MEDIA, c.headers);
+                return json(400, MSG_MEDIA, h);
             }
             if (media.converted) body = media.body;
         }
@@ -668,17 +691,17 @@ export function createHandler(options = {}) {
                 body: body || undefined
             });
         } catch (e) {
-            log('amont-reseau', (e && e.message) || 'erreur');
+            log('amont-reseau', reqId, (e && e.message) || 'erreur');
             /* La requête n'a JAMAIS atteint le fournisseur : le quota revient. */
             if (consumed && user) await dbRefund(user, type, units);
             if (user && type && enabled) store.leave('inflight:' + user.id);
-            return json(502, MSG_UPSTREAM, c.headers);
+            return json(502, MSG_UPSTREAM, h);
         }
 
         if (user && type && enabled) store.leave('inflight:' + user.id);
 
         if (res.ok) {
-            const headers = Object.assign({}, c.headers, quotaHeaders(quotaState));
+            const headers = Object.assign({}, h, quotaHeaders(quotaState));
             const ct = res.headers && res.headers.get && res.headers.get('content-type');
             if (ct) headers['Content-Type'] = ct;
             return new Response(res.body, { status: res.status, headers });
@@ -689,13 +712,13 @@ export function createHandler(options = {}) {
            message générique est retourné ; le détail part dans les logs. */
         let snippet = '';
         try { snippet = (await res.text()).slice(0, 300); } catch (e) {}
-        log('amont-status', res.status, path, snippet);
+        log('amont-status', res.status, path, reqId, snippet);
 
         /* Aucune génération n'a été lancée : on rembourse les unités. */
         if (consumed && user) await dbRefund(user, type, units);
 
         const safeStatus = (res.status === 400 || res.status === 429 || res.status === 503) ? res.status : 502;
         const message = res.status === 429 ? MSG_LIMIT : MSG_UPSTREAM;
-        return json(safeStatus, message, c.headers);
+        return json(safeStatus, message, h);
     };
 }

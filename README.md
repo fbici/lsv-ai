@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.15.0
+# LSV.ai — Studio Viral v3.16.0
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -170,7 +170,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0.
+§2.15 = v3.15.0, §2.16 = v3.16.0.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -696,6 +696,73 @@ Vérifié par `tests/gateway.test.mjs` §23 (23 assertions) et
 `tests/public.test.js` §14 (26 assertions : rendu des onglets, état vide de la
 bibliothèque, sélection, dédup, plafond par mode, parcours fichier intact).
 
+### 2.16 Vidéo réparée + diagnostic d'échec traçable — v3.16.0
+
+**L'incident.** Toute génération de vidéo échouait avec
+`HTTP 503 — {"error":{"message":"Impossible de générer le contenu pour le
+moment…"}}`, alors que les images et le chat fonctionnaient.
+
+**La cause.** `MODEL_VIDEO` valait `agnes-video-v2.0`, un modèle **qui n'existe
+plus** chez le fournisseur. Le diagnostic définitif tient en une commande :
+
+```bash
+curl -s https://<ref>.supabase.co/functions/v1/lsv-gateway/v1/models \
+  -H 'origin: https://<vous>.github.io' | python -m json.tool
+```
+
+La liste réelle ne contenait ni `agnes-video-v2.0`, ni aucun `*-v2.*` : les
+modèles vidéo s'appellent `agnes-video-2.5-flash` et `agnes-video-2.5`. Le
+fournisseur répond **503 pour tout modèle inconnu** — d'où un « service
+indisponible » qui ne disait rien de la vraie faute.
+
+| Outil | Modèle | État vérifié |
+|---|---|---|
+| Image | `agnes-image-2.1-flash` | 200 |
+| Chat | `agnes-2.5-flash` | 200 |
+| Vidéo | `agnes-video-2.5-flash` | **corrigé** (`scripts/constants.js`) |
+
+> **Règle** : un nom de modèle n'est jamais deviné. `GET /v1/models` fait foi,
+> et le test de non-régression le verrouille.
+
+**Pourquoi on n'avait rien pu voir.** Le détail réel (statut amont + extrait de
+sa réponse) partait **uniquement** dans les journaux de la fonction Edge, sans
+aucun lien avec ce que le navigateur enregistrait. Quatre correctifs, du plus
+large au plus fin :
+
+1. **`Access-Control-Expose-Headers` manquant** (`core.mjs`). En cross-origin,
+   le navigateur masque tous les en-têtes non listés : les compteurs
+   `x-lsv-quota-*` envoyés par la passerelle étaient donc **invisibles** pour
+   `QuotaService.applyHeaders` — le « il te reste N images » ne se mettait
+   jamais à jour. Corrigé pour `x-lsv-*` et `retry-after`.
+2. **Identifiant de requête** : chaque réponse porte `x-lsv-request-id`, et la
+   même valeur est écrite dans les journaux à côté du **vrai** statut amont et
+   d'un extrait de 300 caractères — `amont-status 503 /v1/videos <id> <extrait>`.
+   Un échec du back-office devient retrouvable ligne à ligne.
+3. **Le client transmet le détail** (`AgnesProvider.fail`) : les messages
+   d'erreur portent maintenant `HTTP <code> [<id>] — <message>`, pour l'image,
+   la vidéo, le chat et l'enhancer. Le texte affiché à l'utilisateur reste
+   strictement générique (`Utils.friendlyError`, §11) — seul le journal
+   d'analyse reçoit le détail.
+4. **Le back-office affiche le détail en entier** (`admin.js`). La signature
+   était tronquée à 70 caractères, ce qui coupait le message exactement là où
+   il devenait intéressant. Colonnes ajoutées **HTTP** (badge) et signature qui
+   se replie ; identifiant de requête isolé dessous ; renvoi explicite vers la
+   ligne `amont-status` des journaux. Surtout : les **503 et 502 sont désormais
+   regroupés séparément** — la normalisation les fusionnait en une signature
+   unique indistincte.
+
+Par ailleurs, un sondage (`poll`) qui échoue ne détruit plus une génération
+déjà acceptée : il est journalisé et retenté à l'itération suivante, et la
+raison d'un échec renvoyée par le fournisseur est conservée dans le message.
+
+Vérifié par `tests/gateway.test.mjs` §24 (21 assertions), `tests/admin.test.js`
+§E2 (8 assertions) et `tests/nonreg.test.js` (verrouillage du modèle).
+
+> **Déploiement** : la passerelle doit être redéployée (`§7.3`) —
+> `npx supabase functions deploy lsv-gateway --no-verify-jwt`. Tant que
+> l'ancienne version tourne, ni l'id de requête ni l'exposition des en-têtes ne
+> existent côté navigateur.
+
 ---
 
 ## 3. Installation locale
@@ -1064,7 +1131,7 @@ try { LSVAnalytics.track('image_generated', {...}); } catch (e) { /* inert */ }
 ```bash
 git init
 git add .
-git commit -m "v3.15.0 : image de référence depuis la bibliothèque"
+git commit -m "v3.16.0 : modele video corrige + diagnostic d echec tracable"
 git branch -M main
 git remote add origin https://github.com/<vous>/lsv-ai.git
 git push -u origin main
@@ -1074,7 +1141,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 876 assertions, 6 suites
+npm test                      # 906 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -1143,7 +1210,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 876 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 906 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (43 assertions, **55 avec `ORIG`**) — non-régression
@@ -1218,7 +1285,7 @@ npm test        # 876 assertions (6 suites, hors ORIG=… voir plus bas)
   `public.test.js` verrouille la structure (pas de `<style>` ni de gros script
   inline, 14 modules présents et ordonnés).
 
-**`tests/gateway.test.mjs`** (146 assertions) — passerelle
+**`tests/gateway.test.mjs`** (168 assertions) — passerelle
 
 - routage (y compris préfixe `/functions/v1/lsv-gateway`), injection de la clé
   serveur, rejet de l'authorization client ;
@@ -1236,9 +1303,15 @@ npm test        # 876 assertions (6 suites, hors ORIG=… voir plus bas)
   vide, échec réseau/HTTP signalé ; `resolveVideoRefs` ne convertit que
   `image` et `last_frame`, JSON illisible sans effet de bord ; dans le handler,
   fichier d'appareil inchangé, `/v1/images/generations` non converti, URL
-  morte → 400 **avant** tout appel au fournisseur et sans fuite de détail.
+  morte → 400 **avant** tout appel au fournisseur et sans fuite de détail ;
+- **identifiant de requête** (§2.16) : `x-lsv-request-id` présent sur chaque
+  réponse, `Access-Control-Expose-Headers` couvrant tous les en-têtes `x-lsv-*`
+  (les compteurs de quota étaient auparavant invisibles du navigateur),
+  identifiant repris dans les journaux `amont-status` / `amont-reseau` avec le
+  vrai statut amont et son extrait, les trois 503 (pas de clé / suspendu /
+  amont) distinguables, et **aucun détail technique dans la réponse**.
 
-**`tests/admin.test.js`** (150 assertions)
+**`tests/admin.test.js`** (158 assertions)
 
 - configuration absente / non authentifié → dashboard inaccessible ;
 - mauvais identifiants → accès refusé ;
@@ -1263,6 +1336,12 @@ npm test        # 876 assertions (6 suites, hors ORIG=… voir plus bas)
   bouton de bascule sur le dashboard **et** sur l'écran de connexion,
   synchronisation des icônes, mémorisation `localStorage`, aucun flash au
   démarrage ;
+- **détail des erreurs lisible** (§2.16) : signature affichée **en entier**
+  (elle était coupée à 70 caractères), colonne **HTTP** avec badge, identifiant
+  de requête isolé sous la signature, renvoi vers la ligne `amont-status` des
+  journaux de la passerelle, 503 et 502 regroupés **séparément** (la
+  normalisation les fusionnait), et le texte complet au survol du fil
+  d'activité ;
 - aucun mot de passe codé en dur, aucune `service_role`.
 
 **`tests/studio.test.js`** (155 assertions) — LSV Studio (`/studio/`, §12)

@@ -337,7 +337,9 @@ function connect(w) {
     }
     const videoRows = parseRows(videoPosts);
     check('vidéo générée (1 segment)', wb.LSV.runtime.videoCount === beforeVideo + 1, wb.LSV.runtime.videoCount);
-    check('modèle vidéo inchangé', wb.LSV.config.MODEL_VIDEO === 'agnes-video-v2.0');
+    check('modèle vidéo = celui listé par le fournisseur (GET /v1/models)',
+        wb.LSV.config.MODEL_VIDEO === 'agnes-video-2.5-flash' &&
+        wb.LSV.config.MODEL_VIDEO.indexOf('-v2') === -1, wb.LSV.config.MODEL_VIDEO);
     check('evt video_generated émis', videoRows.some(r => r.event === 'video_generated'), videoRows.map(r => r.event).join(','));
     const videoRow = videoRows.find(r => r.event === 'video_generated' && r.props && r.props.model === wb.LSV.config.MODEL_VIDEO);
     check('props video sans prompt', !!videoRow && !('prompt' in (videoRow.props || {})) && videoRow.props.segments === 1, videoRow ? JSON.stringify(videoRow.props) : 'absent');
