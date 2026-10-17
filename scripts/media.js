@@ -1,21 +1,27 @@
 const AgnesProvider = {
-    /* Identifiant posé par la passerelle (en-tête `x-lsv-request-id`). Il relie
-       une erreur du back-office à la LIGNE DE JOURNAL de la fonction Edge, où
-       figurent le vrai statut amont et un extrait de sa réponse. */
-    reqId(res) {
+    /* En-tête posé par la passerelle. Ils relient une erreur du back-office à
+       la LIGNE DE JOURNAL de la fonction Edge, où figurent le vrai statut amont
+       et un extrait de sa réponse. */
+    header(res, name) {
         try {
-            return (res && res.headers && res.headers.get && res.headers.get('x-lsv-request-id')) || '';
+            return (res && res.headers && res.headers.get && res.headers.get(name)) || '';
         } catch (e) { return ''; }
     },
+    reqId(res) { return this.header(res, 'x-lsv-request-id'); },
     /* Erreur levée sur une réponse non-2xx. Le message est destiné au journal
        d'analyse (où l'admin le lit en entier), JAMAIS à l'utilisateur, qui
-       reçoit un texte générique via Utils.friendlyError. L'id est placé juste
-       après le code HTTP pour rester visible même si le texte est tronqué. */
+       reçoit un texte générique via Utils.friendlyError.
+       `x-lsv-upstream-code` / `x-lsv-upstream-param` sont deux champs
+       STRUCTURÉS que la passerelle extrait du refus de validation : ils disent
+       quel réglage est fausse sans rien exposer du fournisseur. */
     async fail(res) {
         let body = '';
         try { body = await res.text(); } catch (e) {}
         const id = this.reqId(res);
-        return new Error('HTTP ' + res.status + (id ? ' [' + id + ']' : '') + ' — ' + body.slice(0, 200));
+        const code = this.header(res, 'x-lsv-upstream-code');
+        const param = this.header(res, 'x-lsv-upstream-param');
+        const why = code ? ' (' + code + (param ? ':' + param : '') + ')' : '';
+        return new Error('HTTP ' + res.status + (id ? ' [' + id + ']' : '') + why + ' — ' + body.slice(0, 200));
     },
     async fetch(url, options = {}, label = 'API') {
         // Création réservée aux comptes connectés (image, vidéo, enhancer, batch…)
@@ -159,7 +165,12 @@ const ImageService = {
 
 const VideoService = {
     async createTask(firstFrame, lastFrame, prompt, frames) {
-        const body = { model: CONFIG.MODEL_VIDEO, prompt, num_frames: frames, frame_rate: CONFIG.FRAME_RATE };
+        /* Le fournisseur refuse `num_frames` et `frame_rate` (« forbidden
+           field ») : la durée ne se règle pas par là. On n'envoie que le
+           nécessaire et on laisse la passerelle remonter le champ manquant
+           via `x-lsv-upstream-param`. `frames` ne sert plus qu'à estimer le
+           temps d'attente du sondage. */
+        const body = { model: CONFIG.MODEL_VIDEO, prompt };
         if (firstFrame && lastFrame) { body.image = firstFrame; body.last_frame = lastFrame; }
         else if (firstFrame) { body.image = firstFrame; }
         const res = await AgnesProvider.fetch(

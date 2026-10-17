@@ -873,6 +873,80 @@ async function run() {
     check('panne réseau : aucune fuite technique dans la réponse',
         !/ECONNREFUSED/.test(JSON.stringify(netBody)), JSON.stringify(netBody));
 
+    console.log('\n=== 25. REFUS DE VALIDATION : CODE ET PARAMÈTRE SEULS ===');
+    /* Un fournisseur qui répond « num_frames is a forbidden field » donne tout
+       ce qu'il faut pour corriger — mais son texte ne doit PAS partir tel quel
+   au client. On extrait deux champs structurés, filtrés caractère par
+       caractère, et rien d'autre. */
+    const valLogs = [];
+    const mkVal = (status, upstreamBody) => createHandler({
+        env: env24, store: createMemoryStore(), now: () => t24,
+        log: (...a) => valLogs.push(a.join(' ')),
+        fetchImpl: async () => new Response(upstreamBody, {
+            status, headers: { 'content-type': 'application/json' }
+        })
+    });
+    const vidPost = body => makeReq(GW + '/v1/videos', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'origin': 'https://fbici.github.io' },
+        body: JSON.stringify(body)
+    });
+
+    const FORBIDDEN = JSON.stringify({
+        code: 'invalid_request',
+        message: 'num_frames is a forbidden field (request id: 20261017213901273902164VDlQFDZL)',
+        data: { param: 'num_frames' }
+    });
+    const v400 = await mkVal(400, FORBIDDEN)(vidPost({ model: 'agnes-video-2.5-flash', prompt: 'un film', num_frames: 121 }));
+    const bV400 = await v400.json();
+    check('400 amont → code remonté', v400.headers.get('x-lsv-upstream-code') === 'invalid_request',
+        v400.headers.get('x-lsv-upstream-code'));
+    check('400 amont → paramètre refusé remonté', v400.headers.get('x-lsv-upstream-param') === 'num_frames',
+        v400.headers.get('x-lsv-upstream-param'));
+    check('les deux en-têtes sont exposés au navigateur',
+        String(v400.headers.get('access-control-expose-headers') || '').indexOf('x-lsv-upstream-code') !== -1 &&
+        String(v400.headers.get('access-control-expose-headers') || '').indexOf('x-lsv-upstream-param') !== -1);
+    check('le message utilisateur reste générique',
+        bV400.error.message === 'Impossible de générer le contenu pour le moment. Veuillez réessayer dans quelques instants.',
+        bV400.error.message);
+    check('aucun texte libre du fournisseur dans la réponse',
+        !/forbidden|request id|20261017|VDlQFDZL/.test(JSON.stringify(bV400)), JSON.stringify(bV400));
+    check('l\'identifiant de requête reste présent', /^[a-z0-9-]{6,}$/.test(v400.headers.get('x-lsv-request-id') || ''));
+
+    /* Filtrage : ni chemins, ni espaces, ni majuscules parasites. */
+    const UGLY = JSON.stringify({
+        code: 'Bad Request/../etc', message: 'x',
+        data: { param: 'a b:c/d"e' }
+    });
+    const vUgly = await mkVal(400, UGLY)(vidPost({ model: 'm', prompt: 'p' }));
+    check('code assaini (lettres, chiffres, - et _ seuls)',
+        vUgly.headers.get('x-lsv-upstream-code') === 'BadRequestetc', vUgly.headers.get('x-lsv-upstream-code'));
+    check('paramètre assaini', vUgly.headers.get('x-lsv-upstream-param') === 'abcde',
+        vUgly.headers.get('x-lsv-upstream-param'));
+
+    /* Corps non JSON → aucun en-tête inventé. */
+    const vPlain = await mkVal(400, 'Bad Request — something went wrong')(vidPost({ model: 'm', prompt: 'p' }));
+    check('400 non-JSON → aucun code ni paramètre',
+        !vPlain.headers.get('x-lsv-upstream-code') && !vPlain.headers.get('x-lsv-upstream-param'));
+
+    /* Réservé au 400 : un 503 avec un code ne divulgue rien. */
+    const v503 = await mkVal(503, FORBIDDEN)(vidPost({ model: 'm', prompt: 'p' }));
+    check('503 → aucun code ni paramètre (réservé à la validation)',
+        !v503.headers.get('x-lsv-upstream-code') && !v503.headers.get('x-lsv-upstream-param'));
+    const b503v = await v503.json();
+    check('503 → message inchangé', /Impossible de générer/.test(b503v.error.message));
+
+    /* 401/402 : pareil, jamais de détail. */
+    const v401 = await mkVal(401, FORBIDDEN)(vidPost({ model: 'm', prompt: 'p' }));
+    check('401 → aucun code ni paramètre',
+        !v401.headers.get('x-lsv-upstream-code') && !v401.headers.get('x-lsv-upstream-param'));
+    check('401 sanitisé en 502', v401.status === 502, v401.status);
+
+    /* Tableau en tête de corps : pas de crash, pas d'en-tête. */
+    const vArr = await mkVal(400, '[{"code":"invalid_request"}]')(vidPost({ model: 'm', prompt: 'p' }));
+    check('corps table → aucun en-tête, aucun crash',
+        vArr.status === 400 && !vArr.headers.get('x-lsv-upstream-code'));
+
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');
     console.log((results.length - failed.length) + '/' + results.length + ' tests gateway OK');

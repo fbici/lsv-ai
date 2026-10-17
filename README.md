@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.16.0
+# LSV.ai — Studio Viral v3.16.1
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -170,7 +170,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0.
+§2.15 = v3.15.0, §2.16 = v3.16.0/1.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -696,7 +696,7 @@ Vérifié par `tests/gateway.test.mjs` §23 (23 assertions) et
 `tests/public.test.js` §14 (26 assertions : rendu des onglets, état vide de la
 bibliothèque, sélection, dédup, plafond par mode, parcours fichier intact).
 
-### 2.16 Vidéo réparée + diagnostic d'échec traçable — v3.16.0
+### 2.16 Vidéo réparée + diagnostic d'échec traçable — v3.16.0 / v3.16.1
 
 **L'incident.** Toute génération de vidéo échouait avec
 `HTTP 503 — {"error":{"message":"Impossible de générer le contenu pour le
@@ -758,10 +758,45 @@ raison d'un échec renvoyée par le fournisseur est conservée dans le message.
 Vérifié par `tests/gateway.test.mjs` §24 (21 assertions), `tests/admin.test.js`
 §E2 (8 assertions) et `tests/nonreg.test.js` (verrouillage du modèle).
 
+**Deuxième cause : `num_frames` est un champ interdit.** Le 503 parti, le
+fournisseur a répondu `400` — et le journal a livré la phrase exacte :
+
+```json
+{"code":"invalid_request",
+ "message":"num_frames is a forbidden field (request id: 2026…4VDlQFDZL)",
+ "data":{"param":"num_frames"}}
+```
+
+`VideoService.createTask` envoyait `{model, prompt, num_frames, frame_rate}`.
+Les deux derniers champs sont **interdits** par l'API vidéo : la durée ne se
+régle pas en nombre d'images. Ils ont été retirés. Aucune estimation de durée
+n'est envoyée pour l'instant — `frames` ne sert plus qu'à caler le temps du
+sondage.
+
+**La passerelle est maintenant auto-diagnostiquante.** Renvoyer un simple
+« Impossible de générer » rendait chaque integration cassée indiagnostiquable :
+il fallait ouvrir les journaux à la main, à chaque erreur. Sur un **400
+uniquement**, la passerelle extrait deux champs **structurés** du refus et les
+renvoie en en-têtes, exposés au navigateur :
+
+| En-tête | Contenu | Exemple |
+|---|---|---|
+| `x-lsv-upstream-code` | `code`, filtré `[A-Za-z0-9_-]`, 40 max | `invalid_request` |
+| `x-lsv-upstream-param` | `data.param`, filtré `[A-Za-z0-9_.-]`, 60 max | `num_frames` |
+
+Le message affiché à l'utilisateur reste strictement générique ; seul le
+journal d'analyse reçoit `HTTP 400 [<id>] (invalid_request:num_frames) — …`.
+Rien n'est dévoilé sur un 503, un 401 ni un 429 : les en-têtes sont réservés
+à la validation, et le corps amont n'est jamais transmis.
+
+Vérifié par `tests/gateway.test.mjs` §25 (14 assertions) : remontée du code et
+du paramètre, filtrage, absence sur un corps non JSON, sur un tableau, sur un
+503 et sur un 401, et **aucun texte libre du fournisseur dans la réponse**.
+
 > **Déploiement** : la passerelle doit être redéployée (`§7.3`) —
 > `npx supabase functions deploy lsv-gateway --no-verify-jwt`. Tant que
-> l'ancienne version tourne, ni l'id de requête ni l'exposition des en-têtes ne
-> existent côté navigateur.
+> l'ancienne version tourne, ni l'id de requête, ni l'exposition des en-têtes,
+> ni le remontage du paramètre refusé n'existent côté navigateur.
 
 ---
 
@@ -1131,7 +1166,7 @@ try { LSVAnalytics.track('image_generated', {...}); } catch (e) { /* inert */ }
 ```bash
 git init
 git add .
-git commit -m "v3.16.0 : modele video corrige + diagnostic d echec tracable"
+git commit -m "v3.16.1 : corps video corrige (num_frames interdit) + code/parametre remontes"
 git branch -M main
 git remote add origin https://github.com/<vous>/lsv-ai.git
 git push -u origin main
@@ -1141,7 +1176,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 906 assertions, 6 suites
+npm test                      # 920 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -1210,7 +1245,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 906 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 920 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (43 assertions, **55 avec `ORIG`**) — non-régression
@@ -1285,7 +1320,7 @@ npm test        # 906 assertions (6 suites, hors ORIG=… voir plus bas)
   `public.test.js` verrouille la structure (pas de `<style>` ni de gros script
   inline, 14 modules présents et ordonnés).
 
-**`tests/gateway.test.mjs`** (168 assertions) — passerelle
+**`tests/gateway.test.mjs`** (182 assertions) — passerelle
 
 - routage (y compris préfixe `/functions/v1/lsv-gateway`), injection de la clé
   serveur, rejet de l'authorization client ;

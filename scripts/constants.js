@@ -17,7 +17,6 @@ const CONFIG = Object.freeze({
        renommer sans la vérifier. */
     MODEL_VIDEO: 'agnes-video-2.5-flash',
     MODEL_CHAT: 'agnes-2.5-flash',
-    FRAME_RATE: 24,
     MAX_IMAGE_DIMENSION: 4096,
     MAX_IMAGE_SIZE: 12 * 1024 * 1024,
     VIDEO_INTERVAL_MIN: 62000,

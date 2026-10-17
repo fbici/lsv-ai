@@ -475,7 +475,8 @@ export function createHandler(options = {}) {
            envoyés. */
         if (allowed) {
             headers['Access-Control-Expose-Headers'] =
-                'x-lsv-request-id, x-lsv-quota, x-lsv-quota-scope, ' +
+                'x-lsv-request-id, x-lsv-upstream-code, x-lsv-upstream-param, ' +
+                'x-lsv-quota, x-lsv-quota-scope, ' +
                 'x-lsv-quota-image, x-lsv-quota-video, x-lsv-quota-chat, ' +
                 'x-lsv-quota-motion, x-lsv-quota-global, retry-after';
         }
@@ -711,8 +712,28 @@ export function createHandler(options = {}) {
            contenir endpoint, modèles, détails d'authentification). Seul un
            message générique est retourné ; le détail part dans les logs. */
         let snippet = '';
-        try { snippet = (await res.text()).slice(0, 300); } catch (e) {}
+        let upstream = null;
+        try {
+            const raw = await res.text();
+            snippet = raw.slice(0, 300);
+            try { upstream = JSON.parse(raw); } catch (e) { upstream = null; }
+        } catch (e) {}
         log('amont-status', res.status, path, reqId, snippet);
+
+        /* ── Refus de validation : deux champs STRUCTURÉS, jamais de texte ─
+           Quand le fournisseur rejette un paramètre (« num_frames is a
+           forbidden field »), renvoyer uniquement « Impossible de générer »
+           rend l'intégration indiagnostiquable : il faut ouvrir les journaux à
+           la main pour chaque erreur. On extrait donc UNIQUEMENT `code` et
+           `data.param`, filtrés caractère par caractère — pas d'URL, pas de
+           modèle, pas d'identifiant, pas de texte libre du fournisseur. */
+        if (res.status === 400 && upstream && typeof upstream === 'object' && !Array.isArray(upstream)) {
+            const code = String(upstream.code || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+            const param = String((upstream.data && upstream.data.param) || upstream.param || '')
+                .replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 60);
+            if (code) h['x-lsv-upstream-code'] = code;
+            if (param) h['x-lsv-upstream-param'] = param;
+        }
 
         /* Aucune génération n'a été lancée : on rembourse les unités. */
         if (consumed && user) await dbRefund(user, type, units);
