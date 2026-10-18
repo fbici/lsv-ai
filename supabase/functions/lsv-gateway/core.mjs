@@ -758,21 +758,27 @@ export function createHandler(options = {}) {
         } catch (e) {}
         log('amont-status', res.status, path, reqId, snippet);
 
-        /* ── Refus de validation : des champs STRUCTURÉS, jamais de texte ──
-           Quand le fournisseur rejette un paramètre (« num_frames is a
-           forbidden field »), renvoyer uniquement « Impossible de générer »
-           rend l'intégration indiagnostiquable : il faut ouvrir les journaux à
-           la main, à chaque erreur. On extrait donc UNIQUEMENT :
-             - `code` et `data.param`  — quel réglage est fausse ;
-             - `reason` et `allowed`   — en quoi, et quoi mettre à la place ;
-           tout filtré caractère par caractère. Pas d'URL, pas de modèle, pas
-   d'identifiant, pas de phrase du fournisseur. */
-        if (res.status === 400 && upstream && typeof upstream === 'object' && !Array.isArray(upstream)) {
+        /* ── Erreur amont : des champs STRUCTURÉS, jamais de texte ─────────
+           Renvoyer uniquement « Impossible de générer » rend l'intégration
+           indiagnostiquable : il faut ouvrir les journaux à la main, à chaque
+           erreur. On extrait donc UNIQUEMENT :
+             - `code` — sur 400, 429 et 503 : un JETON qui distingue une
+               saturation (« video_queue_full ») d'un modèle sans canal
+               (« model_not_found ») d'un autre incident. C'est ce qui sépare
+               « on ne peut rien faire » de « il y a un bug chez nous » ;
+             - `param`, `reason`, `allowed` — sur 400 seuls : le réglage fautif,
+               la nature du refus, les valeurs admises.
+           Tout est filtré caractère par caractère, borné en longueur. Pas
+           d'URL, pas de modèle, pas d'identifiant, pas de phrase. */
+        const isObj = upstream && typeof upstream === 'object' && !Array.isArray(upstream);
+        if (isObj && (res.status === 400 || res.status === 429 || res.status === 503)) {
             const code = String(upstream.code || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+            if (code) h['x-lsv-upstream-code'] = code;
+        }
+        if (res.status === 400 && isObj) {
             const param = String((upstream.data && upstream.data.param) || upstream.param || '')
                 .replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 60);
             const v = classifyValidation(upstream.message, param);
-            if (code) h['x-lsv-upstream-code'] = code;
             if (param) h['x-lsv-upstream-param'] = param;
             if (v.reason) h['x-lsv-upstream-reason'] = v.reason;
             if (v.allowed) h['x-lsv-upstream-allowed'] = v.allowed;

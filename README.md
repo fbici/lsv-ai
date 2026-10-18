@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.16.4
+# LSV.ai — Studio Viral v3.16.5
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -170,7 +170,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.4.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -698,7 +698,7 @@ Vérifié par `tests/gateway.test.mjs` §23 (23 assertions) et
 `tests/public.test.js` §14 (26 assertions : rendu des onglets, état vide de la
 bibliothèque, sélection, dédup, plafond par mode, parcours fichier intact).
 
-### 2.16 Vidéo réparée + diagnostic d'échec traçable — v3.16.0 à v3.16.4
+### 2.16 Vidéo réparée + diagnostic d'échec traçable — v3.16.0 à v3.16.5
 
 **L'incident.** Toute génération de vidéo échouait avec
 `HTTP 503 — {"error":{"message":"Impossible de générer le contenu pour le
@@ -822,12 +822,21 @@ Valeurs refusées en `mode` : `t2v`, `i2v`, `image`, `img`, `img2vid`,
 `source_image`, `text-to-video`, `image-to-video`, `text2video`,
 `text_to_video`, `openai`. Champs interdits : `num_frames`, `frame_rate`, `n`.
 
-> **Reste ouvert.** Une fois la forme du corps exacte, la validation passe —
-> plus aucun `x-lsv-upstream-param` — mais le fournisseur répond alors **503**
-> au moment de lancer la génération, et ce quel que soit le modèle vidéo et le
-> mode. Ce n'est plus une erreur de payload : c'est le service de génération,
-> l'accès du compte ou son crédit. À trancher avec la ligne `amont-status 503`
-> correspondante dans les journaux.
+> **Résolution.** Une fois la forme exacte obtenue, la validation passe — plus
+> aucun `x-lsv-upstream-param` — et le 503 restant s'est révélé n'être **pas**
+> un défaut de payload :
+>
+> ```json
+> {"code":"video_queue_full",
+>  "message":"video queue is full, please retry later (request id: 2026…m)"}
+> ```
+>
+> Le contrat est donc correct et l'application envoie désormais le bon corps ;
+> ce qui reste tient à la **capacité du fournisseur**, pas au code. (La même
+> réponse de 503, vue avec un modèle retiré du catalogue, porte `model_not_found`
+> — « no available channel for model … » : deux causes très différentes sous un
+> même statut.) Le code amont est désormais remonté aussi sur le **503**, ce
+> qui rend la distinction lisible dans le back-office sans ouvrir les journaux.
 
 > **Piège relevé au passage** : l'événement d'analytique `video_generated`
 > transporte une propriété `mode: "text-to-video"` depuis l'origine du projet.
@@ -840,16 +849,22 @@ sans aucun média, `mode` `keyframe` avec `first_frame` / `last_frame`, et
 
 **La passerelle est maintenant auto-diagnostiquante.** Renvoyer un simple
 « Impossible de générer » rendait chaque integration cassée indiagnostiquable :
-il fallait ouvrir les journaux à la main, à chaque erreur. Sur un **400
-uniquement**, la passerelle extrait quatre informations **structurées** du refus
-et les renvoie en en-têtes, exposés au navigateur :
+il fallait ouvrir les journaux à la main, à chaque erreur. La passerelle extrait
+donc quelques informations **structurées** du corps amont et les renvoie en
+en-têtes, exposés au navigateur :
 
-| En-tête | Contenu | Exemple |
-|---|---|---|
-| `x-lsv-upstream-code` | `code`, filtré `[A-Za-z0-9_-]`, 40 max | `invalid_request` |
-| `x-lsv-upstream-param` | `data.param`, filtré `[A-Za-z0-9_.-]`, 60 max | `num_frames` |
-| `x-lsv-upstream-reason` | nature du refus, énuméré fermé | `forbidden` |
-| `x-lsv-upstream-allowed` | valeurs admises, 8 × 16 max | `720x1280,1080x1920` |
+| En-tête | Quand | Contenu | Exemple |
+|---|---|---|---|
+| `x-lsv-upstream-code` | 400, 429, **503** | `code`, filtré `[A-Za-z0-9_-]`, 40 max | `video_queue_full` |
+| `x-lsv-upstream-param` | 400 | `data.param`, filtré `[A-Za-z0-9_.-]`, 60 max | `num_frames` |
+| `x-lsv-upstream-reason` | 400 | nature du refus, énuméré fermé | `forbidden` |
+| `x-lsv-upstream-allowed` | 400 | valeurs admises, 8 × 16 max | `720x1280,1080x1920` |
+
+Le **`code` seul** circule aussi sur un 503 parce que c'est lui qui distingue
+deux causes totalement différentes sous un même statut : `video_queue_full`
+(« attendez, la file est pleine ») et `model_not_found` (« ce modèle n'a aucun
+canal ») appellent des réactions opposées. C'est un unique jeton filtré —
+pas de modèle, pas de message, pas d'identifiant.
 
 `reason` et `allowed` sortent de `classifyValidation` (`core.mjs`) : un
 **énuméré fermé** (`forbidden` / `required` / `invalid`) et, **uniquement si le
@@ -860,17 +875,17 @@ message : pas de liste inventée. Aucune phrase n'est jamais reprise telle quell
 
 Le message affiché à l'utilisateur reste strictement générique ; seul le
 journal d'analyse reçoit
-`HTTP 400 [<id>] (invalid_request · num_frames · forbidden) — …`, soit les
-trois questions qu'il faut : quel réglage, en quoi, quoi mettre à la place.
-Rien n'est dévoilé sur un 503, un 401 ni un 429 : les en-têtes sont réservés à
-la validation, et le corps amont n'est jamais transmis.
+`HTTP 400 [<id>] (invalid_request · num_frames · forbidden) — …` ou
+`HTTP 503 [<id>] (video_queue_full) — …`. Le corps amont n'est jamais transmis,
+ni aucun détail de modèle, d'identifiant ou de phrase.
 
-Vérifié par `tests/gateway.test.mjs` §25 (33 assertions) : remontée des quatre
+Vérifié par `tests/gateway.test.mjs` §25 (38 assertions) : remontée des quatre
 champs, filtrage, exclusion du nom du champ, absence de liste inventée, plafond
-de 8 valeurs, absence sur un corps non JSON, sur un tableau, sur un 503 et sur
-un 401, et **aucun texte libre du fournisseur dans la réponse**.
+de 8 valeurs, `code` sur 503 avec et sans corps exploitable, absence sur un
+corps non JSON, sur un tableau et sur un 401, et **aucun texte libre du
+fournisseur dans la réponse**.
 
-> **Déploiement** : les v3.16.0 à v3.16.4 touchent `core.mjs` et doivent être
+> **Déploiement** : les v3.16.0 à v3.16.5 touchent `core.mjs` et doivent être
 > redéployées (`§7.3`) —
 > `npx supabase functions deploy lsv-gateway --no-verify-jwt`. Tant que
 > l'ancienne version tourne, ni l'id de requête, ni l'exposition des en-têtes,
@@ -1245,7 +1260,7 @@ try { LSVAnalytics.track('image_generated', {...}); } catch (e) { /* inert */ }
 ```bash
 git init
 git add .
-git commit -m "v3.16.4 : mode keyframe + champ first_frame (l ancien champ image n existe pas)"
+git commit -m "v3.16.5 : code amont remonte aussi sur le 503 (file pleine vs modele sans canal)"
 git branch -M main
 git remote add origin https://github.com/<vous>/lsv-ai.git
 git push -u origin main
@@ -1255,7 +1270,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 951 assertions, 6 suites
+npm test                      # 956 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -1324,7 +1339,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 951 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 956 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (54 assertions, **66 avec `ORIG`**) — non-régression
@@ -1399,7 +1414,7 @@ npm test        # 951 assertions (6 suites, hors ORIG=… voir plus bas)
   `public.test.js` verrouille la structure (pas de `<style>` ni de gros script
   inline, 14 modules présents et ordonnés).
 
-**`tests/gateway.test.mjs`** (202 assertions) — passerelle
+**`tests/gateway.test.mjs`** (207 assertions) — passerelle
 
 - routage (y compris préfixe `/functions/v1/lsv-gateway`), injection de la clé
   serveur, rejet de l'authorization client ;

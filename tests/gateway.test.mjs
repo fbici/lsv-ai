@@ -936,12 +936,39 @@ async function run() {
     check('400 non-JSON → aucun code ni paramètre',
         !vPlain.headers.get('x-lsv-upstream-code') && !vPlain.headers.get('x-lsv-upstream-param'));
 
-    /* Réservé au 400 : un 503 avec un code ne divulgue rien. */
+    /* 503 : on expose le SEUL `code` — c'est ce qui distingue une saturation
+       d'un modèle sans canal. Jamais `param` / `reason` / `allowed`, réservés
+       à la validation, ni aucun message. */
+    const QUEUE = JSON.stringify({
+        code: 'video_queue_full',
+        message: 'video queue is full, please retry later (request id: 20261018213958686488540EMmuogDm)',
+        data: null
+    });
+    const vQueue = await mkVal(503, QUEUE)(vidPost({ model: 'm', prompt: 'p' }));
+    check('503 → `code` remonté (saturité visible sans journal)',
+        vQueue.headers.get('x-lsv-upstream-code') === 'video_queue_full',
+        vQueue.headers.get('x-lsv-upstream-code'));
+    check('503 → aucun paramètre ni valeurs (réservés à la validation)',
+        !vQueue.headers.get('x-lsv-upstream-param') &&
+        !vQueue.headers.get('x-lsv-upstream-reason') &&
+        !vQueue.headers.get('x-lsv-upstream-allowed'));
+    const bQueue = await vQueue.json();
+    check('503 → message utilisateur inchangé',
+        bQueue.error.message === 'Impossible de générer le contenu pour le moment. Veuillez réessayer dans quelques instants.',
+        bQueue.error.message);
+    check('503 → aucune phrase du fournisseur dans la réponse',
+        !/queue|retry later|EMmuogDm|model_not_found/.test(JSON.stringify(bQueue)), JSON.stringify(bQueue));
+
     const v503 = await mkVal(503, FORBIDDEN)(vidPost({ model: 'm', prompt: 'p' }));
-    check('503 → aucun code ni paramètre (réservé à la validation)',
-        !v503.headers.get('x-lsv-upstream-code') && !v503.headers.get('x-lsv-upstream-param'));
+    check('503 portant un code de validation → le `code` seul passe, jamais le détail',
+        v503.headers.get('x-lsv-upstream-code') === 'invalid_request' &&
+        !v503.headers.get('x-lsv-upstream-param'));
     const b503v = await v503.json();
     check('503 → message inchangé', /Impossible de générer/.test(b503v.error.message));
+
+    const v503plain = await mkVal(503, 'Upstream unavailable')(vidPost({ model: 'm', prompt: 'p' }));
+    check('503 sans `code` → aucun en-tête inventé',
+        !v503plain.headers.get('x-lsv-upstream-code'));
 
     /* 401/402 : pareil, jamais de détail. */
     const v401 = await mkVal(401, FORBIDDEN)(vidPost({ model: 'm', prompt: 'p' }));
