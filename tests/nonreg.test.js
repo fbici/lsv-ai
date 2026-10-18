@@ -353,13 +353,49 @@ function connect(w) {
        la génération échoue silencieusement côté utilisateur. Verrouillé ici. */
     const vBody = videoCreate.length ? JSON.parse(videoCreate[0]) : {};
     check('corps de création vidéo capturé', videoCreate.length === 1, videoCreate.length + ' création(s)');
-    check('champ `mode` présent et correct (obligatoire côté fournisseur)',
+    check('mode `text` sans image de départ (obligatoire côté fournisseur)',
         vBody.mode === 'text', vBody.mode);
-    check('aucun champ interdit (num_frames / frame_rate)',
-        !('num_frames' in vBody) && !('frame_rate' in vBody), Object.keys(vBody).join(','));
+    check('mode `text` : AUCUN champ média (refusé « text mode cannot include media fields »)',
+        !('first_frame' in vBody) && !('last_frame' in vBody) && !('image' in vBody),
+        Object.keys(vBody).join(','));
+    check('aucun champ interdit (num_frames / frame_rate / n)',
+        !('num_frames' in vBody) && !('frame_rate' in vBody) && !('n' in vBody),
+        Object.keys(vBody).join(','));
     check('champs requis présents', !!vBody.model && typeof vBody.prompt === 'string',
         Object.keys(vBody).join(','));
-    check('CONFIG.VIDEO_MODE verrouillée', wb.LSV.config.VIDEO_MODE === 'text', wb.LSV.config.VIDEO_MODE);
+    check('CONFIG.VIDEO_MODE_TEXT verrouillée', wb.LSV.config.VIDEO_MODE_TEXT === 'text',
+        wb.LSV.config.VIDEO_MODE_TEXT);
+    check('CONFIG.VIDEO_MODE_KEYFRAME verrouillée', wb.LSV.config.VIDEO_MODE_KEYFRAME === 'keyframe',
+        wb.LSV.config.VIDEO_MODE_KEYFRAME);
+
+    /* Corps avec images : le fournisseur attend `first_frame` / `last_frame`,
+       et impose `mode: 'keyframe'` — le champ `image` n'existe pas. */
+    const keyBodies = [];
+    const savedFetch = wb.fetch;
+    wb.fetch = function (url, options) {
+        const u = String(url);
+        if (u.includes('agnesapi')) {
+            return Promise.resolve({ ok: true, status: 200, json: async () => ({ status: 'completed', progress: 100, metadata: { url: 'https://cdn.test/k.mp4' } }), text: async () => '' });
+        }
+        if (options && options.body && u.includes('/videos')) {
+            keyBodies.push(String(options.body));
+            return Promise.resolve({ ok: true, status: 200, json: async () => ({ video_id: 'vid_kf' }), text: async () => '' });
+        }
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'err' });
+    };
+    await wb.LSV.services.video.createTask('data:image/png;base64,AAA', 'data:image/png;base64,BBB', 'un film', 121);
+    await wb.LSV.services.video.createTask(null, 'data:image/png;base64,CCC', 'un film', 121);
+    wb.fetch = savedFetch;
+    const kfBoth = keyBodies[0] ? JSON.parse(keyBodies[0]) : {};
+    const kfLast = keyBodies[1] ? JSON.parse(keyBodies[1]) : {};
+    check('image de départ → mode `keyframe`', kfBoth.mode === 'keyframe', kfBoth.mode);
+    check('image portée par `first_frame` (le champ `image` n’existe pas)',
+        kfBoth.first_frame === 'data:image/png;base64,AAA' && !('image' in kfBoth),
+        Object.keys(kfBoth).join(','));
+    check('image d’arrivée portée par `last_frame`', kfBoth.last_frame === 'data:image/png;base64,BBB');
+    check('une seule image d’arrivée → mode `text`, aucun média envoyé',
+        kfLast.mode === 'text' && !('first_frame' in kfLast) && !('last_frame' in kfLast),
+        Object.keys(kfLast).join(','));
 
     console.log('\n=== 10. CHAT IA (succès + hook Analytics) ===');
     const chatPosts = [];

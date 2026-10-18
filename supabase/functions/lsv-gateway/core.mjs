@@ -92,7 +92,11 @@ export async function resolveVideoRefs(bodyText, fetchImpl) {
         return { ok: true, body: bodyText, converted: false };
     }
 
-    const fields = ['image', 'last_frame'];
+    /* Champs média reconnus par l'API vidéo : `first_frame` (image de départ,
+       obligatoire en mode `keyframe`) et `last_frame` (image d'arrivée,
+       facultative). Le champ `image` n'existe PAS côté fournisseur — l'envoyer
+       dans ce nom est refusé, et `mode: 'text'` refuse tout média. */
+    const fields = ['first_frame', 'last_frame'];
     let touched = false;
     for (const key of fields) {
         if (typeof payload[key] !== 'string') continue;
@@ -121,10 +125,10 @@ export function newRequestId() {
     non ambiguës, sans jamais faire transiter de texte libre :
     - `reason` — un énuméré fermé (`forbidden` / `required` / `invalid`) ;
     - `allowed` — la liste de valeurs admises, UNIQUEMENT si le message
-      l'énonce explicitement (« must be one of ["t2v","i2v"] »), filtrée
-      caractère par caractère, 8 valeurs de 16 caractères maximum, et à
-      l'exclusion du nom du champ lui-même (« "mode" must be one of … » :
-      `mode` est le paramètre, pas une valeur).
+      l'énonce explicitement (« must be one of ["720x1280","1080x1920"] »),
+      filtrée caractère par caractère, 8 valeurs de 16 caractères maximum, et à
+      l'exclusion du nom du champ lui-même (« "size" must be one of … » :
+      `size` est le paramètre, pas une valeur).
     Ensemble, `param` + `reason` + `allowed` répondent aux trois questions qui
     comptent : quel réglage est fausse, en quoi, et quoi mettre à la place. */
 export function classifyValidation(message, param) {

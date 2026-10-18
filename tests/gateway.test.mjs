@@ -675,18 +675,21 @@ async function run() {
 
     imgCalls = [];
     const rBoth = await resolveVideoRefs(JSON.stringify({
-        model: 'agnes-video-2.5-flash', prompt: 'un film',
-        image: 'https://cdn.test/debut.png', last_frame: 'https://cdn.test/fin.png',
-        num_frames: 12, frame_rate: 24
+        model: 'agnes-video-2.5-flash', mode: 'keyframe', prompt: 'un film',
+        first_frame: 'https://cdn.test/debut.png', last_frame: 'https://cdn.test/fin.png'
     }), imgFetch);
     const parsed = JSON.parse(rBoth.body);
-    check('image ET last_frame convertis', rBoth.converted === true && /^data:image\/png/.test(parsed.image) && /^data:image\/png/.test(parsed.last_frame));
-    check('les autres champs sont préservés', parsed.prompt === 'un film' && parsed.num_frames === 12 && parsed.frame_rate === 24 && parsed.model === 'agnes-video-2.5-flash');
+    check('first_frame ET last_frame convertis', rBoth.converted === true && /^data:image\/png/.test(parsed.first_frame) && /^data:image\/png/.test(parsed.last_frame));
+    check('les autres champs sont préservés', parsed.prompt === 'un film' && parsed.mode === 'keyframe' && parsed.model === 'agnes-video-2.5-flash');
     check('deux téléchargements', imgCalls.length === 2, imgCalls.length);
 
-    const rFailField = await resolveVideoRefs(JSON.stringify({ image: 'data:image/jpeg;base64,AAA', last_frame: 'https://cdn.test/mort.png' }),
+    const rFailField = await resolveVideoRefs(JSON.stringify({ first_frame: 'data:image/jpeg;base64,AAA', last_frame: 'https://cdn.test/mort.png' }),
         () => Promise.reject(new Error('boom')));
     check('un champ en échec fait échouer la requête', rFailField.ok === false && rFailField.reason === 'network');
+
+    const rLegacy = await resolveVideoRefs(JSON.stringify({ image: 'https://cdn.test/legacy.png' }), imgFetch);
+    check('l’ancien champ `image` n’est plus converti (inexistant côté fournisseur)',
+        rLegacy.converted === false && JSON.parse(rLegacy.body).image === 'https://cdn.test/legacy.png');
 
     /* — à travers le handler — */
     const vEnv = Object.assign({}, env, { RATE_LIMIT_PER_MIN: '50' });
@@ -705,23 +708,23 @@ async function run() {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body)
     });
 
-    const rVid = await handleVid(vidReq({ model: 'agnes-video-2.5-flash', prompt: 'un film', image: 'https://cdn.test/creation.png' }));
+    const rVid = await handleVid(vidReq({ model: 'agnes-video-2.5-flash', mode: 'keyframe', prompt: 'un film', first_frame: 'https://cdn.test/creation.png' }));
     const upstreamVid = vCalls.find(c => String(c.url).indexOf(UP) === 0);
     check('vidéo avec URL de bibliothèque relayée', rVid.status === 200 && !!upstreamVid, rVid.status);
     check('l\'amont reçoit une image encodée, jamais une URL',
-        !!upstreamVid && /^data:image\/png;base64,/.test(JSON.parse(upstreamVid.init.body).image), upstreamVid && JSON.parse(upstreamVid.init.body).image.slice(0, 24));
+        !!upstreamVid && /^data:image\/png;base64,/.test(JSON.parse(upstreamVid.init.body).first_frame), upstreamVid && JSON.parse(upstreamVid.init.body).first_frame.slice(0, 24));
 
     vCalls.length = 0;
-    const rVidLocal = await handleVid(vidReq({ model: 'agnes-video-2.5-flash', prompt: 'un film', image: DATA_URI }));
+    const rVidLocal = await handleVid(vidReq({ model: 'agnes-video-2.5-flash', mode: 'keyframe', prompt: 'un film', first_frame: DATA_URI }));
     const upstreamLocal = vCalls.find(c => String(c.url).indexOf(UP) === 0);
     check('fichier d\'appareil transmis SANS modification',
-        rVidLocal.status === 200 && upstreamLocal && JSON.parse(upstreamLocal.init.body).image === DATA_URI);
+        rVidLocal.status === 200 && upstreamLocal && JSON.parse(upstreamLocal.init.body).first_frame === DATA_URI);
     check('fichier d\'appareil : aucun téléchargement amont supplémentaire',
         vCalls.filter(c => String(c.url).indexOf('https://cdn.test/') === 0).length === 0);
 
     vCalls.length = 0;
     const rImgUrl = await handleVid(makeReq(GW + '/v1/images/generations', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt: 'x', image: 'https://cdn.test/ignoré.png' })
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt: 'x', first_frame: 'https://cdn.test/ignoré.png' })
     }));
     check('génération d\'image : URL NON convertie (champ vidéo seulement)',
         rImgUrl.status === 200 && vCalls.filter(c => String(c.url).indexOf('https://cdn.test/') === 0).length === 0);
@@ -735,7 +738,7 @@ async function run() {
             return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
         }
     });
-    const rDead = await handleDead(vidReq({ model: 'agnes-video-2.5-flash', prompt: 'un film', image: 'https://cdn.test/disparu.png' }));
+    const rDead = await handleDead(vidReq({ model: 'agnes-video-2.5-flash', mode: 'keyframe', prompt: 'un film', first_frame: 'https://cdn.test/disparu.png' }));
     const bDead = await rDead.json();
     check('image injoignable → 400 avant tout appel au fournisseur',
         rDead.status === 400 && vCalls.filter(c => String(c.url).indexOf(UP) === 0).length === 0, rDead.status);
@@ -970,7 +973,7 @@ async function run() {
 
     /* Champ absent. */
     const REQ = JSON.stringify({
-        code: 'invalid_request', message: '"image" is required', data: { param: 'image' }
+        code: 'invalid_request', message: '"first_frame" is required', data: { param: 'first_frame' }
     });
     const vReq = await mkVal(400, REQ)(vidPost({ model: 'm', prompt: 'p' }));
     check('champ manquant → reason=required', vReq.headers.get('x-lsv-upstream-reason') === 'required',

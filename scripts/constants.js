@@ -16,12 +16,19 @@ const CONFIG = Object.freeze({
        les vidéos. La liste réelle se lit via GET /v1/models ; ne jamais
        renommer sans la vérifier. */
     MODEL_VIDEO: 'agnes-video-2.5-flash',
-    /* Champ OBLIGATOIRE du fournisseur, et non optionnel : sans lui, tout
-       appel est refusé (« invalid mode »). Seule valeur vérifiée à ce jour
-       (les formes image, i2v, text-to-video, openai… sont refusées), et elle
-       est acceptée aussi bien pour une génération à partir d'un prompt que
-       pour une génération accompagnée d'une image de départ. */
-    VIDEO_MODE: 'text',
+    /* `mode` est OBLIGATOIRE côté fournisseur (« invalid mode » sinon) et le
+       fournisseur ne liste jamais les valeurs admises — établies par
+       élimination (§2.16). Deux seules valeurs connues, incompatibles :
+         - `text`     : génération depuis le prompt SEUL. Tout champ média est
+                        alors refusé (« text mode cannot include media
+                        fields ») — ce qui interdit d'y accoler une image.
+         - `keyframe` : génération guidée par une image de départ, portée par
+                        le champ `first_frame` (et non `image`), avec une
+                        image d'arrivée facultative en `last_frame`.
+       Les champs `num_frames`, `frame_rate` et `n` sont INTERDITS. Aucun de
+       ces champs ne règle donc la durée. */
+    VIDEO_MODE_TEXT: 'text',
+    VIDEO_MODE_KEYFRAME: 'keyframe',
     MODEL_CHAT: 'agnes-2.5-flash',
     MAX_IMAGE_DIMENSION: 4096,
     MAX_IMAGE_SIZE: 12 * 1024 * 1024,

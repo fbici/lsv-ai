@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.16.3
+# LSV.ai — Studio Viral v3.16.4
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -170,7 +170,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.3.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.4.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -680,9 +680,11 @@ Côté passerelle (`supabase/functions/lsv-gateway/core.mjs`) :
 
 - `resolveMediaRef(value)` — renvoie un `data:` tel quel, sinon télécharge
   l'URL (`image/*` uniquement, 20 Mo max) et la renvoie en `data:<mime>;base64,…` ;
-- `resolveVideoRefs(bodyText)` — applique `resolveMediaRef` aux champs **`image`
+- `resolveVideoRefs(bodyText)` — applique `resolveMediaRef` aux champs **`first_frame`
   et `last_frame` seulement** (un seul générateur d'image à la fois, deux
-  keyframes), en préservant tous les autres champs du corps ;
+  keyframes), en préservant tous les autres champs du corps. (Ces champs ont
+  porté le nom `image`/`last_frame` jusqu'à la §2.16 : le fournisseur n'a jamais
+  connu que `first_frame`.) ;
 - étape **« 6. Image de référence »** du handler : pour `type === 'video'` uniquement,
   juste avant l'appel fournisseur. URL morte → `400` avec un message lisible
   (`MSG_MEDIA`), **remboursement du quota**, libération du verrou d'inflight,
@@ -696,7 +698,7 @@ Vérifié par `tests/gateway.test.mjs` §23 (23 assertions) et
 `tests/public.test.js` §14 (26 assertions : rendu des onglets, état vide de la
 bibliothèque, sélection, dédup, plafond par mode, parcours fichier intact).
 
-### 2.16 Vidéo réparée + diagnostic d'échec traçable — v3.16.0 à v3.16.3
+### 2.16 Vidéo réparée + diagnostic d'échec traçable — v3.16.0 à v3.16.4
 
 **L'incident.** Toute génération de vidéo échouait avec
 `HTTP 503 — {"error":{"message":"Impossible de générer le contenu pour le
@@ -792,18 +794,49 @@ cas.
 | `openai`, `Zz-probe` | refusé |
 | **`text`** | **accepté** |
 
-`text` convient dans les deux cas de figure de l'application : génération à partir
-d'un prompt seul, et génération accompagnée d'une image de départ (vérifié des
-deux côtés). C'est donc `CONFIG.VIDEO_MODE: 'text'`, envoyé systématiquement.
+`text` n'est pourtant **pas** universel : le fournisseur refuse tout champ média
+en mode `text` — « text mode cannot include media fields ». Une seconde valeur,
+`keyframe`, porte au contraire les images : c'est elle qui accepte `first_frame`
+et `last_frame`. **Le champ `image` n'existe pas** côté fournisseur — il était
+pourtant celui que l'application envoyait depuis sa première version.
+
+Le corps de création est donc, selon le cas :
+
+```jsonc
+// prompt seul
+{ "model": "agnes-video-2.5-flash", "mode": "text", "prompt": "…" }
+
+// avec image de départ (et éventuellement d'arrivée)
+{ "model": "agnes-video-2.5-flash", "mode": "keyframe", "prompt": "…",
+  "first_frame": "data:image/png;base64,…", "last_frame": "data:image/png;base64,…" }
+```
+
+| Situation | `mode` | Champs média |
+|---|---|---|
+| prompt seul | `text` | **aucun** — leur simple présence est refusée |
+| image de départ | `keyframe` | `first_frame` (+ `last_frame` si fin) |
+| image d'arrivée seule | `text` | aucun (une fin sans début n'a pas de sens) |
+
+Valeurs refusées en `mode` : `t2v`, `i2v`, `image`, `img`, `img2vid`,
+`image_url`, `first_frame`, `media`, `frame`, `frames`, `picture`,
+`source_image`, `text-to-video`, `image-to-video`, `text2video`,
+`text_to_video`, `openai`. Champs interdits : `num_frames`, `frame_rate`, `n`.
+
+> **Reste ouvert.** Une fois la forme du corps exacte, la validation passe —
+> plus aucun `x-lsv-upstream-param` — mais le fournisseur répond alors **503**
+> au moment de lancer la génération, et ce quel que soit le modèle vidéo et le
+> mode. Ce n'est plus une erreur de payload : c'est le service de génération,
+> l'accès du compte ou son crédit. À trancher avec la ligne `amont-status 503`
+> correspondante dans les journaux.
 
 > **Piège relevé au passage** : l'événement d'analytique `video_generated`
 > transporte une propriété `mode: "text-to-video"` depuis l'origine du projet.
 > Ce libellé **n'a aucun rapport** avec le champ `mode` du fournisseur — l'un
 > va dans Supabase, l'autre part vers l'API vidéo. Ne jamais les confondre.
 
-Le corps de création est verrouillé par `tests/nonreg.test.js` : `mode` présent
-et égal à `text`, `model` et `prompt` présents, et surtout **aucun** champ
-interdit. Chaque écart est un 400 silencieux côté utilisateur.
+Le corps de création est verrouillé par `tests/nonreg.test.js` : `mode` `text`
+sans aucun média, `mode` `keyframe` avec `first_frame` / `last_frame`, et
+**aucun** champ interdit. Chaque écart est un 400 silencieux côté utilisateur.
 
 **La passerelle est maintenant auto-diagnostiquante.** Renvoyer un simple
 « Impossible de générer » rendait chaque integration cassée indiagnostiquable :
@@ -816,14 +849,14 @@ et les renvoie en en-têtes, exposés au navigateur :
 | `x-lsv-upstream-code` | `code`, filtré `[A-Za-z0-9_-]`, 40 max | `invalid_request` |
 | `x-lsv-upstream-param` | `data.param`, filtré `[A-Za-z0-9_.-]`, 60 max | `num_frames` |
 | `x-lsv-upstream-reason` | nature du refus, énuméré fermé | `forbidden` |
-| `x-lsv-upstream-allowed` | valeurs admises, 8 × 16 max | `t2v,i2v` |
+| `x-lsv-upstream-allowed` | valeurs admises, 8 × 16 max | `720x1280,1080x1920` |
 
 `reason` et `allowed` sortent de `classifyValidation` (`core.mjs`) : un
 **énuméré fermé** (`forbidden` / `required` / `invalid`) et, **uniquement si le
 message l'énonce explicitement**, la liste des valeurs admises. Le nom du champ
-lui-même en est exclu — « "mode" must be one of ["t2v","i2v"] » donne
-`allowed=t2v,i2v`, jamais `mode`. Pas d'énumération dans le message : pas de
-liste inventée. Aucune phrase n'est jamais reprise telle quelle.
+lui-même en est exclu — « "size" must be one of ["720x1280","1080x1920"] »
+donne `allowed=720x1280,1080x1920`, jamais `size`. Pas d'énumération dans le
+message : pas de liste inventée. Aucune phrase n'est jamais reprise telle quelle.
 
 Le message affiché à l'utilisateur reste strictement générique ; seul le
 journal d'analyse reçoit
@@ -837,13 +870,12 @@ champs, filtrage, exclusion du nom du champ, absence de liste inventée, plafond
 de 8 valeurs, absence sur un corps non JSON, sur un tableau, sur un 503 et sur
 un 401, et **aucun texte libre du fournisseur dans la réponse**.
 
-> **Déploiement** : les v3.16.0 à v3.16.2 touchent `core.mjs` et doivent être
+> **Déploiement** : les v3.16.0 à v3.16.4 touchent `core.mjs` et doivent être
 > redéployées (`§7.3`) —
 > `npx supabase functions deploy lsv-gateway --no-verify-jwt`. Tant que
 > l'ancienne version tourne, ni l'id de requête, ni l'exposition des en-têtes,
-> ni le remontage du paramètre refusé n'existent côté navigateur.
-> La **v3.16.3** ne touche que des fichiers statiques (`scripts/constants.js`,
-> `scripts/media.js`) : aucun redéploiement, GitHub Pages suffit.
+> ni le remontage du paramètre refusé, ni la résolution de `first_frame` côté
+> serveur n'existent côté navigateur.
 
 ---
 
@@ -1213,7 +1245,7 @@ try { LSVAnalytics.track('image_generated', {...}); } catch (e) { /* inert */ }
 ```bash
 git init
 git add .
-git commit -m "v3.16.3 : champ mode obligatoire ajoute au corps video (texte verrouille)"
+git commit -m "v3.16.4 : mode keyframe + champ first_frame (l ancien champ image n existe pas)"
 git branch -M main
 git remote add origin https://github.com/<vous>/lsv-ai.git
 git push -u origin main
@@ -1223,7 +1255,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 944 assertions, 6 suites
+npm test                      # 951 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -1292,10 +1324,10 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 944 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 951 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
-**`tests/nonreg.test.js`** (48 assertions, **60 avec `ORIG`**) — non-régression
+**`tests/nonreg.test.js`** (54 assertions, **66 avec `ORIG`**) — non-régression
 
 - structure HTML et `body.innerHTML` identiques à l'original, hors blocs
   volontairement supprimés (clé API, console, infos fournisseur) **et hors
@@ -1367,7 +1399,7 @@ npm test        # 944 assertions (6 suites, hors ORIG=… voir plus bas)
   `public.test.js` verrouille la structure (pas de `<style>` ni de gros script
   inline, 14 modules présents et ordonnés).
 
-**`tests/gateway.test.mjs`** (201 assertions) — passerelle
+**`tests/gateway.test.mjs`** (202 assertions) — passerelle
 
 - routage (y compris préfixe `/functions/v1/lsv-gateway`), injection de la clé
   serveur, rejet de l'authorization client ;
@@ -1383,7 +1415,7 @@ npm test        # 944 assertions (6 suites, hors ORIG=… voir plus bas)
 - **image de référence** (§2.15) : `data:` transmis tel quel, URL http(s)
   téléchargée une seule fois, borne de 20 Mo, refus d'un corps non image ou
   vide, échec réseau/HTTP signalé ; `resolveVideoRefs` ne convertit que
-  `image` et `last_frame`, JSON illisible sans effet de bord ; dans le handler,
+  `first_frame` et `last_frame`, JSON illisible sans effet de bord ; dans le handler,
   fichier d'appareil inchangé, `/v1/images/generations` non converti, URL
   morte → 400 **avant** tout appel au fournisseur et sans fuite de détail ;
 - **identifiant de requête** (§2.16) : `x-lsv-request-id` présent sur chaque
