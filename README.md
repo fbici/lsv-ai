@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.16.2
+# LSV.ai — Studio Viral v3.16.3
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -170,7 +170,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.2.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.3.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -696,7 +696,7 @@ Vérifié par `tests/gateway.test.mjs` §23 (23 assertions) et
 `tests/public.test.js` §14 (26 assertions : rendu des onglets, état vide de la
 bibliothèque, sélection, dédup, plafond par mode, parcours fichier intact).
 
-### 2.16 Vidéo réparée + diagnostic d'échec traçable — v3.16.0 à v3.16.2
+### 2.16 Vidéo réparée + diagnostic d'échec traçable — v3.16.0 à v3.16.3
 
 **L'incident.** Toute génération de vidéo échouait avec
 `HTTP 503 — {"error":{"message":"Impossible de générer le contenu pour le
@@ -773,6 +773,38 @@ régle pas en nombre d'images. Ils ont été retirés. Aucune estimation de dur�
 n'est envoyée pour l'instant — `frames` ne sert plus qu'à caler le temps du
 sondage.
 
+**Troisième cause : `mode` est obligatoire.** Une fois `num_frames` retiré, le
+refus suivant fut `{"message":"invalid mode","data":{"param":"mode"}}` — et
+`mode` n'était envoyé nulle part. Il est **exigé** par le fournisseur, qui ne
+daigne pas lister les valeurs admises.
+
+Les valeurs ont donc été déterminées par élimination, **sans jamais lancer une
+génération** : chaque candidat était associé à `n:-1`, un champ contrôlé *après*
+`mode`. Le verdict se lit alors dans le paramètre signalé — `param: mode` signifie
+« candidat refusé », `param: n` signifie « candidat accepté, le contrôle a passé
+au champ suivant ». Aucun risque de création : `n:-1` est invalide dans tous les
+cas.
+
+| Valeur testée | Verdict |
+|---|---|
+| `t2v`, `i2v`, `image`, `img`, `img2vid`, `image_url`, `first_frame` | refusé |
+| `text-to-video`, `image-to-video`, `text2video`, `text_to_video` | refusé |
+| `openai`, `Zz-probe` | refusé |
+| **`text`** | **accepté** |
+
+`text` convient dans les deux cas de figure de l'application : génération à partir
+d'un prompt seul, et génération accompagnée d'une image de départ (vérifié des
+deux côtés). C'est donc `CONFIG.VIDEO_MODE: 'text'`, envoyé systématiquement.
+
+> **Piège relevé au passage** : l'événement d'analytique `video_generated`
+> transporte une propriété `mode: "text-to-video"` depuis l'origine du projet.
+> Ce libellé **n'a aucun rapport** avec le champ `mode` du fournisseur — l'un
+> va dans Supabase, l'autre part vers l'API vidéo. Ne jamais les confondre.
+
+Le corps de création est verrouillé par `tests/nonreg.test.js` : `mode` présent
+et égal à `text`, `model` et `prompt` présents, et surtout **aucun** champ
+interdit. Chaque écart est un 400 silencieux côté utilisateur.
+
 **La passerelle est maintenant auto-diagnostiquante.** Renvoyer un simple
 « Impossible de générer » rendait chaque integration cassée indiagnostiquable :
 il fallait ouvrir les journaux à la main, à chaque erreur. Sur un **400
@@ -805,10 +837,13 @@ champs, filtrage, exclusion du nom du champ, absence de liste inventée, plafond
 de 8 valeurs, absence sur un corps non JSON, sur un tableau, sur un 503 et sur
 un 401, et **aucun texte libre du fournisseur dans la réponse**.
 
-> **Déploiement** : la passerelle doit être redéployée (`§7.3`) —
+> **Déploiement** : les v3.16.0 à v3.16.2 touchent `core.mjs` et doivent être
+> redéployées (`§7.3`) —
 > `npx supabase functions deploy lsv-gateway --no-verify-jwt`. Tant que
 > l'ancienne version tourne, ni l'id de requête, ni l'exposition des en-têtes,
 > ni le remontage du paramètre refusé n'existent côté navigateur.
+> La **v3.16.3** ne touche que des fichiers statiques (`scripts/constants.js`,
+> `scripts/media.js`) : aucun redéploiement, GitHub Pages suffit.
 
 ---
 
@@ -1178,7 +1213,7 @@ try { LSVAnalytics.track('image_generated', {...}); } catch (e) { /* inert */ }
 ```bash
 git init
 git add .
-git commit -m "v3.16.2 : nature du refus et valeurs admises remontees sans texte libre"
+git commit -m "v3.16.3 : champ mode obligatoire ajoute au corps video (texte verrouille)"
 git branch -M main
 git remote add origin https://github.com/<vous>/lsv-ai.git
 git push -u origin main
@@ -1188,7 +1223,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 939 assertions, 6 suites
+npm test                      # 944 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -1257,10 +1292,10 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 939 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 944 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
-**`tests/nonreg.test.js`** (43 assertions, **55 avec `ORIG`**) — non-régression
+**`tests/nonreg.test.js`** (48 assertions, **60 avec `ORIG`**) — non-régression
 
 - structure HTML et `body.innerHTML` identiques à l'original, hors blocs
   volontairement supprimés (clé API, console, infos fournisseur) **et hors

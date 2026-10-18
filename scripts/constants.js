@@ -16,6 +16,12 @@ const CONFIG = Object.freeze({
        les vidéos. La liste réelle se lit via GET /v1/models ; ne jamais
        renommer sans la vérifier. */
     MODEL_VIDEO: 'agnes-video-2.5-flash',
+    /* Champ OBLIGATOIRE du fournisseur, et non optionnel : sans lui, tout
+       appel est refusé (« invalid mode »). Seule valeur vérifiée à ce jour
+       (les formes image, i2v, text-to-video, openai… sont refusées), et elle
+       est acceptée aussi bien pour une génération à partir d'un prompt que
+       pour une génération accompagnée d'une image de départ. */
+    VIDEO_MODE: 'text',
     MODEL_CHAT: 'agnes-2.5-flash',
     MAX_IMAGE_DIMENSION: 4096,
     MAX_IMAGE_SIZE: 12 * 1024 * 1024,

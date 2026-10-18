@@ -316,13 +316,18 @@ function connect(w) {
     wb.LSV_CONFIG = { SUPABASE_URL: 'https://test.supabase.co', SUPABASE_ANON_KEY: 'anon-test-key-0123456789' };
     wb.LSV.utils.sleep = () => Promise.resolve(); // on supprime les attentes de polling
     const videoPosts = [];
+    const videoCreate = [];
     wb.fetch = function (url, options) {
         const u = String(url);
         if (u.includes('/rest/v1/analytics_events')) {
             videoPosts.push({ body: options && options.body });
             return Promise.resolve({ ok: true, status: 201 });
         }
-        if (u.includes('/videos')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ video_id: 'vid_test_1' }), text: async () => '' });
+        if (u.includes('/videos')) {
+            /* Le POST de création porte un corps ; le sondage est en GET. */
+            if (options && options.body) videoCreate.push(String(options.body));
+            return Promise.resolve({ ok: true, status: 200, json: async () => ({ video_id: 'vid_test_1' }), text: async () => '' });
+        }
         if (u.includes('agnesapi')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ status: 'completed', progress: 100, metadata: { url: 'https://cdn.test/v.mp4' } }), text: async () => '' });
         return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'err' });
     };
@@ -343,6 +348,18 @@ function connect(w) {
     check('evt video_generated émis', videoRows.some(r => r.event === 'video_generated'), videoRows.map(r => r.event).join(','));
     const videoRow = videoRows.find(r => r.event === 'video_generated' && r.props && r.props.model === wb.LSV.config.MODEL_VIDEO);
     check('props video sans prompt', !!videoRow && !('prompt' in (videoRow.props || {})) && videoRow.props.segments === 1, videoRow ? JSON.stringify(videoRow.props) : 'absent');
+    /* Contrat du fournisseur pour POST /v1/videos : chaque écart — un champ
+       interdit, un champ absent — est refusé en 400 par le fournisseur, donc
+       la génération échoue silencieusement côté utilisateur. Verrouillé ici. */
+    const vBody = videoCreate.length ? JSON.parse(videoCreate[0]) : {};
+    check('corps de création vidéo capturé', videoCreate.length === 1, videoCreate.length + ' création(s)');
+    check('champ `mode` présent et correct (obligatoire côté fournisseur)',
+        vBody.mode === 'text', vBody.mode);
+    check('aucun champ interdit (num_frames / frame_rate)',
+        !('num_frames' in vBody) && !('frame_rate' in vBody), Object.keys(vBody).join(','));
+    check('champs requis présents', !!vBody.model && typeof vBody.prompt === 'string',
+        Object.keys(vBody).join(','));
+    check('CONFIG.VIDEO_MODE verrouillée', wb.LSV.config.VIDEO_MODE === 'text', wb.LSV.config.VIDEO_MODE);
 
     console.log('\n=== 10. CHAT IA (succès + hook Analytics) ===');
     const chatPosts = [];

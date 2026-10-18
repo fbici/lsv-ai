@@ -174,11 +174,12 @@ const ImageService = {
 const VideoService = {
     async createTask(firstFrame, lastFrame, prompt, frames) {
         /* Le fournisseur refuse `num_frames` et `frame_rate` (« forbidden
-           field ») : la durée ne se règle pas par là. On n'envoie que le
-           nécessaire et on laisse la passerelle remonter le champ manquant
-           via `x-lsv-upstream-param`. `frames` ne sert plus qu'à estimer le
-           temps d'attente du sondage. */
-        const body = { model: CONFIG.MODEL_VIDEO, prompt };
+           field ») et EXIGE `mode` (« invalid mode » sinon). La durée ne se
+           règle donc ni en nombre d'images ni par un réglage latéral : on
+           n'envoie que le nécessaire et on laisse la passerelle remonter le
+           champ fautif via `x-lsv-upstream-param`. `frames` ne sert plus qu'à
+           estimer le temps d'attente du sondage. */
+        const body = { model: CONFIG.MODEL_VIDEO, mode: CONFIG.VIDEO_MODE, prompt };
         if (firstFrame && lastFrame) { body.image = firstFrame; body.last_frame = lastFrame; }
         else if (firstFrame) { body.image = firstFrame; }
         const res = await AgnesProvider.fetch(
