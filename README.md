@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.16.6
+# LSV.ai — Studio Viral v3.16.7
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -170,7 +170,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -957,6 +957,55 @@ connecté. Gateway : **212/212**.
 > **Déploiement** : `core.mjs` est modifié → `§7.3`
 > (`npx supabase functions deploy lsv-gateway --no-verify-jwt`). Sans ce
 > déploiement, les générations échouées continuent de consommer le quota.
+
+---
+
+### 2.18 Droits PostgREST : vérification avant le 30/10 - v3.16.7
+
+Supabase ne confère plus automatiquement les droits des tables du schéma
+`public` aux **nouvelles** tables (à compter du 30 octobre). Les tables
+existantes conservent leurs droits : le projet actuel n'est pas impacté, ni
+l'application, ni les clés. Ce qui change concerne :
+
+- toute table créée **après** cette date ;
+- les migrations qui **recréent** le schéma (`supabase db reset`, branches de
+  prévisualisation, nouveau projet).
+
+Sans `GRANT` explicite, `supabase-js` / PostgREST renvoient
+`permission denied` (le message contient la requête à exécuter).
+
+**Ce que fait le dépôt**
+
+| Élément | État |
+|---|---|
+| `admin_emails` | `revoke` volontaire lu **via `SECURITY DEFINER` uniquement** — aucun accès client souhaité |
+| `analytics_events` | `grant insert` à anon + authenticated, `grant select` à authenticated |
+| `app_settings` | `grant select, insert, update, delete` à authenticated, `all` à service_role |
+| `admin_logs`, `profiles`, `usage_counters` | grants explicites présents |
+| `contact_messages` | accès par `submit_contact` (`SECURITY DEFINER`), pas d'accès client direct |
+| `consume_quota`, `refund_quota`, `get_quota` | `grant execute … to service_role` |
+
+Tous les droits dont l'application a besoin sont donc **déjà explicites** dans
+`supabase/schema.sql` et les `supabase/upgrade-*.sql`.
+
+**Le fichier de vérification** : `supabase/check-grants.sql` (lecture seule, à
+coller dans le SQL Editor) — deux blocs :
+
+1. **A. Fonctions de quota** — existe-t-elles et `service_role` peut-il les
+   appeler ? C'est directement lié à l'anomalie ouverte
+   `quota-rpc-status 400` : si PostgREST ne trouve pas la fonction (absente ou
+   sans `GRANT EXECUTE`), il répond `PGRST202` et la passerelle bascule en
+   silence sur le compteur mémoire. Un résultat vide = `upgrade-quotas.sql` n'a
+   jamais été exécuté sur la base live.
+2. **B. Tables publiques** — droits `anon` / `authenticated` / `service_role`
+   table par table.
+
+**Règle à appliquer** dès la prochaine table (modèle prêt à copier dans le
+fichier) : poser les trois `GRANT` **dans la même migration qui crée la
+table**.
+
+> Aucun redéploiement nécessaire : ce changement n'ajoute que de la
+> documentation et un script de contrôle.
 
 ---
 
