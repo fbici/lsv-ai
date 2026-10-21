@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.16.5
+# LSV.ai — Studio Viral v3.16.6
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -170,7 +170,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -894,6 +894,72 @@ fournisseur dans la réponse**.
 
 ---
 
+### 2.17 Quotas : remboursement aligné sur la consommation - v3.16.6
+
+**Symptôme** (visible dans Supabase → Edge Functions → `lsv-gateway` → Logs,
+avant cette version) :
+
+```
+quota-rpc-status 400
+```
+
+`dbConsume` appelle `POST {supaUrl}/rest/v1/rpc/consume_quota` avec la clé de
+service. Un statut `400` renvoie `null`, ce qui bascule silencieusement sur le
+compteur mémoire (`store.consumeDaily`) : l'utilisateur continue de générer,
+sans le savoir, dans une base qui **ne compte plus rien**.
+
+**Le bug corrigé ici n'était pas cette bascule — c'était son pendant.**
+Tous les chemins d'échec (image de référence injoignable, panne réseau amont,
+erreur amont) appelaient :
+
+```js
+if (consumed && user) await dbRefund(user, type, units);
+```
+
+c'est-à-dire **toujours** `refund_quota` en base, alors que l'unité venait
+d'être prélevée **en mémoire**. Le remboursement SQL était donc sans effet :
+chaque tentative qui n'aboutit pas à une génération coûtait définitivement une
+unité — et précisément quand la base était indisponible, donc en permanence.
+Un compte bloqué à `x/1` ne pouvait plus rien faire jusqu'au prochain redémarrage
+de l'instance.
+
+**Correctif**
+
+| Élément | Rôle |
+|---|---|
+| `createMemoryStore().refundDaily(key, now)` | Rend une unité prélevée en mémoire, même fenêtre UTC |
+| `dbConsumed` / `memoryRefunds` | Mémorise **où** l'unité a été prélevée (base ou mémoire) |
+| `refundQuota()` | Restitue au même endroit, sur les 3 chemins d'échec |
+| `store.leave` des visiteurs | Les non connectés sont remboursés eux aussi (clé par IP/visiteur) |
+| `refund-rpc-status` (journal) | `refund_quota` échouait aussi en silence — désormais tracé |
+| `quota-rpc-status 400 <corps>` | Le corps PostgREST (PGRST202, privilège, syntaxe) était jeté ; il est maintenant journalisé sur 200 caractères |
+
+Les requêtes **réussies** ne sont pas affectées : `dbConsumed` reste `true` et
+le remboursement reste SQL, comme avant.
+
+**Ce qui reste ouvert**
+
+La **cause racine** du `400` n'est pas identifiée. Le schéma local est
+conforme (`supabase/schema.sql` l.369 et `supabase/upgrade-quotas.sql` l.78
+déclarent `consume_quota(p_user, p_email, p_kind, p_units, p_global)`, grant
+`service_role`), les arguments envoyés correspondent. Pour lever le doute il
+faut le corps de la réponse : déclencher **une seule** génération authentifiée,
+puis recopier la ligne `quota-rpc-status 400 …` des logs.
+
+Hypothèses restantes : fonction absente de la base live (migration non
+appliquée), cache de schéma PostgREST, privilège manquant.
+
+**Vérifié par** `tests/gateway.test.mjs` §26 (5 assertions) : RPC SQL en échec →
+repli mémoire actif, tentative suivante **acceptée** après échec (elle serait
+refusée sans remboursement mémoire), et mêmes garanties pour un visiteur non
+connecté. Gateway : **212/212**.
+
+> **Déploiement** : `core.mjs` est modifié → `§7.3`
+> (`npx supabase functions deploy lsv-gateway --no-verify-jwt`). Sans ce
+> déploiement, les générations échouées continuent de consommer le quota.
+
+---
+
 ## 3. Installation locale
 
 ```bash
@@ -1260,7 +1326,7 @@ try { LSVAnalytics.track('image_generated', {...}); } catch (e) { /* inert */ }
 ```bash
 git init
 git add .
-git commit -m "v3.16.5 : code amont remonte aussi sur le 503 (file pleine vs modele sans canal)"
+git commit -m "v3.16.6 : remboursement de quota aligne sur la consommation (memoire ou base)"
 git branch -M main
 git remote add origin https://github.com/<vous>/lsv-ai.git
 git push -u origin main
@@ -1270,7 +1336,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 956 assertions, 6 suites
+npm test                      # 961 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -1339,7 +1405,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 956 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 961 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (54 assertions, **66 avec `ORIG`**) — non-régression
@@ -1414,7 +1480,7 @@ npm test        # 956 assertions (6 suites, hors ORIG=… voir plus bas)
   `public.test.js` verrouille la structure (pas de `<style>` ni de gros script
   inline, 14 modules présents et ordonnés).
 
-**`tests/gateway.test.mjs`** (207 assertions) — passerelle
+**`tests/gateway.test.mjs`** (212 assertions) — passerelle
 
 - routage (y compris préfixe `/functions/v1/lsv-gateway`), injection de la clé
   serveur, rejet de l'authorization client ;
@@ -1438,7 +1504,12 @@ npm test        # 956 assertions (6 suites, hors ORIG=… voir plus bas)
   (les compteurs de quota étaient auparavant invisibles du navigateur),
   identifiant repris dans les journaux `amont-status` / `amont-reseau` avec le
   vrai statut amont et son extrait, les trois 503 (pas de clé / suspendu /
-  amont) distinguables, et **aucun détail technique dans la réponse**.
+  amont) distinguables, et **aucun détail technique dans la réponse** ;
+- **remboursement de quota** (§2.17) : la RPC `consume_quota` en échec (400)
+  bascule sur le compteur mémoire, et une génération qui n'aboutit pas rend
+  l'unité **en mémoire** — l'endroit exact d'où elle vient ; même garantie pour
+  un visiteur non connecté, et `refund_quota` en échec désormais journalisé
+  (`refund-rpc-status`) au lieu d'échouer en silence.
 
 **`tests/admin.test.js`** (158 assertions)
 

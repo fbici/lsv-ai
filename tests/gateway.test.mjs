@@ -1036,6 +1036,83 @@ async function run() {
     check('classifyValidation: casse du champ ignorée dans le filtre',
         classifyValidation('"Mode" must be one of ["MODE","t2v"]', 'mode').allowed === 't2v');
 
+    console.log('\n=== 26. REMBOURSEMENT DU COMPTEUR MÉMOIRE ===');
+    /* Quand la fonction SQL est indisponible (PGRST 400 en production), la
+       consommation bascule sur le compteur mémoire — mais l'ancien code
+       remboursait TOUJOURS en SQL. Résultat : chaque tentative échouée
+       (file pleine, modèle sans canal, panne réseau) coûtait définitivement
+       une unité, exactement pendant les pannes de base. Le remboursement doit
+       revenir au même endroit que la consommation. */
+    function memQuotaHarness(settings) {
+        const tt = 1700000000000;
+        const mem = createMemoryStore();
+        const state = { upStatus: 200, up: [] };
+        const h = createHandler({
+            env: {
+                AGNES_API_KEY: SECRET,
+                SUPABASE_URL: 'https://ref.supabase.co',
+                SUPABASE_SERVICE_ROLE_KEY: 'svc-key-0123456789',
+                ALLOWED_ORIGINS: 'https://fbici.github.io',
+                RATE_LIMIT_PER_MIN: '1000',
+                IMAGE_LIMIT: '0', VIDEO_LIMIT: '0', CHAT_LIMIT: '0', MOTION_LIMIT: '0'
+            },
+            store: mem,
+            now: () => tt,
+            log: () => {},
+            fetchImpl: async (url, init) => {
+                const u = String(url);
+                if (u.includes('/rest/v1/app_settings')) {
+                    return new Response(JSON.stringify(Object.keys(settings).map(k => ({ key: k, value: settings[k] }))),
+                        { status: 200, headers: { 'content-type': 'application/json' } });
+                }
+                if (u.includes('/auth/v1/user')) {
+                    const auth = (init && init.headers && init.headers.Authorization) || '';
+                    if (auth === 'Bearer ' + ADA.jwt) {
+                        return new Response(JSON.stringify({ id: ADA.id, email: ADA.email }),
+                            { status: 200, headers: { 'content-type': 'application/json' } });
+                    }
+                    return new Response('{"msg":"invalid token"}', { status: 401, headers: { 'content-type': 'application/json' } });
+                }
+                if (u.includes('/rest/v1/rpc/')) {
+                    /* Exactement le symptôme observé en production. */
+                    return new Response('{"code":"PGRST202","message":"function public.consume_quota does not exist"}',
+                        { status: 400, headers: { 'content-type': 'application/json' } });
+                }
+                state.up.push(u);
+                return new Response(JSON.stringify({ created: [{ url: 'https://cdn.test/i.png' }] }),
+                    { status: state.upStatus, headers: { 'content-type': 'application/json' } });
+            }
+        });
+        return { handle: h, state: state };
+    }
+
+    const mqF26 = memQuotaHarness({ quota_image_daily: '1' });
+    mqF26.state.upStatus = 500;
+    const mq1 = await mqF26.handle(POST_IMG(ADA.jwt, '1312x736'));
+    check('RPC SQL en échec → repli mémoire, requête tentée', mq1.status === 502, mq1.status);
+    check('un appel amont a bien eu lieu', mqF26.state.up.length === 1, mqF26.state.up.length);
+    mqF26.state.upStatus = 200;
+    const mq2 = await mqF26.handle(POST_IMG(ADA.jwt, '1312x736'));
+    check('nouvelle tentative ACCEPTÉE : l’unité a été remboursée EN MÉMOIRE',
+        mq2.status === 200, mq2.status);
+
+    /* Visiteur non connecté : même garantie, clé par IP. */
+    const mqA26 = memQuotaHarness({ quota_image_daily: '1' });
+    mqA26.state.upStatus = 500;
+    const an1 = await mqA26.handle(makeReq(GW + '/v1/images/generations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'origin': 'https://fbici.github.io', 'x-forwarded-for': '9.9.9.9' },
+        body: JSON.stringify({ prompt: 'x', size: '1312x736' })
+    }));
+    check('visiteur : échec amont → 502', an1.status === 502, an1.status);
+    mqA26.state.upStatus = 200;
+    const an2 = await mqA26.handle(makeReq(GW + '/v1/images/generations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'origin': 'https://fbici.github.io', 'x-forwarded-for': '9.9.9.9' },
+        body: JSON.stringify({ prompt: 'x', size: '1312x736' })
+    }));
+    check('visiteur : remboursement mémoire également appliqué', an2.status === 200, an2.status);
+
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');
     console.log((results.length - failed.length) + '/' + results.length + ' tests gateway OK');

@@ -257,6 +257,18 @@ export function createMemoryStore(maxEntries = 5000) {
             prune(counters);
             return { ok: true, used: used + 1 };
         },
+        /** Rend une unité prélevée par `consumeDaily`. Indispensable : une
+            génération refusée amont (file pleine, modèle sans canal, panne
+            réseau) ne doit PAS coûter son quota à l'utilisateur — et c'est
+            précisément quand la base est indisponible, donc que la consommation
+            est tombée ici, qu'un remboursement SQL serait sans effet. */
+        refundDaily(key, now) {
+            const day = new Date(now).toISOString().slice(0, 10);
+            const k = key + ':' + day;
+            const used = counters.get(k) || 0;
+            if (used <= 0) return;
+            counters.set(k, used - 1);
+        },
         /** Générations simultanées en cours pour une clé donnée.
             Empêche qu'un même compte enchaîne assez de requêtes
             parallèles pour dépasser son quota entre deux verrous. */
@@ -455,7 +467,18 @@ export function createHandler(options = {}) {
                     p_global: globalLimit || 0
                 })
             });
-            if (!res || !res.ok) { log('quota-rpc-status', res && res.status); return null; }
+            /* Le corps PostgREST porte la vraie cause (« function does not
+               exist », syntaxe invalide, privilège manquant) — sans lui, un
+               simple « 400 » est indiagnosticable, et l'application retombe
+               silencieusement sur le compteur mémoire, qui ne survit pas à un
+               démarrage à froid. On ne le JOURNALISE que : il n'est jamais
+               renvoyé au client. */
+            if (!res || !res.ok) {
+                let detail = '';
+                try { detail = (await res.text()).slice(0, 200); } catch (e) {}
+                log('quota-rpc-status', res && res.status, detail);
+                return null;
+            }
             return await res.json();
         } catch (e) {
             log('quota-rpc', (e && e.message) || 'erreur');
@@ -466,7 +489,7 @@ export function createHandler(options = {}) {
     async function dbRefund(user, kind, units) {
         if (!supaUrl || !svcKey || !user) return;
         try {
-            await doFetch(supaUrl + '/rest/v1/rpc/refund_quota', {
+            const res = await doFetch(supaUrl + '/rest/v1/rpc/refund_quota', {
                 method: 'POST',
                 headers: {
                     apikey: svcKey,
@@ -475,6 +498,9 @@ export function createHandler(options = {}) {
                 },
                 body: JSON.stringify({ p_user: user.id, p_kind: kind, p_units: units })
             });
+            /* Même journal que la consommation : si `refund_quota` échoue,
+               l'utilisateur perd son unité sans que personne ne s'en aperçoive. */
+            if (!res || !res.ok) log('refund-rpc-status', res && res.status);
         } catch (e) { log('quota-remboursement', (e && e.message) || 'erreur'); }
     }
 
@@ -634,6 +660,12 @@ export function createHandler(options = {}) {
         /* ── 5. Quotas journaliers par compte ────────────────────────────── */
         let quotaState = null;
         let consumed = false;
+        /* Où l'unité a été prélevée. Un remboursement doit revenir EXACTEMENT
+           au même endroit : rembourser la base alors que la consommation est
+           tombée en mémoire — c'est-à-dire le cas où la base est justement
+           indisponible — laisserait l'utilisateur perdre son unité. */
+        let dbConsumed = false;
+        const memoryRefunds = [];
         const quotaKey = user ? 'usr:' + user.id + ':' + type : 'vis:' + (visitor || ip || 'anon') + ':' + type;
 
         if (type && enabled) {
@@ -656,6 +688,7 @@ export function createHandler(options = {}) {
                     log('quota-atteint', type, r.scope, r.used + '/' + r.limit);
                 } else if (r && r.ok === true) {
                     consumed = true;
+                    dbConsumed = true;
                     quotaState = {
                         image: type === 'image' ? r.remaining : undefined,
                         video: type === 'video' ? r.remaining : undefined,
@@ -669,11 +702,12 @@ export function createHandler(options = {}) {
                     if (limit > 0) {
                         const mr = store.consumeDaily(type + ':' + user.id, limit, t);
                         if (!mr.ok) { allowed = false; exhaustedScope = 'user'; }
-                        else consumed = true;
+                        else { consumed = true; memoryRefunds.push(type + ':' + user.id); }
                     }
                     if (globalLimit > 0) {
                         const gr = store.consumeDaily('global:' + user.id, globalLimit, t);
                         if (!gr.ok) { allowed = false; exhaustedScope = 'global'; }
+                        else memoryRefunds.push('global:' + user.id);
                     }
                 }
             } else {
@@ -683,11 +717,12 @@ export function createHandler(options = {}) {
                 if (limit > 0) {
                     const mr = store.consumeDaily(type + ':' + (visitor || ip || 'anon'), limit, t);
                     if (!mr.ok) { allowed = false; exhaustedScope = 'user'; }
-                    else consumed = true;
+                    else { consumed = true; memoryRefunds.push(type + ':' + (visitor || ip || 'anon')); }
                 }
                 if (globalLimit > 0) {
                     const gr = store.consumeDaily('global:anon', globalLimit, t);
                     if (!gr.ok) { allowed = false; exhaustedScope = 'global'; }
+                    else memoryRefunds.push('global:anon');
                 }
             }
 
@@ -698,6 +733,21 @@ export function createHandler(options = {}) {
             }
         }
 
+        /* Rend l'unité prélevée quand la requête n'aboutit PAS : aucune
+           génération n'a été lancée, l'utilisateur ne doit rien perdre.
+           L'unité revient à l'endroit exact d'où elle vient — c'est le point
+           sensible : rembourser la base alors que la consommation est tombée en
+           mémoire laisserait l'utilisateur avec une unité en moins, à chaque
+           tentative, tant que la base est indisponible. */
+        const refundQuota = async () => {
+            if (!consumed) return;
+            if (dbConsumed) {
+                if (user) await dbRefund(user, type, units);
+                return;
+            }
+            for (const key of memoryRefunds) store.refundDaily(key, t);
+        };
+
         /* ── 6. Image de référence : URL de bibliothèque → image encodée ────
               Un fichier choisi sur l'appareil arrive déjà encodé (data:…) et
               traverse ce bloc sans y être touché. Une création reprise de la
@@ -707,7 +757,7 @@ export function createHandler(options = {}) {
             const media = await resolveVideoRefs(body, doFetch);
             if (!media.ok) {
                 log('media-injoignable', reqId, media.reason, String(media.detail || ''));
-                if (consumed && user) await dbRefund(user, type, units);
+                await refundQuota();
                 if (user && type && enabled) store.leave('inflight:' + user.id);
                 return json(400, MSG_MEDIA, h);
             }
@@ -732,7 +782,7 @@ export function createHandler(options = {}) {
         } catch (e) {
             log('amont-reseau', reqId, (e && e.message) || 'erreur');
             /* La requête n'a JAMAIS atteint le fournisseur : le quota revient. */
-            if (consumed && user) await dbRefund(user, type, units);
+            await refundQuota();
             if (user && type && enabled) store.leave('inflight:' + user.id);
             return json(502, MSG_UPSTREAM, h);
         }
@@ -785,7 +835,7 @@ export function createHandler(options = {}) {
         }
 
         /* Aucune génération n'a été lancée : on rembourse les unités. */
-        if (consumed && user) await dbRefund(user, type, units);
+        await refundQuota();
 
         const safeStatus = (res.status === 400 || res.status === 429 || res.status === 503) ? res.status : 502;
         const message = res.status === 429 ? MSG_LIMIT : MSG_UPSTREAM;
