@@ -1024,28 +1024,37 @@ table**.
 **Constat repris sur la passerelle en production**, en conditions réelles, avec
 le corps exact que produit l'application :
 
-| Heure | Corps envoyé | Réponse | En-tête |
-|---|---|---|---|
-| 19:29 | `{model:"agnes-video-2.5-flash", mode:"text", prompt:…}` | 503 | `x-lsv-upstream-code: video_queue_full` |
-| 19:31 | idem | 503 | `video_queue_full` |
-| 19:41 | idem | 503 | `video_queue_full` |
-| 20:17 (après 12 min) | idem | 503 | `video_queue_full` |
-| 20:20 (+15 min) | idem | 503 | `video_queue_full` |
-| — | `{model:"agnes-video-2.5", mode:"text", prompt:…}` | **502** | **aucune** |
+| Heure | Corps envoyé | Réponse client | Statut amont réel | Détail |
+|---|---|---|---|---|
+| 19:29 → 21:12 (**1 h 43**, 7 tentatives) | `{model:"agnes-video-2.5-flash", mode:"text", prompt:…}` | 503 | 503 | `x-lsv-upstream-code: video_queue_full` |
+| avant le correctif | `{model:"agnes-video-2.5", mode:"text", prompt:…}` | 502 | **masqué** | — |
+| après le correctif (id. `ilx4qq-pv4vd5`) | idem | 502 | **403** | aucun `code` |
 
 **Ce que ces tentatives ont prouvé côté sain** (donc écarté d'emblée) :
 
 - la clé du fournisseur est valide : `{model,mode}` sans `prompt` remonte
   `400 · invalid_request · prompt · required` — authentification et contrat OK ;
-- les deux modèles vidéo ont un canal (`prompt required` pour l'un comme pour
-  l'autre, là où un modèle inconnu donne 502) ;
-- réseau et route OK, quota OK, sanitisation OK.
+- les deux modèles vidéo existent et ont un canal (là où un modèle inconnu
+  donne `404`) ;
+- réseau, route, quota et sanitisation OK.
 
-**Le problème** : `agnes-video-2.5` répond 502, donc un statut amont hors
-{400, 429, 503} — `401`, `404`, `422`, `500`… — et `safeStatus` l'a **réduit en
-502**. Le client, le back-office et l'en-tête `x-lsv-upstream-code` ne donnent
+**Le problème à l'origine du correctif** : `agnes-video-2.5` répondait 502,
+donc un statut amont hors {400, 429, 503}, et `safeStatus` l'a **réduit en
+502**. Le client, le back-office et l'en-tête `x-lsv-upstream-code` ne donnaient
 plus rien : la seule source d'information redevenait le dashboard des journaux.
 Exactement le problème que §2.16 avait résolu pour les 400 et les 503.
+
+**Bilan obtenu une fois le statut démasqué** — les deux modèles vidéo sont
+inutilisables, pour deux raisons **différentes** :
+
+| Modèle | Statut | Lecture |
+|---|---|---|
+| `agnes-video-2.5-flash` | 503 `video_queue_full` | file saturée en continu sur 1 h 43 → capacité/compte chez le fournisseur, pas un bug de payload |
+| `agnes-video-2.5` | **403** | **accès refusé** : ce modèle n'est pas autorisé pour ce compte (plan, option ou crédit) |
+
+Rien dans cette liste relève du code de LSV.ai. Les investigations restantes
+sont côté console du fournisseur (offre active, consommation, éventuelle
+incident vidéo) et non plus dans le dépôt.
 
 **Correctif** : `x-lsv-upstream-status`, posé sur **toute** erreur amont, ne
 dépendant ni du corps ni du statut retenu — trois chiffres `[1-5][0-9]{2}`.
