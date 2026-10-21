@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.16.7
+# LSV.ai — Studio Viral v3.16.8
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -170,7 +170,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -855,10 +855,20 @@ en-têtes, exposés au navigateur :
 
 | En-tête | Quand | Contenu | Exemple |
 |---|---|---|---|
+| `x-lsv-upstream-status` | **toute** erreur amont | vrai statut amont, 3 chiffres | `404` |
 | `x-lsv-upstream-code` | 400, 429, **503** | `code`, filtré `[A-Za-z0-9_-]`, 40 max | `video_queue_full` |
 | `x-lsv-upstream-param` | 400 | `data.param`, filtré `[A-Za-z0-9_.-]`, 60 max | `num_frames` |
 | `x-lsv-upstream-reason` | 400 | nature du refus, énuméré fermé | `forbidden` |
 | `x-lsv-upstream-allowed` | 400 | valeurs admises, 8 × 16 max | `720x1280,1080x1920` |
+
+**`x-lsv-upstream-status` est ajouté en v3.16.8** et c'est le seul qui ne dépend
+d'aucune lecture du corps amont. Il existe parce que `safeStatus` ramène tout
+statut hors {400, 429, 503} en `502` : le client voyait donc « 502 » — aussi
+creux que le message générique — sans savoir si l'amont avait répondu `401`
+(clé refusée), `404` (chemin disparu) ou `500` (panne). Le journal en avait la
+réponse, mais seulement si on ouvrait le dashboard. Chiffres seuls, aucun texte,
+et il est rappelé dans la signature d'erreur **uniquement s'il diffère** du
+statut affiché.
 
 Le **`code` seul** circule aussi sur un 503 parce que c'est lui qui distingue
 deux causes totalement différentes sous un même statut : `video_queue_full`
@@ -952,7 +962,7 @@ appliquée), cache de schéma PostgREST, privilège manquant.
 **Vérifié par** `tests/gateway.test.mjs` §26 (5 assertions) : RPC SQL en échec →
 repli mémoire actif, tentative suivante **acceptée** après échec (elle serait
 refusée sans remboursement mémoire), et mêmes garanties pour un visiteur non
-connecté. Gateway : **212/212**.
+connecté. Gateway : **220/220**.
 
 > **Déploiement** : `core.mjs` est modifié → `§7.3`
 > (`npx supabase functions deploy lsv-gateway --no-verify-jwt`). Sans ce
@@ -1006,6 +1016,60 @@ table**.
 
 > Aucun redéploiement nécessaire : ce changement n'ajoute que de la
 > documentation et un script de contrôle.
+
+---
+
+### 2.19 Statut amont exposé : fin du « 502 » opaque - v3.16.8
+
+**Constat repris sur la passerelle en production**, en conditions réelles, avec
+le corps exact que produit l'application :
+
+| Heure | Corps envoyé | Réponse | En-tête |
+|---|---|---|---|
+| 19:29 | `{model:"agnes-video-2.5-flash", mode:"text", prompt:…}` | 503 | `x-lsv-upstream-code: video_queue_full` |
+| 19:31 | idem | 503 | `video_queue_full` |
+| 19:41 | idem | 503 | `video_queue_full` |
+| 20:17 (après 12 min) | idem | 503 | `video_queue_full` |
+| 20:20 (+15 min) | idem | 503 | `video_queue_full` |
+| — | `{model:"agnes-video-2.5", mode:"text", prompt:…}` | **502** | **aucune** |
+
+**Ce que ces tentatives ont prouvé côté sain** (donc écarté d'emblée) :
+
+- la clé du fournisseur est valide : `{model,mode}` sans `prompt` remonte
+  `400 · invalid_request · prompt · required` — authentification et contrat OK ;
+- les deux modèles vidéo ont un canal (`prompt required` pour l'un comme pour
+  l'autre, là où un modèle inconnu donne 502) ;
+- réseau et route OK, quota OK, sanitisation OK.
+
+**Le problème** : `agnes-video-2.5` répond 502, donc un statut amont hors
+{400, 429, 503} — `401`, `404`, `422`, `500`… — et `safeStatus` l'a **réduit en
+502**. Le client, le back-office et l'en-tête `x-lsv-upstream-code` ne donnent
+plus rien : la seule source d'information redevenait le dashboard des journaux.
+Exactement le problème que §2.16 avait résolu pour les 400 et les 503.
+
+**Correctif** : `x-lsv-upstream-status`, posé sur **toute** erreur amont, ne
+dépendant ni du corps ni du statut retenu — trois chiffres `[1-5][0-9]{2}`.
+Ajouté à `Access-Control-Expose-Headers`, lu par `AgnesProvider.fail` et
+inséré en tête des parenthèses de la signature **uniquement s'il diffère** du
+statut affiché :
+
+```
+HTTP 502 [ikezcv-tnvbzf] (amont 404) — {…}
+```
+
+Rien n'est transmis du texte amont : `code`, `param`, `reason` et `allowed`
+gardent leurs règles (§2.16), et le test `401 → aucun code ni paramètre`
+reste verrouillé.
+
+**Vérifié par** `tests/gateway.test.mjs` §25 (+8 assertions) : vrai statut
+exposé sur un 401 masqué en 502, sur un 500 masqué en 502, sur un 400 et un
+503 (statut identique), sur un corps non JSON, présence dans
+`Access-Control-Expose-Headers`, forme à trois chiffres, et aucun code ni phrase
+du fournisseur en plus. Gateway : **220/220**.
+
+> **Déploiement** : `core.mjs` et `media.js` modifiés → `§7.3`
+> (`npx supabase functions deploy lsv-gateway --no-verify-jwt`) + rafraîchir
+> le navigateur pour `media.js`.
 
 ---
 
@@ -1385,7 +1449,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 961 assertions, 6 suites
+npm test                      # 969 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -1454,7 +1518,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 961 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 969 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (54 assertions, **66 avec `ORIG`**) — non-régression
@@ -1529,7 +1593,7 @@ npm test        # 961 assertions (6 suites, hors ORIG=… voir plus bas)
   `public.test.js` verrouille la structure (pas de `<style>` ni de gros script
   inline, 14 modules présents et ordonnés).
 
-**`tests/gateway.test.mjs`** (212 assertions) — passerelle
+**`tests/gateway.test.mjs`** (220 assertions) — passerelle
 
 - routage (y compris préfixe `/functions/v1/lsv-gateway`), injection de la clé
   serveur, rejet de l'authorization client ;

@@ -975,6 +975,32 @@ async function run() {
     check('401 → aucun code ni paramètre',
         !v401.headers.get('x-lsv-upstream-code') && !v401.headers.get('x-lsv-upstream-param'));
     check('401 sanitisé en 502', v401.status === 502, v401.status);
+    /* Le statut RÉEL, lui, doit survivre au masquage : sans lui, « 502 » est
+       aussi creux que le message générique et il faut rouvrir les journaux
+       pour savoir si l'amont a répondu 401, 404 ou 500. */
+    check('401 masqué → vrai statut amont exposé (401)',
+        v401.headers.get('x-lsv-upstream-status') === '401',
+        v401.headers.get('x-lsv-upstream-status'));
+    check('statut amont exposé au navigateur',
+        String(v401.headers.get('access-control-expose-headers') || '').indexOf('x-lsv-upstream-status') !== -1);
+    check('statut amont = trois chiffres seulement',
+        /^[1-5][0-9]{2}$/.test(v401.headers.get('x-lsv-upstream-status') || ''));
+    const v500 = await mkVal(500, 'Internal Server Error at /agnesapi/videos')(vidPost({ model: 'm', prompt: 'p' }));
+    check('500 sanitisé en 502 mais lisible : statut amont 500',
+        v500.status === 502 && v500.headers.get('x-lsv-upstream-status') === '500',
+        v500.status + ' / ' + v500.headers.get('x-lsv-upstream-status'));
+    check('500 amont : aucun code ni phrase malgré le statut',
+        !v500.headers.get('x-lsv-upstream-code') &&
+        !/Internal Server/.test(JSON.stringify(await v500.json())));
+    check('400 amont → statut amont identique au statut affiché (400)',
+        v400.headers.get('x-lsv-upstream-status') === '400',
+        v400.headers.get('x-lsv-upstream-status'));
+    check('503 amont → statut amont 503',
+        vQueue.headers.get('x-lsv-upstream-status') === '503',
+        vQueue.headers.get('x-lsv-upstream-status'));
+    check('corps non JSON → statut amont toujours présent',
+        vPlain.headers.get('x-lsv-upstream-status') === '400',
+        vPlain.headers.get('x-lsv-upstream-status'));
 
     /* Tableau en tête de corps : pas de crash, pas d'en-tête. */
     const vArr = await mkVal(400, '[{"code":"invalid_request"}]')(vidPost({ model: 'm', prompt: 'p' }));

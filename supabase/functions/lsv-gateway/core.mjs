@@ -538,7 +538,8 @@ export function createHandler(options = {}) {
            envoyés. */
         if (allowed) {
             headers['Access-Control-Expose-Headers'] =
-                'x-lsv-request-id, x-lsv-upstream-code, x-lsv-upstream-param, ' +
+                'x-lsv-request-id, x-lsv-upstream-status, x-lsv-upstream-code, ' +
+                'x-lsv-upstream-param, ' +
                 'x-lsv-upstream-reason, x-lsv-upstream-allowed, ' +
                 'x-lsv-quota, x-lsv-quota-scope, ' +
                 'x-lsv-quota-image, x-lsv-quota-video, x-lsv-quota-chat, ' +
@@ -812,6 +813,11 @@ export function createHandler(options = {}) {
            Renvoyer uniquement « Impossible de générer » rend l'intégration
            indiagnostiquable : il faut ouvrir les journaux à la main, à chaque
            erreur. On extrait donc UNIQUEMENT :
+             - `status` — sur TOUTE erreur amont : les trois chiffres du vrai
+               statut. Indispensable dès que `safeStatus` a masqué l'origine :
+               un 502 affiché au client peut cacher un 401, un 404 ou un 500.
+               Sans ce champ, « 502 » est aussi creux que le message
+               générique. Chiffres seulement, aucun texte ;
              - `code` — sur 400, 429 et 503 : un JETON qui distingue une
                saturation (« video_queue_full ») d'un modèle sans canal
                (« model_not_found ») d'un autre incident. C'est ce qui sépare
@@ -820,6 +826,8 @@ export function createHandler(options = {}) {
                la nature du refus, les valeurs admises.
            Tout est filtré caractère par caractère, borné en longueur. Pas
            d'URL, pas de modèle, pas d'identifiant, pas de phrase. */
+        const upStatus = String(res.status || '');
+        if (/^[1-5][0-9]{2}$/.test(upStatus)) h['x-lsv-upstream-status'] = upStatus;
         const isObj = upstream && typeof upstream === 'object' && !Array.isArray(upstream);
         if (isObj && (res.status === 400 || res.status === 429 || res.status === 503)) {
             const code = String(upstream.code || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);

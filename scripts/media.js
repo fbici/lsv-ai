@@ -11,23 +11,27 @@ const AgnesProvider = {
     /* Erreur levée sur une réponse non-2xx. Le message est destiné au journal
        d'analyse (où l'admin le lit en entier), JAMAIS à l'utilisateur, qui
        reçoit un texte générique via Utils.friendlyError.
-       Les quatre en-têtes `x-lsv-upstream-*` sont des champs STRUCTURÉS que la
-       passerelle extrait du refus de validation : code, paramètre, nature du
-       refus et valeurs admises. On voit donc « le réglage X est interdit » ou
-       « le réglage X attend l'une de ces valeurs » sans rien exposer du
-       fournisseur ni rouvrir les journaux. */
+       Les cinq en-têtes `x-lsv-upstream-*` sont des champs STRUCTURÉS que la
+       passerelle extrait du refus de validation : statut réel, code, paramètre,
+       nature du refus et valeurs admises. On voit donc « le réglage X est
+       interdit » ou « le réglage X attend l'une de ces valeurs » sans rien
+       exposer du fournisseur ni rouvrir les journaux. Le statut réel n'est
+       rappelé QUE s'il diffère de celui renvoyé au client : un 502 affiché
+       masque en effet un 401, un 404 ou un 500. */
     async fail(res) {
         let body = '';
         try { body = await res.text(); } catch (e) {}
         const id = this.reqId(res);
+        const up = this.header(res, 'x-lsv-upstream-status');
         const bits = [
+            up && up !== String(res.status) ? 'amont ' + up : '',
             this.header(res, 'x-lsv-upstream-code'),
             this.header(res, 'x-lsv-upstream-param'),
             this.header(res, 'x-lsv-upstream-reason'),
             this.header(res, 'x-lsv-upstream-allowed')
         ];
-        const allowed = bits[3];
-        bits[3] = allowed ? 'valeurs ' + allowed : '';
+        const allowed = bits[4];
+        bits[4] = allowed ? 'valeurs ' + allowed : '';
         const why = bits.filter(Boolean).length ? ' (' + bits.filter(Boolean).join(' · ') + ')' : '';
         return new Error('HTTP ' + res.status + (id ? ' [' + id + ']' : '') + why + ' — ' + body.slice(0, 200));
     },
