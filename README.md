@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.16.11
+# LSV.ai — Studio Viral v3.16.12
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -170,7 +170,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -1266,13 +1266,9 @@ les vidéos », ne concernait que la vidéo.
 - **Auto-téléchargement branché sur les images**, libellés des deux réglages
   passés à « Auto-télécharger images et vidéos ».
 
-> **Reste à vérifier en conditions réelles.** Le téléchargement direct exige
-> que le CDN du fournisseur autorise le CORS (`Access-Control-Allow-Origin`).
-> L'**aperçu**, lui, n'en a jamais besoin — c'est un simple `<img>`. Si le
-> `fetch` échoue, le bouton bascule sur l'aperçu plutôt que de perdre la page.
-> La passerelle sait déjà récupérer une image côté serveur
-> (`resolveMediaRef`, « où aucun CORS ne s'applique ») : si le CDN refuse, le
-> recours est un **dépôt média dédié**, à arbitrer (surfature, SSRF).
+> **Résolu au §2.23.** La vérification en conditions réelles a donné un
+> résultat net : le CDN du fournisseur ne renvoie **aucun** en-tête CORS.
+> Voir « Dépôt média » ci-dessous.
 
 **Vérifié par** `tests/nonreg.test.js` §4bis (+16 assertions) : carte sans
 `target=` ni `<a href>`, ouverture de l'aperçu par le bouton puis par un clic
@@ -1280,11 +1276,114 @@ direct sur l'image, fermeture par le bouton et par `Échap`, `aria-hidden`,
 présence réelle de l'image, téléchargement par récupération des octets (et non
 par ancre cross-origin), bascule vers l'aperçu quand les octets sont refusés,
 auto-téléchargement effectivement déclenché pour une image, réglage refermé,
-libellé promettant images **et** vidéos. Non-régression : **70/70**.
+libellé promettant images **et** vidéos. Non-régression : **78/78**
+(le §4ter est apporté par la §2.23 qui suit).
 
 > **Déploiement** : `index.html`, `scripts/{core,ui,handlers,views}.js` et
 > `styles/studio.css` modifiés → **rafraîchir le navigateur** (v3.16.11).
 > Aucun redéploiement de la passerelle.
+
+---
+
+### 2.23 Dépôt média : l'image se télécharge enfin - v3.16.12
+
+La §2.22 restait ouverte sur un point décisif : est-ce que le CDN du
+fournisseur autorise le CORS ? Il ne fallait pas le supposer, il fallait le
+mesurer sur une **image réelle**.
+
+#### Le constat (22 octobre, image fournie)
+
+`GET https://platform-outputs.agnes-ai.space/images/t2i/task_…/output_….png`
+— réponse **200**, `content-type: image/png`, `content-length: 4510554`
+(4,3 Mo), `cache-control: public,max-age=3600`. Et surtout, **le reste est
+vide** :
+
+- `access-control-allow-origin` : **absent** ;
+- `content-disposition` : **absent** ;
+- `vary` : **absent**.
+
+Un second essai en envoyant `Origin: https://fbici.github.io` donne exactement
+le même résultat. Conséquences, toutes deux bloquantes :
+
+1. **`fetch(url, {mode:'cors'})` côté navigateur est rejeté** — un appel
+   cross-origin sans `Access-Control-Allow-Origin` échoue dès la lecture des
+   en-têtes. Les octets ne sont jamais accessibles au JavaScript.
+2. **L'attribut `download` d'une ancre ne s'applique jamais en cross-origin**,
+   et sans `Content-Disposition: attachment` le navigateur affiche l'image au
+   lieu de l'enregistrer.
+
+Autrement dit : le repli mis en place en v3.16.11 (aperçu + message « clique
+droit → Enregistrer sous… ») **empêchait le pire** — perdre la page — **mais
+ne téléchargeait toujours rien tout seul**. C'est exactement le symptôme
+raconté. L'**aperçu**, lui, marche dans tous les cas : un `<img>` n'a besoin
+d'aucun CORS.
+
+#### Le correctif : `GET /v1/media?u=<url>`
+
+La passerelle récupère l'image **côté serveur** — là où aucun CORS ne
+s'applique — et la renvoie **en téléchargement**. C'est le même mécanisme, et
+la même justification écrite, que `resolveMediaRef` (`core.mjs`) qui sert déjà
+les images de référence d'une création vidéo.
+
+Réponse : `Content-Disposition: attachment; filename="lsv-output_….png"`,
+`Content-Type` d'origine, et l'`Access-Control-Allow-Origin` de la passerelle —
+le navigateur peut donc lire les octets et les sauvegarder.
+
+**Périmètre, délibérément étroit** (les journaux citent `media-rejete`,
+`media-type`, `media-redirection`, `media-non-connecte`, …) :
+
+| Garde-fou | Effet |
+|---|---|
+| `GET` **uniquement** | 404 sur une méthode non autorisée |
+| **Compte connecté exigé** | 401 sinon ; un jeton anonyme ne donne rien — une image ne peut être produite que par un compte |
+| **Liste blanche d'hôtes fermée** | `MEDIA_HOSTS` = `platform-outputs.agnes-ai.space` ; autre hôte → 400 |
+| **HTTPS seulement** | `http:` → 400 |
+| **Toute redirection ré-examinée** | `res.url` repassée dans la liste : on ne quitte pas l'hôte autorisé au passage → 400 |
+| **`image/*` uniquement** | une réponse JSON/HTML → 400 |
+| **Corps vide refusé**, **20 Mo max** | 502 / 413 (`MAX_MEDIA_BYTES`) |
+| Fenêtre de débit | même `ratePerMin` que le reste, par IP et par visiteur → 429 |
+| **Aucun texte amont** | message générique (`MSG_DOWNLOAD`), aucun détail de réponse |
+| **Aucune unité de quota** | `classifyRequest('/v1/media')` → `null` |
+
+> **SSRF.** `resolveMediaRef` récupérait **déjà**, sans liste blanche, n'importe
+> quelle URL `https://` envoyée dans une création vidéo authentifiée. Cette
+> route est donc **plus étroite** que l'existant : hôte unique, type image,
+> taille bornée, compte requis, débit limité. Un nouvel hôte s'ajoute en une
+> ligne dans `MEDIA_HOSTS`, puis redéploiement.
+
+#### Côté application : trois essais, dans cet ordre
+
+`Utils.triggerDownload` (`scripts/core.js`) devient une chaîne :
+
+1. `data:` / `blob:` → enregistrement direct, **sans réseau** ;
+2. `fetch(URL du CDN)` en CORS → si les octets sont accessibles (autres
+   hébergeurs, peut-être un jour), aucun coût passerelle ;
+3. `GATEWAY_URL + '/v1/media?u=' + encodeURIComponent(url)`, **authentifié**
+   par le jeton du compte (`Gateway.withHeaders`) ;
+4. sinon `false` → `Handlers.downloadAsset` ouvre l'**aperçu** et explique,
+   **jamais un nouvel onglet**.
+
+Chaque échec est mangé au niveau de son essai : un échec du 2 n'empêche pas
+le 3, et le 4 n'arrive que si tout a échoué.
+
+**Vérifié par** `tests/gateway.test.mjs` §27 (+25 assertions) : validation
+d'URL (HTTPS, hôte, longueur, chaîne illisible), nom de fichier sûr sans
+traversée de chemin ni guillemet, 401 sans compte et sur jeton anonyme, 400
+sur hôte étranger et sur `http:`, 404 en POST, octets intacts, `attachment`
+exact, CORS présent sur la réponse binaire, aucune unité de quota consommée,
+appel réseau sortant confirmé côté serveur, aucun secret du fournisseur dans
+la requête, réponse non-image refusée, **redirection hors liste blanche
+refusée** — et `tests/nonreg.test.js` §4ter (+8) : repli bien déclenché,
+paramètre `u` encodé, requête authentifiée par le compte et sans clé secrète,
+téléchargement réussi quand la passerelle répond, boucle absente, `data:`
+sans aucun appel réseau.
+
+**Nouveaux totaux : non-régression 78/78 · gateway 245/245 · suite 1031.**
+
+> **Déploiement — cette fois la passerelle change.**
+> `supabase functions deploy lsv-gateway` **puis** rafraîchir le navigateur
+> (v3.16.12). Sans redéploiement, le 3ᵉ essai renvoie 404 et on retombe
+> proprement sur l'aperçu — rien ne casse, mais rien ne se télécharge.
 
 ---
 
@@ -1664,7 +1763,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 998 assertions, 6 suites
+npm test                      # 1031 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -1733,10 +1832,10 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 998 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 1031 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
-**`tests/nonreg.test.js`** (70 assertions, **82 avec `ORIG`**) — non-régression
+**`tests/nonreg.test.js`** (78 assertions, **90 avec `ORIG`**) — non-régression
 
 - structure HTML et `body.innerHTML` identiques à l'original, hors blocs
   volontairement supprimés (clé API, console, infos fournisseur) **et hors

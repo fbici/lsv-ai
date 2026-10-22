@@ -6,7 +6,7 @@
    sanitisation des erreurs amont, clé absente.
    Usage : node tests/gateway.test.mjs
    ═══════════════════════════════════════════════════════════════════════════ */
-import { createHandler, createMemoryStore, classifyRequest, subPath, imageUnits, requestUnits, tokenRole, resolveMediaRef, resolveVideoRefs, newRequestId, classifyValidation } from '../supabase/functions/lsv-gateway/core.mjs';
+import { createHandler, createMemoryStore, classifyRequest, subPath, imageUnits, requestUnits, tokenRole, resolveMediaRef, resolveVideoRefs, newRequestId, classifyValidation, mediaAllowed, mediaFilename } from '../supabase/functions/lsv-gateway/core.mjs';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -1138,6 +1138,124 @@ async function run() {
         body: JSON.stringify({ prompt: 'x', size: '1312x736' })
     }));
     check('visiteur : remboursement mémoire également appliqué', an2.status === 200, an2.status);
+
+    console.log('\n=== 27. DÉPÔT MÉDIA /v1/media (CDN sans CORS) ===');
+    /* Constat à l\'origine de cette route : sur une image réelle du
+       fournisseur, le CDN ne renvoie NI Access-Control-Allow-Origin NI
+       Content-Disposition — le navigateur bloque donc fetch() et ignore
+       l\'attribut download d\'une ancre cross-origin. */
+    const CDN_HOST = 'https://platform-outputs.agnes-ai.space';
+    const CDN_OK = CDN_HOST + '/images/t2i/task_abc/output_98d2ebf1.png';
+
+    check('mediaAllowed : URL du CDN acceptée', mediaAllowed(CDN_OK).ok === true);
+    check('mediaAllowed : http refusé (HTTPS seul)', mediaAllowed('http://platform-outputs.agnes-ai.space/a.png').reason === 'protocole');
+    check('mediaAllowed : hôte hors liste blanche refusé', mediaAllowed('https://evil.example/a.png').reason === 'hote');
+    check('mediaAllowed : URL vide refusée', mediaAllowed('').reason === 'vide');
+    check('mediaAllowed : URL trop longue refusée', mediaAllowed('https://platform-outputs.agnes-ai.space/' + 'a'.repeat(2500)).reason === 'longueur');
+    check('mediaAllowed : chaîne illisible refusée', mediaAllowed('pas une URL').reason === 'url');
+
+    const fnOk = mediaFilename(CDN_OK, 'image/png; charset=binary');
+    check('mediaFilename : nom sûr déduit du chemin', fnOk === 'lsv-output_98d2ebf1.png', fnOk);
+    const fnTrav = mediaFilename('https://platform-outputs.agnes-ai.space/..%2F..%2Fetc%2Fpasswd', 'image/png');
+    check('mediaFilename : aucune traversée de chemin', /^[A-Za-z0-9._-]+$/.test(fnTrav) && fnTrav.indexOf('/') === -1, fnTrav);
+    check('mediaFilename : extension prise dans le type', mediaFilename(CDN_HOST + '/x/sans-extension', 'image/jpeg') === 'lsv-sans-extension.jpg',
+        mediaFilename(CDN_HOST + '/x/sans-extension', 'image/jpeg'));
+    check('mediaFilename : aucun guillemet injectable', mediaFilename(CDN_HOST + '/x/a\"b.png', 'image/png').indexOf('"') === -1);
+
+    const mediaFetches = [];
+    const hMedia = createHandler({
+        env: {
+            AGNES_API_KEY: SECRET,
+            SUPABASE_URL: 'https://ref.supabase.co',
+            SUPABASE_SERVICE_ROLE_KEY: 'svc-key-0123456789',
+            ALLOWED_ORIGINS: 'https://fbici.github.io',
+            RATE_LIMIT_PER_MIN: '1000',
+            IMAGE_LIMIT: '0', VIDEO_LIMIT: '0', CHAT_LIMIT: '0', MOTION_LIMIT: '0'
+        },
+        store: createMemoryStore(),
+        now: () => 1700000000000,
+        log: () => {},
+        fetchImpl: async (url, init) => {
+            const u = String(url);
+            mediaFetches.push(u);
+            if (u.includes('/auth/v1/user')) {
+                const a = (init && init.headers && init.headers.Authorization) || '';
+                if (a === 'Bearer ' + ADA.jwt) {
+                    return new Response(JSON.stringify({ id: ADA.id, email: ADA.email }),
+                        { status: 200, headers: { 'content-type': 'application/json' } });
+                }
+                return new Response('{"msg":"invalid token"}', { status: 401, headers: { 'content-type': 'application/json' } });
+            }
+            if (u.includes('not-an-image')) {
+                return new Response('{"error":"pas une image"}', { status: 200, headers: { 'content-type': 'application/json' } });
+            }
+            if (u.startsWith(CDN_HOST + '/')) {
+                return new Response(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+                    { status: 200, headers: { 'content-type': 'image/png' } });
+            }
+            return new Response('{"error":"x"}', { status: 500, headers: { 'content-type': 'application/json' } });
+        }
+    });
+    const GETM = (u, headers, method) => makeReq(GW + '/v1/media?u=' + encodeURIComponent(u), {
+        method: method || 'GET',
+        headers: Object.assign({ 'origin': 'https://fbici.github.io' }, headers || {})
+    });
+
+    const m401 = await hMedia(GETM(CDN_OK, {}));
+    check('sans compte connecté = 401', m401.status === 401, m401.status);
+    const mAnon = await hMedia(GETM(CDN_OK, { 'authorization': 'Bearer anon-key-0123456789' }));
+    check('jeton anonyme refusé (compte requis)', mAnon.status === 401, mAnon.status);
+
+    const mEvil = await hMedia(GETM('https://evil.example/a.png', { 'authorization': 'Bearer ' + ADA.jwt }));
+    check('hôte hors liste blanche = 400', mEvil.status === 400, mEvil.status);
+    const mHttp = await hMedia(GETM('http://platform-outputs.agnes-ai.space/a.png', { 'authorization': 'Bearer ' + ADA.jwt }));
+    check('protocole http refusé = 400', mHttp.status === 400, mHttp.status);
+    const mPost = await hMedia(GETM(CDN_OK, { 'authorization': 'Bearer ' + ADA.jwt }, 'POST'));
+    check('POST refusé (GET seul) = 404', mPost.status === 404, mPost.status);
+
+    const beforeCdn = mediaFetches.length;
+    const mOk = await hMedia(GETM(CDN_OK, { 'authorization': 'Bearer ' + ADA.jwt }));
+    const mOkBody = mOk.status === 200 ? new Uint8Array(await mOk.arrayBuffer()) : null;
+    check('image servie = 200', mOk.status === 200, mOk.status);
+    check('octets renvoyés intacts', !!mOkBody && mOkBody.length === 8 && mOkBody[0] === 137 && mOkBody[1] === 80, mOkBody && mOkBody.length);
+    check('type image conservé', mOk.headers.get('content-type') === 'image/png', mOk.headers.get('content-type'));
+    check('Content-Disposition: attachment (le navigateur TÉLÉCHARGE)',
+        /^attachment;\s*filename="lsv-output_98d2ebf1\.png"$/.test(mOk.headers.get('content-disposition') || ''),
+        mOk.headers.get('content-disposition'));
+    check('CORS présent sur la réponse binaire', mOk.headers.get('access-control-allow-origin') === 'https://fbici.github.io',
+        mOk.headers.get('access-control-allow-origin'));
+    check('aucune unité de quota consommée par un téléchargement', mOk.headers.get('x-lsv-quota-image') === null,
+        mOk.headers.get('x-lsv-quota-image'));
+    check('le CDN est bien allé chercher L image côté serveur',
+        mediaFetches.slice(beforeCdn).some(u => u === CDN_OK), mediaFetches.slice(beforeCdn).join(' | '));
+    check('aucun secret du fournisseur dans la requête amont',
+        !JSON.stringify(mediaFetches).includes(SECRET), 'ok');
+
+    const mCt = await hMedia(GETM(CDN_HOST + '/images/t2i/not-an-image', { 'authorization': 'Bearer ' + ADA.jwt }));
+    check('réponse non-image refusée = 400', mCt.status === 400, mCt.status);
+
+    const hRedir = createHandler({
+        env: {
+            AGNES_API_KEY: SECRET, SUPABASE_URL: 'https://ref.supabase.co',
+            SUPABASE_SERVICE_ROLE_KEY: 'svc-key-0123456789',
+            ALLOWED_ORIGINS: 'https://fbici.github.io', RATE_LIMIT_PER_MIN: '1000',
+            IMAGE_LIMIT: '0', VIDEO_LIMIT: '0', CHAT_LIMIT: '0', MOTION_LIMIT: '0'
+        },
+        store: createMemoryStore(), now: () => 1700000000000, log: () => {},
+        fetchImpl: async (url, init) => {
+            const u = String(url);
+            if (u.includes('/auth/v1/user')) {
+                return new Response(JSON.stringify({ id: ADA.id, email: ADA.email }),
+                    { status: 200, headers: { 'content-type': 'application/json' } });
+            }
+            const r = new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'image/png' } });
+            /* Une redirection vers un hôte non listé doit être détectée. */
+            Object.defineProperty(r, 'url', { value: 'https://evil.example/fuite.png' });
+            return r;
+        }
+    });
+    const mRedir = await hRedir(GETM(CDN_OK, { 'authorization': 'Bearer ' + ADA.jwt }));
+    check('redirection hors liste blanche refusée = 400', mRedir.status === 400, mRedir.status);
 
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');

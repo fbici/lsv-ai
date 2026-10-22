@@ -295,6 +295,63 @@ function connect(w) {
             .closest('.toggle-row').querySelector('.toggle-row-name') || {}).textContent || ''),
         (wb.document.querySelector('[id^="autodownload-toggle"]').closest('.toggle-row').querySelector('.toggle-row-name') || {}).textContent);
 
+    console.log('\n=== 4ter. REPLI DE TÉLÉCHARGEMENT : DÉPÔT MÉDIA ===');
+    /* Cas réel (22/10) : le CDN du fournisseur ne renvoie ni
+       Access-Control-Allow-Origin ni Content-Disposition. Le fetch direct
+       échoue donc — la passerelle doit alors récupérer l'image elle-même. */
+    const gwBase = String(wb.LSV.config.API_BASE || '').replace(/\/v1$/, '');
+    calls.length = 0;
+    wb.fetch = function (url, options) {
+        calls.push({ url: String(url), options: options || {} });
+        if (String(url).includes('/rest/v1/analytics_events')) return Promise.resolve({ ok: true, status: 201 });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    const dlDirect = await wb.LSV.utils.triggerDownload('https://cdn.test/img.png', 'lsv-test.png');
+    check('échec direct → echec propre, aucun résultat faux', dlDirect === false, dlDirect);
+    const gwMedia = calls.find(c => c.url.indexOf('/v1/media?u=') !== -1);
+    check('repli sur le dépôt média de la passerelle', !!gwMedia, calls.map(c => c.url).join(' | '));
+    check('URL encodée dans le paramètre u',
+        !!gwMedia && gwMedia.url === gwBase + '/v1/media?u=' + encodeURIComponent('https://cdn.test/img.png'),
+        gwMedia && gwMedia.url);
+    check('requête de téléchargement authentifiée par le compte',
+        !!gwMedia && !!gwMedia.options.headers &&
+        gwMedia.options.headers.Authorization === 'Bearer jwt-de-test',
+        gwMedia && JSON.stringify(gwMedia.options.headers));
+    check('clé anonyme publique jointe (pas de clé secrète)',
+        !!gwMedia && !!gwMedia.options.headers &&
+        gwMedia.options.headers.apikey === 'anon-test-key-0123456789' &&
+        JSON.stringify(gwMedia.options.headers).indexOf('sk-') === -1,
+        gwMedia && JSON.stringify(gwMedia.options.headers));
+
+    /* La passerelle répond avec des octets : le téléchargement aboutit. */
+    try { wb.URL.createObjectURL = () => 'blob:lsv-mock'; wb.URL.revokeObjectURL = () => {}; } catch (e) {}
+    const dlOkCalls = [];
+    wb.fetch = function (url, options) {
+        dlOkCalls.push({ url: String(url), options: options || {} });
+        if (String(url).indexOf('/v1/media?u=') !== -1) {
+            return Promise.resolve({
+                ok: true, status: 200,
+                headers: { get: n => (String(n).toLowerCase() === 'content-type' ? 'image/png' : null) },
+                blob: async () => ({ size: 4510554 })
+            });
+        }
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    const dlOk = await wb.LSV.utils.triggerDownload('https://cdn.test/img.png', 'lsv-ok.png');
+    check('octets servis par la passerelle → téléchargement réussi', dlOk === true, dlOk);
+    check('un seul appel de repli (pas de boucle)', dlOkCalls.length === 2, dlOkCalls.length);
+
+    /* URL locale (data:) : aucun réseau. */
+    dlOkCalls.length = 0;
+    const dlData = await wb.LSV.utils.triggerDownload('data:image/png;base64,iVBORw0KGgo=', 'lsv-data.png');
+    check('data: téléchargé directement, sans réseau', dlData === true && dlOkCalls.length === 0, dlOkCalls.length);
+
+    wb.fetch = function (url, options) {
+        calls.push({ url: String(url), options: options || {} });
+        if (String(url).includes('/rest/v1/analytics_events')) return Promise.resolve({ ok: true, status: 201 });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+
     console.log('\n=== 5. ANALYTICS : sanitisation ===');
     const posts = [];
     wb.fetch = function (url, options) {

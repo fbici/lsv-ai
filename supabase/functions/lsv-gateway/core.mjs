@@ -27,6 +27,7 @@ const MSG_NO_KEY = 'Service momentan\u00e9ment indisponible.';
 const MSG_QUOTA = 'Quota du jour atteint. Reviens demain — ton compteur se r\u00e9initialise \u00e0 minuit.';
 const MSG_SUSPENDED = 'Les g\u00e9n\u00e9rations sont momentan\u00e9ment suspendues. R\u00e9essaie dans quelques instants.';
 const MSG_MEDIA = 'Impossible de r\u00e9cup\u00e9rer l\u2019image de r\u00e9f\u00e9rence. V\u00e9rifie qu\u2019elle existe toujours dans ta biblioth\u00e8que.';
+const MSG_DOWNLOAD = 'T\u00e9l\u00e9chargement indisponible pour le moment. Ouvre le fichier en aper\u00e7u et enregistre-le toi-m\u00eame.';
 
 const DEFAULT_AGNES_BASE = 'https://apihub.agnes-ai.com';
 const FUNCTION_MOUNT = '/functions/v1/lsv-gateway';
@@ -36,6 +37,44 @@ const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 /* Une image de bibliothèque peut être lourde ; on borne la récupération. */
 const MAX_MEDIA_BYTES = 20 * 1024 * 1024;
 const MEDIA_CHUNK = 0x8000;
+
+/* ── Dépôt média : hôtes dont une IMAGE peut être servie ──────────────────
+   Vérifié sur une image réelle du fournisseur : le CDN de sortie ne renvoie
+   NI `Access-Control-Allow-Origin` NI `Content-Disposition`. Côté navigateur,
+   `fetch()` est donc bloqué et l'attribut `download` d'une ancre cross-origin
+   est IGNORÉ — le fichier ne se télécharge jamais, il s'ouvre dans un onglet.
+   On sert donc l'image ICI, où aucun CORS ne s'applique (même raison, même
+   résolution que `resolveMediaRef` plus bas). La liste est volontairement
+   FERMÉE : au-delà, ce serait un dépôt d'images ouvert. */
+const MEDIA_HOSTS = ['platform-outputs.agnes-ai.space'];
+
+/** Valide l'URL demandée à `/v1/media`. HTTPS obligatoire, hôte dans la
+    liste blanche. Renvoie une RAISON neutre (jamais d'URL, jamais de texte
+    amont) pour les journaux. */
+export function mediaAllowed(raw) {
+    const s = String(raw == null ? '' : raw).trim();
+    if (!s) return { ok: false, reason: 'vide' };
+    if (s.length > 2000) return { ok: false, reason: 'longueur' };
+    let u;
+    try { u = new URL(s); } catch (e) { return { ok: false, reason: 'url' }; }
+    if (u.protocol !== 'https:') return { ok: false, reason: 'protocole' };
+    if (MEDIA_HOSTS.indexOf(u.hostname) === -1) return { ok: false, reason: 'hote' };
+    return { ok: true, url: u.href };
+}
+
+/** Nom de fichier sûr pour `Content-Disposition` : aucun `/`, aucun `\`,
+    aucun `..`, aucun guillemet — seule une extension image admise. */
+export function mediaFilename(href, contentType) {
+    let base = '';
+    try {
+        base = decodeURIComponent(String(new URL(String(href)).pathname).split('/').pop() || '');
+    } catch (e) { base = ''; }
+    base = String(base).replace(/[^A-Za-z0-9._-]/g, '_').replace(/^[._-]+/, '').slice(0, 60);
+    const ct = String(contentType || '').split(';')[0].trim().toLowerCase();
+    const ext = ({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif' })[ct] || 'png';
+    if (!new RegExp('\\.' + ext + '$', 'i').test(base)) base = (base || 'image') + '.' + ext;
+    return 'lsv-' + base;
+}
 
 function bytesToBase64(bytes) {
     let bin = '';
@@ -601,6 +640,85 @@ export function createHandler(options = {}) {
             const state = await dbQuotaState(user);
             if (!state) return okJson({ enabled: enabled, suspended: suspended }, h);
             return okJson(state, h);
+        }
+
+        /* ── Dépôt média : une IMAGE du CDN, récupérée puis servie ICI ─────
+              Même diagnostic que le §6 « image de référence » plus bas :
+              sans récupération serveur, le navigateur ne peut pas obtenir
+              les octets (CDN sans CORS, `download` cross-origin ignoré).
+              Périmètre délibérément étroit :
+                - GET UNIQUEMENT, fenêtre de débit par IP et par visiteur ;
+                - COMPTE CONNECTÉ (une image ne peut être produite que par un
+                  compte — un jeton anonyme ne donne rien) ;
+                - hôte dans la liste blanche + HTTPS, et TOUTE redirection
+                  ré-examinée : on ne quitte pas la liste au passage ;
+                - `image/*` UNIQUEMENT, vide refusé, taille bornée ;
+                - aucun texte amont ne repart : un message générique. */
+        if (path === '/v1/media') {
+            const mKeys = [];
+            const mIp = clientIp(request);
+            const mVis = (request.headers.get('x-lsv-visitor') || '')
+                .replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40);
+            if (mIp) mKeys.push('ip:' + mIp);
+            if (mVis) mKeys.push('vis:' + mVis);
+            for (const mk of mKeys) {
+                const mr = store.allowWindow(mk, ratePerMin, 60000, now());
+                if (!mr.ok) {
+                    log('rate-limit', mk);
+                    return json(429, MSG_LIMIT, Object.assign({ 'Retry-After': String(mr.retryAfter) }, h));
+                }
+            }
+            if (request.method !== 'GET') return json(404, MSG_NOT_FOUND, h);
+            if (!(await verifyUser(request))) {
+                log('media-non-connecte', reqId);
+                return json(401, MSG_FORBIDDEN, h);
+            }
+            const check = mediaAllowed(url.searchParams.get('u'));
+            if (!check.ok) {
+                log('media-rejete', reqId, check.reason);
+                return json(400, MSG_DOWNLOAD, h);
+            }
+
+            let res = null;
+            try {
+                res = await doFetch(check.url, { method: 'GET', headers: { Accept: 'image/*' } });
+            } catch (e) {
+                log('media-reseau', reqId, (e && e.message) || 'erreur');
+                return json(502, MSG_DOWNLOAD, h);
+            }
+            if (!res || !res.ok) {
+                log('media-status', reqId, res ? res.status : 0);
+                return json(502, MSG_DOWNLOAD, h);
+            }
+            /* Une redirection ne doit pas emmener ailleurs qu'en liste. */
+            if (res.url && !mediaAllowed(res.url).ok) {
+                log('media-redirection', reqId);
+                return json(400, MSG_DOWNLOAD, h);
+            }
+            const ct = String((res.headers && res.headers.get && res.headers.get('content-type')) || '').toLowerCase();
+            if (ct && ct.indexOf('image/') !== 0) {
+                log('media-type', reqId, ct.split(';')[0]);
+                return json(400, MSG_DOWNLOAD, h);
+            }
+            let bytes = null;
+            try { bytes = new Uint8Array(await res.arrayBuffer()); } catch (e) { bytes = null; }
+            if (!bytes || !bytes.length) {
+                log('media-vide', reqId);
+                return json(502, MSG_DOWNLOAD, h);
+            }
+            if (bytes.length > MAX_MEDIA_BYTES) {
+                log('media-trop-lourd', reqId, bytes.length);
+                return json(413, MSG_DOWNLOAD, h);
+            }
+            log('media-servi', reqId, bytes.length);
+            return new Response(bytes, {
+                status: 200,
+                headers: Object.assign({}, h, {
+                    'Content-Type': ct || 'application/octet-stream',
+                    'Content-Disposition': 'attachment; filename="' + mediaFilename(check.url, ct) + '"',
+                    'Content-Length': String(bytes.length)
+                })
+            });
         }
 
         const isProxy = path === '/v1' || path.startsWith('/v1/') || path.startsWith('/agnesapi');

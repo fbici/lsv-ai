@@ -93,18 +93,44 @@ const Utils = {
             a.click();
             setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 100);
         };
-        try {
-            if (/^(data:|blob:)/i.test(url)) { save(url); return true; }
-            const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
-            if (!res || !res.ok) throw new Error('HTTP ' + (res && res.status));
+        const fromBytes = async (res) => {
             const blob = await res.blob();
             if (!blob || !blob.size) throw new Error('réponse vide');
             const href = URL.createObjectURL(blob);
             save(href);
             setTimeout(() => { try { URL.revokeObjectURL(href); } catch (e) {} }, 60000);
             return true;
+        };
+        try {
+            if (/^(data:|blob:)/i.test(url)) { save(url); return true; }
+
+            /* 1. Direct : le CDN accepte ou non le CORS. */
+            try {
+                const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+                if (res && res.ok) return await fromBytes(res);
+            } catch (e) { /* cas réel vérifié : ce CDN n'a aucun en-tête CORS */ }
+
+            /* 2. Repli sur le dépôt média de la passerelle : l'image est
+                  récupérée côté serveur, où aucun CORS ne s'applique, et
+                  revient avec Content-Disposition: attachment. Requête
+                  authentifiée — la passerelle refuse sans compte connecté. */
+            if (typeof GATEWAY_URL === 'string' && GATEWAY_URL && /^https:\/\//i.test(url)) {
+                try {
+                    if (typeof Gateway !== 'undefined' && typeof AccountService !== 'undefined' && !Gateway._token) {
+                        const t = await AccountService.token();
+                        if (t) Gateway.setToken(t);
+                    }
+                    const hdr = (typeof Gateway !== 'undefined' && Gateway.withHeaders)
+                        ? Gateway.withHeaders({}).headers : {};
+                    const res = await fetch(GATEWAY_URL + '/v1/media?u=' + encodeURIComponent(url),
+                        Object.assign({ method: 'GET' }, { headers: hdr }));
+                    const ct = String((res && res.headers && res.headers.get('content-type')) || '');
+                    if (res && res.ok && ct.indexOf('image/') === 0) return await fromBytes(res);
+                } catch (e) { /* route absente ou refusée : on retombe sur l'aperçu */ }
+            }
+            throw new Error('octets inaccessibles');
         } catch (e) {
-            try { DebugService.log('warn', 'DOWNLOAD', 'direct impossible : ' + ((e && e.message) || e)); } catch (e2) {}
+            try { DebugService.log('warn', 'DOWNLOAD', 'téléchargement impossible : ' + ((e && e.message) || e)); } catch (e2) {}
             return false;
         }
     }
