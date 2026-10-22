@@ -164,6 +164,10 @@
 
 <div class="sv-toast" id="sv-toast"><span class="ms ms-sm" id="sv-toast-icon">info</span><span id="sv-toast-text"></span></div>
 
+<!-- Configuration partagée (identifiants publics + URL de la passerelle) :
+     indispensable au repli « dépôt média » qui va chercher les images du
+     fournisseur côté serveur (le CDN n'a aucun en-tête CORS). -->
+<script src="../shared/config.js"></script>
 <!-- Modules : constantes → dépendances → UI → bootstrap.
      Scripts classiques (pas d'ES modules) pour rester exécutables hors navigateur. -->
 <script src="./render/capability.js"></script>

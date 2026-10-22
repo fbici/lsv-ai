@@ -16,9 +16,20 @@
         doublon: 'déjà importé',
         limite: 'limite de médias atteinte',
         unsupported: 'format non supporté',
-        'not-a-file': 'fichier illisible',
-        'write-failed': 'stockage local plein ou bloqué'
+        'not-a-file': 'fichier illisible'
     };
+
+    /* Libellé d'un rejet d'import. Un échec d'écriture est décrit par
+       `MediaStorage.explainWriteFailure` (cause réelle + occupation du
+       stockage) : on ne se contente plus de « plein ou bloqué ». */
+    async function rejectLabel(r, fallback) {
+        if (r && r.reason === 'write-failed' && S.MediaStorage &&
+            S.MediaStorage.explainWriteFailure) {
+            try { return await S.MediaStorage.explainWriteFailure(r.error); } catch (e) {}
+        }
+        if (fallback) return fallback(r && r.reason);
+        return (REJECT_LABEL[r && r.reason]) || (r && r.reason) || 'refusé';
+    }
 
     function fmtDuration(sec) {
         if (!sec || sec < 0.05) return '';
@@ -83,10 +94,10 @@
                 S.App.toast(res.added.length + ' média' + (res.added.length > 1 ? 's importés' : ' importé'), 'success');
             } else if (res.added.length) {
                 const r = res.rejected[0];
-                S.App.toast('Import partiel — ' + r.file + ' : ' + (REJECT_LABEL[r.reason] || r.reason), 'warn');
+                S.App.toast('Import partiel — ' + r.file + ' : ' + await rejectLabel(r), 'warn');
             } else if (res.rejected.length) {
                 const r = res.rejected[0];
-                S.App.toast('Import impossible — ' + r.file + ' : ' + (REJECT_LABEL[r.reason] || r.reason), 'error');
+                S.App.toast('Import impossible — ' + r.file + ' : ' + await rejectLabel(r), 'error');
             }
             this.render();
             if (S.TimelineView) S.TimelineView.render();
@@ -110,16 +121,21 @@
                 if (S.TimelineView) S.TimelineView.render();
                 if (S.Preview) S.Preview.refresh();
                 S.App.setSaveState('dirty');
+            } else if (r.reason === 'session') {
+                S.App.toast(
+                    '« ' + asset.name + ' » : session expirée — rouvre LSV.ai pour rafraîchir ta connexion, ' +
+                    'puis réessaie.', 'error');
             } else if (r.reason === 'cors') {
                 S.App.toast(
-                    '« ' + asset.name + ' » est hébergé chez le fournisseur : le navigateur refuse de le récupérer. ' +
+                    '« ' + asset.name + ' » est hébergé chez le fournisseur et n’a pas pu être récupéré. ' +
                     'Télécharge-le depuis la Bibliothèque, puis dépose-le ici.', 'error');
             } else if (r.reason === 'déjà présent') {
                 S.App.toast('« ' + asset.name + ' » est déjà dans le projet', 'warn');
             } else if (r.reason === 'limite') {
                 S.App.toast('Limite de médias du projet atteinte (' + S.ProjectModel.LIMITS.MAX_MEDIA + ')', 'error');
             } else {
-                S.App.toast('Import impossible — ' + S.LibraryImport.reasonLabel(r.reason), 'error');
+                S.App.toast('Import impossible — « ' + asset.name + ' » : ' +
+                    await rejectLabel(r, S.LibraryImport.reasonLabel), 'error');
             }
         },
 
@@ -144,7 +160,8 @@
                     res.failed.length ? 'warn' : 'success');
             } else if (res.failed.length) {
                 const f = res.failed[0];
-                S.App.toast('Import impossible — « ' + f.asset.name + ' » : ' + S.LibraryImport.reasonLabel(f.reason), 'error');
+                S.App.toast('Import impossible — « ' + f.asset.name + ' » : ' +
+                    await rejectLabel(f, S.LibraryImport.reasonLabel), 'error');
             }
             this.render();
             if (S.TimelineView) S.TimelineView.render();

@@ -43,7 +43,7 @@
                     project.media.push(res.media);
                     added.push(res.media);
                 } else {
-                    rejected.push({ file: f.name, reason: res.reason });
+                    rejected.push({ file: f.name, reason: res.reason, error: res.error });
                 }
             }
             if (added.length) {

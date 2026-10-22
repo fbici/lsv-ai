@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.16.12
+# LSV.ai — Studio Viral v3.16.13
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -170,7 +170,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -1387,6 +1387,76 @@ sans aucun appel réseau.
 
 ---
 
+### 2.24 Montage vidéo : import depuis la bibliothèque - v3.16.13
+
+Deux blocages signalés côté montage, **deux causes distinctes** — le second
+n'était pas ce que le message disait.
+
+#### 1. « Image · Luxe » est hébergé chez le fournisseur : le navigateur refuse »
+
+`LibraryImport.fetchBlob` faisait **uniquement** `fetch(url, { mode:'cors' })`.
+Or la §2.23 vient de mesurer que le CDN du fournisseur n'a **aucun** en-tête
+CORS : cet appel échoue **systématiquement** sur toutes les images, donc
+l'import depuis LSV.ai était toujours refusé avec « retourne le télécharger à
+la main ». Le repli proposé contournait le problème au lieu de le résoudre.
+
+**Correctif** — `fetchBlob` devient une chaîne, identique à celle de
+`Utils.triggerDownload` :
+
+1. `fetch` direct (d'autres hébergeurs, ou ce CDN un jour) ;
+2. **`/v1/media?u=…`** de la passerelle : l'image est récupérée côté serveur,
+   là où aucun CORS ne s'applique, et revient en octets.
+
+Pour cela, `studio/index.html` charge désormais `../shared/config.js`
+(URL de la passerelle + identifiants **publics** uniquement) et le jeton du
+compte est lu dans `lsv4_account` — la **même** clé `localStorage` que la
+bibliothèque, le Studio étant de même origine. Aucun secret n'entre en jeu.
+
+Un **401** de la passerelle renvoie une raison `session` distincte de `cors`,
+avec son propre libellé (« rouvre LSV.ai pour rafraîchir ta connexion ») :
+un jeton expiré et un CDN bloqué ne sont pas le même problème et ne
+demandent pas la même action.
+
+#### 2. « Import impossible — … : stockage local plein ou bloqué »
+
+Le message mélangeait deux causes **mutuellement exclusives** et ne disait
+pas laquelle. Pire : l'erreur du navigateur était **jetée** —
+`MediaManager.importFiles` ne conservait que le motif,
+`MediaStorage.import` la connaissait mais ne la transmettait pas.
+
+**Correctifs**
+
+- `MediaStorage.explainWriteFailure(err)` : `QuotaExceededError` →
+  « stockage local plein **(X Mo utilisés sur Y Mo)** » — l'occupation réelle
+  vient de `IDB.estimateUsage()` ; autre nom d'erreur → « écriture refusée
+  (nom réel) » ; aucune cause lisible → « indisponible (navigation privée ?) ».
+- L'erreur **traverse** maintenant `MediaStorage` → `MediaManager` →
+  l'UI : `rejected[].error` est conservé jusqu'au toast.
+- Les trois chemins d'import (disque, un par un, « Tout importer ») passent
+  par le même libellé.
+
+C'est volontairement un **diagnostic**, pas une suppression de symptôme :
+le message affiche maintenant ce que le navigateur sait. Si c'est bien le
+quota, l'occupation affichée dira s'il faut libérer des médias.
+
+**Vérifié par** `tests/studio.test.js` §15bis (+10) et §15ter (+6) : config
+partagée chargée **avant** `main.js`, import réussi **via** le dépôt média
+alors que le CDN direct rejette, URL encodée dans `u`, jeton du compte
+présent (et aucun `sk-`), URL de provenance conservée, passerelle absente →
+`cors`, 401 → `session` avec libellé non technique, et pour l'écriture :
+quota → « plein » sans « ou bloqué », cause nommée affichée, cause absente
+sans crash, propagation de `error.name` jusqu'à l'UI.
+
+**Nouveaux totaux : studio 171/171 · suite 1047.**
+
+> **Déploiement** : fichiers statiques uniquement
+> (`studio/index.html`, `studio/core/library-import.js`,
+> `studio/core/media-manager.js`, `studio/storage/media-storage.js`,
+> `studio/ui/media-panel.js`) → **rafraîchir le navigateur** (v3.16.13).
+> La passerelle est **inchangée** : le dépôt média de la §2.23 sert déjà.
+
+---
+
 ## 3. Installation locale
 
 ```bash
@@ -1763,7 +1833,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 1031 assertions, 6 suites
+npm test                      # 1047 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -1832,7 +1902,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 1031 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 1047 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (78 assertions, **90 avec `ORIG`**) — non-régression
@@ -1971,7 +2041,7 @@ npm test        # 1031 assertions (6 suites, hors ORIG=… voir plus bas)
   d'activité ;
 - aucun mot de passe codé en dur, aucune `service_role`.
 
-**`tests/studio.test.js`** (155 assertions) — LSV Studio (`/studio/`, §12)
+**`tests/studio.test.js`** (171 assertions) — LSV Studio (`/studio/`, §12)
 
 - ouverture, rendu des panneaux, import de média, timeline ;
 - ratios visuels (`RATIOS`, grille rendue par `UI.renderRatioGrid`) ;

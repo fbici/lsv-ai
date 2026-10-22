@@ -69,18 +69,57 @@
         },
 
         /* ── Récupération du média ──────────────────────────────────────── */
-        /* Tente un fetch → Blob. Renvoie null si CORS/ réseau refuse. */
+        /* Le CDN du fournisseur ne renvoie AUCUN en-tête CORS (mesuré en
+           conditions réelles, v3.16.12) : un `fetch` navigateur y échoue
+           TOUJOURS. On repasse donc par le dépôt média de la passerelle
+           (`/v1/media`), qui télécharge l'image côté serveur — là où aucun
+           CORS ne s'applique — et la renvoie en octets. La configuration
+           partagée (../shared/config.js) donne l'URL, et le jeton du compte
+           est lu dans la MÊME clé localStorage que la bibliothèque
+           (`lsv4_account`) : le Studio et LSV.ai sont de même origine. */
+        gatewayBase() {
+            const c = window.LSV_CONFIG || {};
+            return String(c.LSV_GATEWAY_URL || '').replace(/\/+$/, '');
+        },
+        _sessionToken() {
+            try {
+                const a = JSON.parse(localStorage.getItem('lsv4_account') || 'null');
+                return a && a.access_token ? String(a.access_token) : '';
+            } catch (e) { return ''; }
+        },
+        async _viaGateway(url) {
+            const c = window.LSV_CONFIG || {};
+            const headers = {};
+            const token = this._sessionToken();
+            if (token) headers.Authorization = 'Bearer ' + token;
+            if (c.SUPABASE_ANON_KEY) headers.apikey = c.SUPABASE_ANON_KEY;
+            let res = null;
+            try {
+                res = await fetch(this.gatewayBase() + '/v1/media?u=' + encodeURIComponent(url),
+                    { method: 'GET', headers: headers });
+            } catch (e) { return { error: 'cors' }; }
+            if (res && res.status === 401) return { error: 'session' };
+            if (!res || !res.ok) return { error: 'cors' };
+            try {
+                const blob = await res.blob();
+                if (!blob || !blob.size || !blob.type) return { error: 'cors' };
+                return { blob: blob };
+            } catch (e) { return { error: 'cors' }; }
+        },
+        /* Tente le direct (autres hébergeurs), puis le dépôt média.
+           Renvoie { blob } ou { error } — `session` signale un jeton expiré,
+           `cors` un média réellement inaccessible. */
         async fetchBlob(url) {
             try {
                 const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
-                if (!res.ok) return null;
-                const blob = await res.blob();
-                /* Un blob vide ou d'un type inconnu ne sert à rien. */
-                if (!blob || !blob.size || !blob.type) return null;
-                return blob;
-            } catch (e) {
-                return null;
-            }
+                if (res && res.ok) {
+                    const blob = await res.blob();
+                    if (blob && blob.size && blob.type) return { blob: blob };
+                }
+            } catch (e) { /* cas mesuré : ce CDN bloque tout appel cross-origin */ }
+            const base = this.gatewayBase();
+            if (base && /^https:\/\//i.test(url)) return this._viaGateway(url);
+            return { error: 'cors' };
         },
 
         /* ── Import dans le projet ──────────────────────────────────────── */
@@ -96,12 +135,13 @@
                 return { ok: false, reason: 'déjà présent' };
             }
 
-            const blob = await this.fetchBlob(asset.url);
-            if (!blob) {
-                /* CORS : le navigateur refuse de lire un média hébergé chez le
-                   fournisseur. On le dit plutôt que de faire semblant. */
-                return { ok: false, reason: 'cors' };
+            const got = await this.fetchBlob(asset.url);
+            if (!got || !got.blob) {
+                /* Ni le CDN ni le dépôt média n'ont rendu les octets : on le
+                   dit plutôt que de faire semblant (§20.14). */
+                return { ok: false, reason: (got && got.error) || 'cors' };
             }
+            const blob = got.blob;
 
             /* MediaStorage attend un Blob avec un nom de fichier. */
             const ext = (blob.type.split('/')[1] || 'bin').split(';')[0];
@@ -114,7 +154,7 @@
             }
 
             const res = await S.MediaStorage.import(file);
-            if (!res.ok) return { ok: false, reason: res.reason || 'import' };
+            if (!res.ok) return { ok: false, reason: res.reason || 'import', error: res.error };
 
             res.media.sourceUrl = asset.url;
             /* On garde le nom tel que visible dans la Bibliothèque. */
@@ -134,7 +174,7 @@
                 const r = await this.import(project, a);
                 if (r.ok) added.push(r.media);
                 else if (r.reason === 'déjà présent') skipped.push(a);
-                else failed.push({ asset: a, reason: r.reason });
+                else failed.push({ asset: a, reason: r.reason, error: r.error });
             }
             if (onProgress) onProgress(1, '');
             return { added: added, skipped: skipped, failed: failed };
@@ -144,6 +184,7 @@
         reasonLabel(reason) {
             return ({
                 cors: 'impossible à récupérer (hébergé chez le fournisseur)',
+                session: 'session expirée — rouvre LSV.ai puis réessaie',
                 limite: 'limite de médias du projet atteinte',
                 'déjà présent': 'déjà dans le projet',
                 invalide: 'entrée de bibliothèque illisible',

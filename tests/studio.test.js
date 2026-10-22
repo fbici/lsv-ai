@@ -8,7 +8,8 @@ const STUDIO_HTML = path.join(PROJECT, 'studio', 'index.html');
 
 /* ── Harness ─────────────────────────────────────────────────────────────── */
 
-/* Inligne les <script src="./..."> de studio/ pour que jsdom les exécute. */
+/* Inligne les <script src="./..."> de studio/ (et la config partagée
+   ../shared/, nécessaire au repli « dépôt média ») pour que jsdom les exécute. */
 function prepare(html) {
     return html.replace(/<link[^>]*fonts\.(googleapis|gstatic)[^>]*>/g, '')
         .replace(/<link[^>]*Material\+Symbols[^>]*>/g, '')
@@ -16,6 +17,10 @@ function prepare(html) {
         .replace(/<link rel="icon"[^>]*>/g, '')
         .replace(/<link rel="apple-touch-icon"[^>]*>/g, '')
         .replace(/<link rel="preconnect"[^>]*>/g, '')
+        .replace(/<script src="\.\.\/([^"]+)"[^>]*><\/script>/g, (m, rel) => {
+            const p = path.join(PROJECT, rel);
+            return fs.existsSync(p) ? '<script>' + fs.readFileSync(p, 'utf8') + '</script>' : '';
+        })
         .replace(/<script src="\.\/([^"]+)"[^>]*><\/script>/g, (m, rel) => {
             const p = path.join(PROJECT, 'studio', rel);
             return fs.existsSync(p) ? '<script>' + fs.readFileSync(p, 'utf8') + '</script>' : '';
@@ -459,6 +464,103 @@ function S_ProjectModel_addTextTrack(project) {
     /* Un média importé en masse n’apparaît plus comme « à importer ». */
     check('après importMany, importedSet couvre toute la bibliothèque',
         LI.list().every(a => LI.importedSet(fresh).has(a.url)));
+
+    console.log('\n=== 15bis. REPLI CORS : DÉPÔT MÉDIA DE LA PASSERELLE ===');
+    /* Cas réel (22/10) : le CDN du fournisseur ne renvoie AUCUN en-tête CORS.
+       Sans repli, « Import depuis LSV.ai » échouait sur toutes les images. */
+    check('configuration partagée chargée (URL de la passerelle)',
+        !!(w.LSV_CONFIG && w.LSV_CONFIG.LSV_GATEWAY_URL),
+        w.LSV_CONFIG && w.LSV_CONFIG.LSV_GATEWAY_URL);
+    check('studio/index.html charge ../shared/config.js',
+        /<script src="\.\.\/shared\/config\.js"><\/script>/.test(src));
+    check('la config est chargée AVANT main.js', src.indexOf('../shared/config.js') < src.indexOf('./main.js'));
+
+    w.localStorage.setItem('lsv4_account', JSON.stringify({
+        access_token: 'jwt-studio', refresh_token: 'rfr-studio', expires_at: 4102444800
+    }));
+    const gwAsset = { url: 'https://platform-outputs.agnes-ai.space/images/t2i/x/output_abc.png', name: 'Image · Luxe' };
+    const gwCalls = [];
+    w.fetch = function (u, o) {
+        gwCalls.push({ url: String(u), options: o || {} });
+        if (String(u).indexOf('/v1/media?u=') !== -1) {
+            return Promise.resolve({
+                ok: true, status: 200,
+                headers: { get: n => (String(n).toLowerCase() === 'content-type' ? 'image/png' : null) },
+                blob: () => Promise.resolve(new w.Blob(['png'], { type: 'image/png' }))
+            });
+        }
+        return Promise.reject(new TypeError('Failed to fetch'));   /* le CDN bloque */
+    };
+    w.LSVStudio.MediaStorage.import = f => Promise.resolve(
+        { ok: true, media: { id: 'm-gw', kind: 'image', name: (f && f.name) || 'gw' } });
+    const gwProj = w.LSVStudio.ProjectModel.create({ name: 'PGW' });
+    const gwRes = await LI.import(gwProj, gwAsset);
+    check('import réussi VIA le dépôt média (le CDN direct échoue)', gwRes.ok === true, gwRes.reason);
+    const gwCall = gwCalls.find(c => c.url.indexOf('/v1/media?u=') !== -1);
+    check('requête passée à la passerelle, URL encodée',
+        !!gwCall && gwCall.url === w.LSV_CONFIG.LSV_GATEWAY_URL + '/v1/media?u=' + encodeURIComponent(gwAsset.url),
+        gwCall && gwCall.url);
+    check('requête authentifiée par le jeton du compte (même origine)',
+        !!gwCall && !!gwCall.options.headers &&
+        gwCall.options.headers.Authorization === 'Bearer jwt-studio',
+        gwCall && JSON.stringify(gwCall.options.headers));
+    check('clé anonyme publique jointe, aucun secret',
+        !!gwCall && !!gwCall.options.headers &&
+        String(gwCall.options.headers.apikey || '').length > 0 &&
+        JSON.stringify(gwCall.options.headers).indexOf('sk-') === -1);
+    check('provenance conservée pour la déduplication', gwProj.media[0].sourceUrl === gwAsset.url,
+        gwProj.media[0].sourceUrl);
+
+    /* Passerelle injoignable : on retombe sur le message d'origine. */
+    gwCalls.length = 0;
+    w.fetch = function (u) {
+        gwCalls.push(String(u));
+        if (String(u).indexOf('/v1/media?u=') !== -1) return Promise.resolve({ ok: false, status: 404 });
+        return Promise.reject(new TypeError('Failed to fetch'));
+    };
+    const ko = await LI.import(w.LSVStudio.ProjectModel.create({ name: 'PGW2' }), gwAsset);
+    check('passerelle absente → ok:false, raison cors', ko.ok === false && ko.reason === 'cors',
+        ko.reason);
+
+    /* Session expirée : message distinct, actionable. */
+    w.fetch = function (u) {
+        if (String(u).indexOf('/v1/media?u=') !== -1) return Promise.resolve({ ok: false, status: 401 });
+        return Promise.reject(new TypeError('Failed to fetch'));
+    };
+    const s401 = await LI.import(w.LSVStudio.ProjectModel.create({ name: 'P401' }), gwAsset);
+    check('401 → raison « session » distincte de cors', s401.ok === false && s401.reason === 'session',
+        s401.reason);
+    check('libellé de session lisible et non technique',
+        /session expirée/.test(LI.reasonLabel('session')) &&
+        !/401|jwt|token/i.test(LI.reasonLabel('session')), LI.reasonLabel('session'));
+
+    console.log('\n=== 15ter. ÉCRITURE REFUSÉE : DIAGNOSTIC PRÉCIS ===');
+    /* « stockage local plein ou bloqué » ne disait pas lequel des deux :
+       on affiche la cause réelle du navigateur et l'occupation mesurée. */
+    const MS = w.LSVStudio.MediaStorage;
+    const qLabel = await MS.explainWriteFailure({ name: 'QuotaExceededError' });
+    check('quota dépassé → « stockage local plein » (plus de « ou bloqué »)',
+        /stockage local plein/.test(qLabel) && !/ ou /.test(qLabel), qLabel);
+    const bLabel = await MS.explainWriteFailure({ name: 'InvalidStateError' });
+    check('autre cause → erreur nommée affichée',
+        /écriture refusée/.test(bLabel) && /InvalidStateError/.test(bLabel), bLabel);
+    check('cause absente → phrase complète sans crash',
+        typeof (await MS.explainWriteFailure(null)) === 'string' &&
+        (await MS.explainWriteFailure(null)).length > 0, await MS.explainWriteFailure(null));
+
+    /* L'erreur doit TRAVERSER MediaManager : sinon le toast reste creux. */
+    w.LSVStudio.MediaStorage.import = () => Promise.resolve(
+        { ok: false, reason: 'write-failed', error: { name: 'QuotaExceededError' } });
+    const rej = await w.LSVStudio.MediaManager.importFiles(
+        w.LSVStudio.ProjectModel.create({ name: 'PW' }),
+        [new w.File(['x'], 'lsv-asset_mvcnka5v_d0453f.png', { type: 'image/png' })]);
+    check('write-failed propage l’erreur du navigateur',
+        rej.rejected.length === 1 && rej.rejected[0].error &&
+        rej.rejected[0].error.name === 'QuotaExceededError',
+        JSON.stringify(rej.rejected));
+    const rejLabel = await w.LSVStudio.MediaStorage.explainWriteFailure(rej.rejected[0].error);
+    check('motif exploitable par l’UI (l’erreur traverse jusqu’au toast)',
+        /plein/.test(rejLabel), rejLabel);
 
     console.log('\n=== 16. NON-RÉGRESSION DE L’APP PRINCIPALE ===');
     const appScripts = (appHtml.match(/<script src="\.\/([^"]+)"><\/script>/g) || []).join(',');

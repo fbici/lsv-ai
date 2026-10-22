@@ -96,6 +96,26 @@
     const MediaStorage = {
         supported() { return S.IDB && S.IDB.supported(); },
 
+        /* ── Diagnostic d'un échec d'écriture ──────────────────────────────
+           « stockage local plein ou bloqué » ne dit pas lequel des deux, ni
+           pourquoi : le navigateur connaît la cause (`error.name`) et, pour
+           un quota dépassé, l'occupation réelle. On affiche ce qu'on sait
+           plutôt qu'une alternative floue. */
+        async explainWriteFailure(err) {
+            const name = String((err && err.name) || '').slice(0, 40);
+            const mo = n => Math.max(0, Math.round(n / (1024 * 1024))) + ' Mo';
+            if (name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+                let est = null;
+                if (this.supported()) { try { est = await S.IDB.estimateUsage(); } catch (e) { est = null; } }
+                return est && est.quota
+                    ? 'stockage local plein (' + mo(est.usage) + ' utilisés sur ' + mo(est.quota) + ')'
+                    : 'stockage local plein';
+            }
+            if (name) return 'écriture refusée (' + name + ')';
+            if (!this.supported()) return 'stockage local indisponible (navigation privée ?)';
+            return 'écriture refusée';
+        },
+
         /* ── Import ─────────────────────────────────────────────────────── */
         /* Renvoie une fiche média (sans le Blob, qui reste dans IDB). */
         async import(file, opts) {
