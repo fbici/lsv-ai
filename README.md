@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.16.8
+# LSV.ai — Studio Viral v3.16.9
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -170,7 +170,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -1082,6 +1082,81 @@ du fournisseur en plus. Gateway : **220/220**.
 
 ---
 
+### 2.20 Quotas : lecture sûre de app_settings - v3.16.9
+
+Le journal de la passerelle remontait, avant même l'erreur vidéo :
+
+```
+quota-rpc-status 400 {"code":"22P02","details":null,"hint":null,
+                      "message":"invalid input syntax for type integer: \"\""}
+```
+
+**Cause** : `consume_quota` et `get_quota` lisaient `app_settings.value`
+(TEXT) **directement dans une variable ENTIERE** :
+
+```sql
+select value into v_limit from public.app_settings where key = v_key;
+                                       -- ^^^^^^^^ integer
+```
+
+Postgres convertit **au moment de l'affectation**. Dès que la valeur est la
+chaîne vide, toute la fonction échoue — et cela **avant** la garde qui
+semblait la protéger :
+
+```sql
+v_limit := coalesce(nullif(v_limit, '')::integer, 0);
+                -- jamais atteinte : la ligne précédente a déjà planté
+```
+
+Ce `nullif` était donc du code mort. Un simple `quota_video_daily = ''`
+suffisait à rendre les quotas inopérants.
+
+**Portée** : 10 lectures `select value into v_limit` (3 + 2 par fichier),
+dans `supabase/schema.sql` **et** `supabase/upgrade-quotas.sql`.
+
+**Conséquence en production** : chaque appel échoue en RPC, la passerelle
+retombe sur son compteur **mémoire** — quotas non comptés, non persistants,
+remboursement également en échec (§2.17). Les unités n'étaient donc pas
+retirées à personne, mais elles ne comptaient pour personne non plus.
+
+**Correctif** : lecture dans une variable **TEXT** (`v_raw`), puis conversion
+en deux temps, avec rejet des valeurs non numériques avant le cast :
+
+```sql
+v_limit := case when coalesce(btrim(v_raw), '') ~ '^[0-9]+$'
+                then btrim(v_raw)::integer else 0 end;
+```
+
+Une clé vide n'est plus une erreur : elle signifie « non renseignée » →
+repli sur la clé générale, puis `0` (= illimité), ce que l'interface faisait
+déjà de son côté via `parseInt`.
+
+> **Ne pas relancer `supabase/upgrade-quotas.sql` pour corriger cela** : il
+> réécrit `app_settings_key_check` avec une liste **plus courte** que
+> `supabase/upgrade-multi-key.sql` (sans `provider_api_key_image` /
+> `_video` / `_chat`). Les futures mises à jour de ces clés échoueraient.
+
+**Migration dédiée** : `supabase/upgrade-quota-empty-value.sql` — idempotent,
+et **sans** la contrainte d'`app_settings` (donc sans effet de bord). Elle
+contient, dans l'ordre :
+
+1. le diagnostic — `select key, value, length(value) from app_settings
+   where key like 'quota_%'` ;
+2. la normalisation facultative des valeurs vides ou non numériques en `'0'` ;
+3. les deux fonctions `create or replace` corrigées ;
+4. une vérification **lecture seule** (`get_quota`).
+
+**Vérifié par** `tests/public.test.js` §6ter (+5 assertions) : aucune lecture
+`app_settings` dans une variable entière, récepteur TEXT déclaré dans les
+deux fichiers, `nullif(v_limit` banni, rejet non numérique présent deux fois
+par fichier, migration de correction présente. Interface : **233/233**.
+
+> **Déploiement** : exécuter `supabase/upgrade-quota-empty-value.sql` dans le
+> SQL Editor du Dashboard Supabase. Aucun redéploiement de la passerelle
+> n'est nécessaire (`core.mjs` inchangé).
+
+---
+
 ## 3. Installation locale
 
 ```bash
@@ -1458,7 +1533,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 969 assertions, 6 suites
+npm test                      # 974 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -1527,7 +1602,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 969 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 974 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (54 assertions, **66 avec `ORIG`**) — non-régression
@@ -1543,7 +1618,7 @@ npm test        # 969 assertions (6 suites, hors ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (228 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (233 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,

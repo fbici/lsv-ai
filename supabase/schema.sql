@@ -377,6 +377,13 @@ declare
     v_units    integer := greatest(1, coalesce(p_units, 1));
     v_is_admin boolean;
     v_limit    integer := 0;
+    /* app_settings.value est TEXT. Le lire DIRECTEMENT dans une variable
+       ENTIERE (SELECT INTO) fait échouer la conversion dès que la valeur est
+       '' — 22P02 « invalid input syntax for type integer: "" » — en dehors de
+       toute garde nullif, ce qui met la fonction entière en échec et fait
+       retomber la passerelle sur son compteur mémoire. On lit en TEXT puis on
+       convertit en deux temps. */
+    v_raw      text;
     v_key      text;
     v_enabled  text;
     v_glimit   integer := greatest(0, coalesce(p_global, 0));
@@ -393,14 +400,15 @@ begin
     v_is_admin := exists (select 1 from public.admin_emails a where a.email = lower(coalesce(p_email, '')));
     v_key := 'quota_' || p_kind || '_daily';
     if v_is_admin then
-        select value into v_limit from public.app_settings where key = 'quota_admin_' || p_kind || '_daily';
-        if v_limit is null then
-            select value into v_limit from public.app_settings where key = v_key;
+        select value into v_raw from public.app_settings where key = 'quota_admin_' || p_kind || '_daily';
+        if coalesce(btrim(v_raw), '') = '' then
+            select value into v_raw from public.app_settings where key = v_key;
         end if;
     else
-        select value into v_limit from public.app_settings where key = v_key;
+        select value into v_raw from public.app_settings where key = v_key;
     end if;
-    v_limit := coalesce(nullif(v_limit, '')::integer, 0);
+    v_limit := case when coalesce(btrim(v_raw), '') ~ '^[0-9]+$'
+                    then btrim(v_raw)::integer else 0 end;
     if v_glimit > 0 then
         insert into public.usage_counters (user_id, day, kind, units) values (v_zero, v_day, 'global', 0)
         on conflict (user_id, day, kind) do nothing;
@@ -474,6 +482,10 @@ declare
     v_limit    integer;
     v_used     integer;
     v_kind     text;
+    /* TEXT d'abord : voir le commentaire identique dans consume_quota —
+       lire app_settings.value directement dans une variable ENTIERE casse la
+       fonction dès que la valeur est ''. */
+    v_raw      text;
 begin
     v_result := jsonb_build_object(
         'enabled',   coalesce((select value from public.app_settings where key = 'quota_enabled'), '1') = '1',
@@ -483,13 +495,15 @@ begin
     v_is_admin := exists (select 1 from public.admin_emails a where a.email = lower(coalesce(p_email, '')));
     foreach v_kind in array array['image', 'video', 'chat', 'motion'] loop
         v_limit := null;
+        v_raw := null;
         if v_is_admin then
-            select value into v_limit from public.app_settings where key = 'quota_admin_' || v_kind || '_daily';
+            select value into v_raw from public.app_settings where key = 'quota_admin_' || v_kind || '_daily';
         end if;
-        if v_limit is null then
-            select value into v_limit from public.app_settings where key = 'quota_' || v_kind || '_daily';
+        if coalesce(btrim(v_raw), '') = '' then
+            select value into v_raw from public.app_settings where key = 'quota_' || v_kind || '_daily';
         end if;
-        v_limit := coalesce(nullif(v_limit, '')::integer, 0);
+        v_limit := case when coalesce(btrim(v_raw), '') ~ '^[0-9]+$'
+                        then btrim(v_raw)::integer else 0 end;
         select units into v_used from public.usage_counters where user_id = p_user and day = v_day and kind = v_kind;
         v_result := v_result || jsonb_build_object(
             'limits',    (v_result->'limits')    || jsonb_build_object(v_kind, v_limit),
@@ -497,7 +511,7 @@ begin
             'remaining', (v_result->'remaining') || jsonb_build_object(
                 v_kind, case when v_limit > 0 then greatest(0, v_limit - coalesce(v_used, 0)) else null end));
     end loop;
-    v_limit := coalesce(nullif((select value from public.app_settings where key = 'quota_global_daily'), '')::integer, 0);
+    v_limit := coalesce(nullif((select btrim(value) from public.app_settings where key = 'quota_global_daily'), '')::integer, 0);
     select units into v_used from public.usage_counters where user_id = v_zero and day = v_day and kind = 'global';
     v_result := v_result || jsonb_build_object('global', jsonb_build_object(
         'limit', v_limit, 'used', coalesce(v_used, 0),

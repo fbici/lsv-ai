@@ -206,6 +206,20 @@ async function load(html, url) {
         /create policy "admin_insert_settings"[\s\S]{0,200}with check \(public\.is_admin\(\)\)/.test(schema) &&
         /create policy "admin_select_settings"[\s\S]{0,200}using \(public\.is_admin\(\)\)/.test(schema));
 
+    console.log('\n=== 6ter. QUOTAS : LECTURE SÛRE DE app_settings ===');
+    const quotaSql = ['supabase/schema.sql', 'supabase/upgrade-quotas.sql']
+        .map(f => fs.readFileSync(path.join(PROJECT, f), 'utf8'));
+    check('aucune lecture app_settings dans une variable entière',
+        quotaSql.every(t => !/select value into v_(?!raw\b)\w+/.test(t)));
+    check('récepteur TEXT déclaré dans les deux fichiers',
+        quotaSql.every(t => (t.match(/v_raw\s+text;/g) || []).length >= 2));
+    check('conversion en deux temps : nullif sur une variable entière banni',
+        quotaSql.every(t => !/nullif\(v_limit/.test(t)));
+    check('rejet des valeurs non numériques avant le cast',
+        quotaSql.every(t => (t.match(/~ '\^\[0-9\]\+\$'/g) || []).length >= 2));
+    check('migration de correction présente',
+        fs.existsSync(path.join(PROJECT, 'supabase/upgrade-quota-empty-value.sql')));
+
     console.log('\n=== 6bis. PROFILS (NOMS DES COMPTES) ===');
     const upgradeProfiles = fs.readFileSync(path.join(PROJECT, 'supabase/upgrade-profiles.sql'), 'utf8');
     check('table profiles présente (schéma + migration)',
