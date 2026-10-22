@@ -11,6 +11,14 @@ const Utils = {
         }
         if (m === 'Arrêt demandé') return 'Génération arrêtée.';
         if (/connexion requise/i.test(m)) return 'Connecte-toi à ton compte pour créer.';
+        /* Le service vidéo du fournisseur refuse faute de capacité. C'est la
+           seule erreur qui mérite un mot à elle seule : le message générique
+           ci-dessous disait « réessayez dans quelques instants » à quelqu'un
+           dont la file était saturée pendant des heures. Aucun détail
+           technique (code, modèle, fournisseur) n'y figure pour autant. */
+        if (e && e.code === 'video_queue_full') {
+            return 'Le service vidéo est saturé pour l\'instant. Veuillez réessayer dans quelques minutes.';
+        }
         return 'Impossible de générer le contenu pour le moment. Veuillez réessayer dans quelques instants.';
     },
     getStyleById: (id) => STYLES.find(s => s.id === id),

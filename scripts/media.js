@@ -33,7 +33,12 @@ const AgnesProvider = {
         const allowed = bits[4];
         bits[4] = allowed ? 'valeurs ' + allowed : '';
         const why = bits.filter(Boolean).length ? ' (' + bits.filter(Boolean).join(' · ') + ')' : '';
-        return new Error('HTTP ' + res.status + (id ? ' [' + id + ']' : '') + why + ' — ' + body.slice(0, 200));
+        const err = new Error('HTTP ' + res.status + (id ? ' [' + id + ']' : '') + why + ' — ' + body.slice(0, 200));
+        /* JETON technique : jamais affiché à l'utilisateur, seulement lu par
+           Utils.friendlyError pour choisir un message honnête. La passerelle
+           l'a déjà filtré (A-Za-z0-9_-), donc rien du texte amont ne suit. */
+        err.code = this.header(res, 'x-lsv-upstream-code');
+        return err;
     },
     async fetch(url, options = {}, label = 'API') {
         // Création réservée aux comptes connectés (image, vidéo, enhancer, batch…)
@@ -83,8 +88,14 @@ const AgnesProvider = {
                 }
                 if (res.status === 503) {
                     const wait = CONFIG.RETRY_503_WAITS[Math.min(attempt, 5)];
-                    DebugService.log('warn', 'SERVICE', '503 — attente ' + wait + 's');
-                    UI.setStatus('Service indisponible… (' + wait + 's)');
+                    const code = this.header(res, 'x-lsv-upstream-code');
+                    DebugService.log('warn', 'SERVICE', '503 ' + (code || '—') + ' — attente ' + wait + 's');
+                    /* Une file saturée n'est pas un incident : l'utilisateur a
+                       besoin de savoir que c'est le service vidéo qui est pris,
+                       pas que « quelque chose » ne va pas. */
+                    UI.setStatus(code === 'video_queue_full'
+                        ? 'File vidéo saturée — nouvel essai dans ' + wait + 's'
+                        : 'Service indisponible… (' + wait + 's)');
                     await Utils.sleep(wait * 1000);
                     continue;
                 }

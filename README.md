@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.16.9
+# LSV.ai — Studio Viral v3.16.10
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -170,7 +170,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -1149,11 +1149,77 @@ contient, dans l'ordre :
 **Vérifié par** `tests/public.test.js` §6ter (+5 assertions) : aucune lecture
 `app_settings` dans une variable entière, récepteur TEXT déclaré dans les
 deux fichiers, `nullif(v_limit` banni, rejet non numérique présent deux fois
-par fichier, migration de correction présente. Interface : **233/233**.
+par fichier, migration de correction présente. Interface : **241/241**.
 
 > **Déploiement** : exécuter `supabase/upgrade-quota-empty-value.sql` dans le
 > SQL Editor du Dashboard Supabase. Aucun redéploiement de la passerelle
 > n'est nécessaire (`core.mjs` inchangé).
+
+---
+
+### 2.21 Catalogue du fournisseur : aucune alternative vidéo - v3.16.10
+
+Le `video_queue_full` est revenu le 22/10 à 15:14 UTC (`jolqw0-vwhvik`). On
+savait déjà que **deux** modèles échouaient ; on ne savait pas s'il en
+existait d'autres. `scripts/constants.js` indique depuis toujours que « la
+liste réelle se lit via `GET /v1/models` » — et la passerelle proxifie les
+chemins `/v1/` (`core.mjs:606`), donc ce catalogue est consultable directement.
+
+**Sonde en lecture seule** (aucune unité consommée : `classifyRequest` renvoie
+`null` sur ce chemin, donc `units = 0`) :
+
+```bash
+curl -s "https://umhsxebemspyyqrecsuq.supabase.co/functions/v1/lsv-gateway/v1/models" \
+  -H "Authorization: Bearer <clé anon du dashboard>" \
+  -H "apikey: <clé anon du dashboard>"
+```
+
+**Résultat — 9 modèles au total** :
+
+| Modèle | Usage | État constaté |
+|---|---|---|
+| `agnes-video-2.5-flash` | vidéo (`MODEL_VIDEO`) | **503 `video_queue_full`** — 1 h 43 le 21/10, encore le 22/10 à 15:14 |
+| `agnes-video-2.5` | vidéo | **403** — accès refusé pour ce compte |
+| `agnes-image-2.1-flash` | image (`MODEL_IMAGE`) | OK |
+| `agnes-image-2.0-flash` | image | inutilisé |
+| `agnes-image-2.5-flash` | image | inutilisé |
+| `agnes-2.5-flash` | chat (`MODEL_CHAT`) | OK |
+| `agnes-2.5-pro-alpha` | chat | inutilisé |
+| `agnes-2.5-pro-beta` | chat | inutilisé |
+| `agnes-3.0-flash` | chat | inutilisé |
+
+**Conclusion : il n'existe aucun modèle vidéo de repli.** Les deux présents
+dans le catalogue sont exactement les deux déjà éprouvés (§2.19), pour deux
+raisons différentes. Aucune modification de `MODEL_VIDEO` ne peut rien
+améliorer — le blocage est intégralement côté fournisseur.
+
+Les trois modèles inutilisés (un chat et deux images) restent **volontairement
+non adoptés** : la règle de `constants.js` interdit de renommer un modèle sans
+l'avoir vérifié, et changer `MODEL_IMAGE` ou `MODEL_CHAT` hors d'un incident
+n'apporterait rien de démontré.
+
+**Message utilisateur** : jusqu'ici la saturation tombait dans le message
+générique (« réessayez dans quelques instants »), alors que la file était
+pleine pendant des heures. `AgnesProvider.fail` pose désormais le jeton
+amont (déjà filtré par la passerelle, aucun texte du fournisseur) sur
+`err.code`, et `Utils.friendlyError` lui donne un mot à part :
+
+> Le service vidéo est saturé pour l'instant. Veuillez réessayer dans
+> quelques minutes.
+
+Pendant les six tentatives automatiques (§2.16), le statut affiché devient
+« File vidéo saturée — nouvel essai dans Ns » au lieu de « Service
+indisponible… ». Aucun détail technique (code, modèle, fournisseur) n'apparaît
+dans les deux cas.
+
+**Vérifié par** `tests/public.test.js` §11bis (+8 assertions) : le jeton est
+bien porté par l'erreur, la trace technique reste complète pour le journal,
+le message affiché est honnête, exempt de détail technique, le message
+générique est inchangé pour tout autre 503, et le statut de saturation n'est
+posé que sur ce code-là. Interface : **241/241**.
+
+> **Déploiement** : `scripts/core.js` et `scripts/media.js` modifiés → pas de
+> redéploiement de la passerelle, mais **rafraîchir le navigateur** (v3.16.10).
 
 ---
 
@@ -1533,7 +1599,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 974 assertions, 6 suites
+npm test                      # 982 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -1602,7 +1668,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 974 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 982 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (54 assertions, **66 avec `ORIG`**) — non-régression
@@ -1618,7 +1684,7 @@ npm test        # 974 assertions (6 suites, hors ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (233 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (241 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,

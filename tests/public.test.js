@@ -544,6 +544,32 @@ async function load(html, url) {
     check('aucune mention technique dans les messages', !/SMTP|Supabase|Authentication|HTTP|sk-/i.test(wb.LSV.services.account.friendly('Error sending confirmation email') + ' ' + wb.LSV.services.account.friendly('Email address not authorized')));
     check('limite d inscriptions traduite', /réessaie dans une heure/i.test(wb.LSV.services.account.friendly('over_email_send_rate_limit')), wb.LSV.services.account.friendly('over_email_send_rate_limit'));
 
+    console.log('\n=== 11bis. SERVICE VIDÉO SATURÉ ===');
+    const failWith = async (status, heads) => wb.LSV.services.agnes.fail({
+        status,
+        headers: { get: n => (heads[n] || null) },
+        text: async () => '{"code":"video_queue_full","message":"video queue is full"}'
+    });
+    const satErr = await failWith(503, {
+        'x-lsv-request-id': 'jolqw0-vwhvik',
+        'x-lsv-upstream-status': '503',
+        'x-lsv-upstream-code': 'video_queue_full'
+    });
+    const satMsg = wb.LSV.utils.friendlyError(satErr);
+    check('fail() porte le jeton amont reçu par la passerelle', satErr.code === 'video_queue_full', satErr.code);
+    check('fail() garde la trace technique pour le journal', /HTTP 503 \[jolqw0-vwhvik\]/.test(satErr.message), satErr.message);
+    check('saturation vidéo : message honnête et actionnable', /satur/i.test(satMsg) && /quelques minutes/i.test(satMsg), satMsg);
+    check('saturation vidéo : aucun détail technique',
+        !/API Key|Agnes|agnes|apihub|Bearer|sk-|Token|Authorization|Polling|Endpoint|HTTP|video_queue/i.test(satMsg), satMsg);
+    const plainErr = await failWith(503, { 'x-lsv-request-id': 'abc-def' });
+    check('503 sans jeton → message générique inchangé', /Impossible de générer/.test(wb.LSV.utils.friendlyError(plainErr)), wb.LSV.utils.friendlyError(plainErr));
+    check('autre erreur amont → message générique inchangé',
+        /Impossible de générer/.test(wb.LSV.utils.friendlyError(new Error('HTTP 502 [x] — {"a":1}'))));
+    const mediaSrc = fs.readFileSync(path.join(PROJECT, 'scripts/media.js'), 'utf8');
+    check('l interface annonce la saturation pendant les essais', /File vidéo saturée/.test(mediaSrc));
+    check('statut de saturation borné au seul code connu',
+        /code === 'video_queue_full'[\s\S]{0,40}\? 'File vidéo saturée/.test(mediaSrc));
+
     console.log('\n=== 12. ARCHITECTURE MODULAIRE ===');
     check('index.html léger (squelette HTML seulement)', source.length < 90000, source.length + ' octets');
     check('aucun <style> inline dans index.html', !/<style>/.test(source));
