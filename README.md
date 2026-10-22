@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.16.10
+# LSV.ai — Studio Viral v3.16.11
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -170,7 +170,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -1223,6 +1223,71 @@ posé que sur ce code-là. Interface : **241/241**.
 
 ---
 
+### 2.22 Aperçu et téléchargement des images - v3.16.11
+
+Chat et images marchent, la vidéo reste hors service : on traite donc le
+parcours image de bout en bout. Trois défauts distincts.
+
+**1. « Ouvrir » quittait LSV.** La carte de résultat portait
+`<a href="URL distante" target="_blank">` : le clic emmenait l'utilisateur sur
+la page de l'hébergeur (adresses `agnes` visibles en barre d'adresse) au lieu
+d'afficher l'image. La bibliothèque n'avait d'ailleurs **aucune** ouverture.
+
+**2. « Télécharger » n'enregistrait rien.** Même défaut ailleurs : l'attribut
+`download` d'une ancre n'est **ignoré** par les navigateurs dès que l'URL est
+d'une autre origine (il ne vaut que même-origine ou `blob:`). Le clic ouvrait
+donc l'image dans un onglet — « ça s'ouvre mais ça ne se télécharge pas » —
+sans jamais produire de fichier. `Utils.triggerDownload` aggravait le défaut
+avec `target="_blank"`, qui ouvrait un onglet **même en cas d'échec** et
+faisait perdre l'application.
+
+**3. L'auto-téléchargement ne visait pas les images.** `runImageGeneration`
+n'appelait jamais `triggerDownload` : le réglage, libellé « Auto-télécharger
+les vidéos », ne concernait que la vidéo.
+
+**Correctifs**
+
+- **Aperçu sur la même page** : `UI.openPreview / closePreview / savePreview`,
+  surcouché `#preview-backdrop` dans `index.html`, styles en fin de
+  `styles/studio.css`. Fermeture par le bouton, par un clic en dehors du cadre
+  et par `Échap`. Le même chemin sert les vidéos.
+- **Délégation unique** sur `document` (les cartes sont reconstruites à chaque
+  rafraîchissement : un écouteur par élément serait perdu) pour
+  `[data-preview]`, `[data-download]`, `#preview-close` et `#preview-save`.
+- **Cartes en `<button>`** au lieu d'`<a href>` : plus d'ancre cross-origin,
+  plus de `target="_blank"`, icône `zoom_in` au lieu de `open_in_new`.
+  Les vignettes de la bibliothèque deviennent cliquables.
+- **`Utils.triggerDownload`** récupère les octets (`fetch` en CORS) puis repasse
+  par un **blob** — un blob est toujours traité en téléchargement. `data:` et
+  `blob:` vont en direct. La fonction ne pose **plus jamais**
+  `target="_blank"` et renvoie `false` quand les octets sont inaccessibles ;
+  `Handlers.downloadAsset` ouvre alors l'aperçu et explique, **au lieu
+  d'ouvrir un onglet**.
+- **Auto-téléchargement branché sur les images**, libellés des deux réglages
+  passés à « Auto-télécharger images et vidéos ».
+
+> **Reste à vérifier en conditions réelles.** Le téléchargement direct exige
+> que le CDN du fournisseur autorise le CORS (`Access-Control-Allow-Origin`).
+> L'**aperçu**, lui, n'en a jamais besoin — c'est un simple `<img>`. Si le
+> `fetch` échoue, le bouton bascule sur l'aperçu plutôt que de perdre la page.
+> La passerelle sait déjà récupérer une image côté serveur
+> (`resolveMediaRef`, « où aucun CORS ne s'applique ») : si le CDN refuse, le
+> recours est un **dépôt média dédié**, à arbitrer (surfature, SSRF).
+
+**Vérifié par** `tests/nonreg.test.js` §4bis (+16 assertions) : carte sans
+`target=` ni `<a href>`, ouverture de l'aperçu par le bouton puis par un clic
+direct sur l'image, fermeture par le bouton et par `Échap`, `aria-hidden`,
+présence réelle de l'image, téléchargement par récupération des octets (et non
+par ancre cross-origin), bascule vers l'aperçu quand les octets sont refusés,
+auto-téléchargement effectivement déclenché pour une image, réglage refermé,
+libellé promettant images **et** vidéos. Non-régression : **70/70**.
+
+> **Déploiement** : `index.html`, `scripts/{core,ui,handlers,views}.js` et
+> `styles/studio.css` modifiés → **rafraîchir le navigateur** (v3.16.11).
+> Aucun redéploiement de la passerelle.
+
+---
+
 ## 3. Installation locale
 
 ```bash
@@ -1599,7 +1664,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 982 assertions, 6 suites
+npm test                      # 998 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -1668,10 +1733,10 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 982 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 998 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
-**`tests/nonreg.test.js`** (54 assertions, **66 avec `ORIG`**) — non-régression
+**`tests/nonreg.test.js`** (70 assertions, **82 avec `ORIG`**) — non-régression
 
 - structure HTML et `body.innerHTML` identiques à l'original, hors blocs
   volontairement supprimés (clé API, console, infos fournisseur) **et hors

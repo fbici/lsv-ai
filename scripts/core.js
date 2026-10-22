@@ -71,19 +71,40 @@ const Utils = {
         if (buffer.length) out.push('<p>' + buffer.join('<br>') + '</p>');
         return out.join('');
     },
-    // Téléchargement automatique d'un fichier
-    triggerDownload: (url, filename) => {
-        try {
+    /* Téléchargement AUTOMATIQUE vers l'appareil.
+       L'attribut `download` d'une ancre n'est respecté que sur une même
+       origine ou sur un blob. Posé sur l'URL distante du fournisseur, le
+       navigateur l'IGNORAIT et ouvrait le fichier dans un onglet sans rien
+       enregistrer — d'où « ça s'ouvre mais ça ne télécharge pas ». On
+       récupère donc les octets (CORS) puis on repasse par un blob, toujours
+       traité en téléchargement. L'ancre ne porte plus target="_blank" : sans
+       cela, un échec ouvre un onglet et perd l'application.
+       Renvoie false quand le direct est impossible (le bouton ouvre alors
+       l'aperçu pour que l'image reste consultable). */
+    triggerDownload: async (url, filename) => {
+        const name = filename || 'lsv-file';
+        const save = (href) => {
             const a = document.createElement('a');
-            a.href = url;
-            a.download = filename || 'lsv-file';
-            a.target = '_blank';
+            a.href = href;
+            a.download = name;
+            a.rel = 'noopener';
             a.style.display = 'none';
             document.body.appendChild(a);
             a.click();
-            setTimeout(() => { document.body.removeChild(a); }, 100);
+            setTimeout(() => { if (a.parentNode) a.parentNode.removeChild(a); }, 100);
+        };
+        try {
+            if (/^(data:|blob:)/i.test(url)) { save(url); return true; }
+            const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+            if (!res || !res.ok) throw new Error('HTTP ' + (res && res.status));
+            const blob = await res.blob();
+            if (!blob || !blob.size) throw new Error('réponse vide');
+            const href = URL.createObjectURL(blob);
+            save(href);
+            setTimeout(() => { try { URL.revokeObjectURL(href); } catch (e) {} }, 60000);
             return true;
         } catch (e) {
+            try { DebugService.log('warn', 'DOWNLOAD', 'direct impossible : ' + ((e && e.message) || e)); } catch (e2) {}
             return false;
         }
     }

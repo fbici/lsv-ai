@@ -1097,8 +1097,8 @@
                 </div>
                 <div class="toggle-row">
                     <div class="toggle-row-info">
-                        <div class="toggle-row-name">Auto-télécharger les vidéos</div>
-                        <div class="toggle-row-desc">Quand activé, chaque vidéo générée est automatiquement téléchargée dans ton dossier Téléchargements.</div>
+                        <div class="toggle-row-name">Auto-télécharger images et vidéos</div>
+                        <div class="toggle-row-desc">Quand activé, chaque image et chaque vidéo générée est automatiquement téléchargée dans ton dossier Téléchargements.</div>
                     </div>
                     <button type="button" class="toggle-switch" id="autodownload-toggle-advanced"></button>
                 </div>
@@ -1146,8 +1146,8 @@
             <div class="rp-title"><span class="ms">tune</span> Paramètres</div>
             <div class="toggle-row">
                 <div class="toggle-row-info">
-                    <div class="toggle-row-name">Auto-télécharger les vidéos</div>
-                    <div class="toggle-row-desc">Télécharge automatiquement chaque vidéo générée.</div>
+                    <div class="toggle-row-name">Auto-télécharger images et vidéos</div>
+                    <div class="toggle-row-desc">Télécharge automatiquement chaque image et chaque vidéo générée.</div>
                 </div>
                 <button type="button" class="toggle-switch" id="autodownload-toggle-panel"></button>
             </div>
@@ -1287,6 +1287,22 @@
 
 <div class="modal-backdrop" id="modal-backdrop">
     <div class="modal" id="modal"></div>
+</div>
+
+<!-- APERÇU : image ou vidéo affichée SUR LA MÊME PAGE, refermable.
+     « Ouvrir » passait par target="_blank" sur l'URL distante et emmenait
+     l'utilisateur sur la page du fournisseur. -->
+<div class="preview-backdrop" id="preview-backdrop" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Aperçu">
+    <div class="preview-frame">
+        <div class="preview-media" id="preview-media"></div>
+        <div class="preview-bar">
+            <span class="preview-name" id="preview-name">Aperçu</span>
+            <div class="preview-actions">
+                <button type="button" class="preview-btn" id="preview-save"><span class="ms">download</span> Télécharger</button>
+                <button type="button" class="preview-btn primary" id="preview-close"><span class="ms">close</span> Fermer</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <canvas id="noSleepCanvas" width="2" height="2"></canvas>

@@ -238,6 +238,63 @@ function connect(w) {
     await wb.LSV.handlers.runImageGeneration();
     check('échec image géré (compteur inchangé)', wb.LSV.runtime.imageCount === beforeFail);
 
+    console.log('\n=== 4bis. APERÇU ET TÉLÉCHARGEMENT D\'IMAGE ===');
+    const cardImg = wb.document.querySelector('#image-results-grid .result-card');
+    check('carte image toujours présente', !!cardImg);
+    check('plus aucun target=_blank sur la carte', !!cardImg && !/target=/.test(cardImg.innerHTML));
+    const openBtn = cardImg && cardImg.querySelector('[data-preview]');
+    check('bouton Ouvrir piloté en JS (data-preview)', !!openBtn, openBtn && openBtn.outerHTML.slice(0, 110));
+    const dlBtn = cardImg && cardImg.querySelector('[data-download]');
+    check('bouton Télécharger piloté en JS (data-download)', !!dlBtn, dlBtn && dlBtn.outerHTML.slice(0, 110));
+    check('aucune ancre href vers l URL distante', !!cardImg && !/<a /.test(cardImg.innerHTML));
+
+    const pv = wb.document.getElementById('preview-backdrop');
+    openBtn && openBtn.click();
+    check('aperçu ouvert sur la MÊME page', !!pv && pv.classList.contains('visible'));
+    check('aperçu annoncé ouvert (aria-hidden)', pv && pv.getAttribute('aria-hidden') === 'false');
+    check('aperçu contient bien l image', !!wb.document.getElementById('preview-media').querySelector('img'));
+    wb.document.getElementById('preview-close').click();
+    check('aperçu refermé par le bouton Fermer', pv && !pv.classList.contains('visible'));
+
+    cardImg.querySelector('.result-media').click();
+    check('clic direct sur l image = aperçu', pv && pv.classList.contains('visible'));
+    wb.document.dispatchEvent(new wb.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    check('aperçu refermé par Échap', pv && !pv.classList.contains('visible'));
+
+    /* Téléchargement : les octets sont récupérés, jamais un nouvel onglet. */
+    calls.length = 0;
+    dlBtn.click();
+    await new Promise(r => setTimeout(r, 80));
+    check('téléchargement par récupération des octets (pas d ancre cross-origin)',
+        calls.some(c => c.url.indexOf('cdn.test/img.png') !== -1),
+        calls.map(c => c.url).join(' | ') || '(aucun appel)');
+    check('échec des octets → aperçu en secours (aucun onglet)',
+        pv.classList.contains('visible'));
+    wb.LSV.ui.closePreview();
+
+    /* Le réglage « auto-télécharger » doit agir sur les IMAGES. */
+    const auto = [];
+    wb.localStorage.setItem('lsv4_autodownload', '1');
+    wb.fetch = function (url, options) {
+        auto.push(String(url));
+        if (String(url).includes('/images/generations')) {
+            return Promise.resolve({ ok: true, status: 200, json: async () => ({ data: [{ url: 'https://cdn.test/auto.png' }] }), text: async () => '' });
+        }
+        if (String(url).includes('/rest/v1/analytics_events')) return Promise.resolve({ ok: true, status: 201 });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'boom' });
+    };
+    await wb.LSV.handlers.runImageGeneration();
+    await new Promise(r => setTimeout(r, 100));
+    check('auto-téléchargement déclenché pour une IMAGE',
+        auto.some(u => u.indexOf('cdn.test/auto.png') !== -1), auto.join(' | ') || '(aucun appel)');
+    wb.localStorage.removeItem('lsv4_autodownload');
+    check('réglage auto-téléchargement bien refermé après test',
+        wb.localStorage.getItem('lsv4_autodownload') === null);
+    check('libellé du réglage promet images ET vidéos',
+        /images et vidéos/i.test((wb.document.querySelector('[id^="autodownload-toggle"]')
+            .closest('.toggle-row').querySelector('.toggle-row-name') || {}).textContent || ''),
+        (wb.document.querySelector('[id^="autodownload-toggle"]').closest('.toggle-row').querySelector('.toggle-row-name') || {}).textContent);
+
     console.log('\n=== 5. ANALYTICS : sanitisation ===');
     const posts = [];
     wb.fetch = function (url, options) {

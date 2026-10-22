@@ -140,19 +140,66 @@ const UI = {
             });
         });
     },
+    /* APERÇU — image ou vidéo affichée dans un surcouché de CETTE page.
+       Le bouton « Ouvrir » partait en target="_blank" vers l'URL du
+       fournisseur : l'utilisateur quittait LSV et atterrissait sur la page de
+       l'hébergeur. L'aperçu ne fait que poser l'URL dans un <img>/<video>,
+       donc l'affichage n'exige aucun droit CORS. */
+    openPreview(url, name, type) {
+        const backdrop = document.getElementById('preview-backdrop');
+        const media = document.getElementById('preview-media');
+        const label = document.getElementById('preview-name');
+        if (!backdrop || !media || !url) return false;
+        const safe = Utils.escapeHtml(url);
+        const isVideo = type === 'video';
+        media.innerHTML = isVideo
+            ? '<video src="' + safe + '" controls autoplay playsinline></video>'
+            : '<img src="' + safe + '" alt="' + Utils.escapeHtml(name || 'Image générée') + '">';
+        if (label) label.textContent = name || (isVideo ? 'Vidéo générée' : 'Image générée');
+        this._preview = {
+            url: url,
+            name: name || (isVideo ? 'lsv-video' : 'lsv-image'),
+            type: isVideo ? 'video' : 'image'
+        };
+        backdrop.classList.add('visible');
+        backdrop.setAttribute('aria-hidden', 'false');
+        return true;
+    },
+    closePreview() {
+        const backdrop = document.getElementById('preview-backdrop');
+        if (!backdrop || !backdrop.classList.contains('visible')) return false;
+        backdrop.classList.remove('visible');
+        backdrop.setAttribute('aria-hidden', 'true');
+        const media = document.getElementById('preview-media');
+        if (media) media.innerHTML = ''; /* coupe la lecture vidéo */
+        this._preview = null;
+        return true;
+    },
+    /* Téléchargement depuis l'aperçu : même chemin que le bouton des cartes. */
+    savePreview() {
+        const p = this._preview;
+        if (!p) return;
+        const base = (p.name || 'lsv').replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '') || 'lsv';
+        const file = base + (p.type === 'video' ? '.mp4' : '.png');
+        Utils.triggerDownload(p.url, file).then(ok => {
+            if (ok) UI.showToast('Téléchargement démarré', 'success', 2500);
+            else UI.showToast('Téléchargement direct impossible : fais un clic droit sur l\'aperçu puis « Enregistrer sous… ».', 'error', 6000);
+        });
+    },
     createImageCard(url, size) {
         const card = document.createElement('div');
         card.className = 'result-card';
         const style = Utils.getStyleById(UIState.imageStyle);
+        const safe = Utils.escapeHtml(url);
         card.innerHTML =
-            '<div class="result-media"><img src="' + url + '" alt="" loading="lazy"></div>' +
+            '<div class="result-media" data-preview="' + safe + '" data-preview-type="image" title="Aperçu"><img src="' + safe + '" alt="" loading="lazy"></div>' +
             '<div class="result-meta">' +
                 '<div class="res-name">' + Utils.escapeHtml(style.name) + '</div>' +
                 '<div class="res-details">' + Utils.escapeHtml(Utils.clampSize(size)) + '</div>' +
             '</div>' +
             '<div class="result-actions">' +
-                '<a class="res-action" href="' + url + '" target="_blank" rel="noopener"><span class="ms">open_in_new</span> Ouvrir</a>' +
-                '<a class="res-action" href="' + url + '" download="lsv-image.jpg"><span class="ms">download</span> Télécharger</a>' +
+                '<button type="button" class="res-action" data-preview="' + safe + '" data-preview-type="image"><span class="ms">zoom_in</span> Ouvrir</button>' +
+                '<button type="button" class="res-action" data-download="' + safe + '" data-download-name="lsv-image.png"><span class="ms">download</span> Télécharger</button>' +
             '</div>';
         return card;
     },
@@ -160,22 +207,23 @@ const UI = {
         const card = document.createElement('div');
         card.className = 'result-card';
         const style = Utils.getStyleById(UIState.videoStyle);
+        const safe0 = Utils.escapeHtml(videoUrls[0]);
         if (videoUrls.length === 1) {
             card.innerHTML =
-                '<div class="result-media"><video src="' + videoUrls[0] + '" controls playsinline preload="metadata"></video></div>' +
+                '<div class="result-media"><video src="' + safe0 + '" controls playsinline preload="metadata"></video></div>' +
                 '<div class="result-meta"><div class="res-name">' + Utils.escapeHtml(style.name) + '</div><div class="res-details">' + UIState.videoDuration + 's</div></div>' +
                 '<div class="result-actions">' +
-                    '<a class="res-action" href="' + videoUrls[0] + '" target="_blank" rel="noopener"><span class="ms">open_in_new</span> Ouvrir</a>' +
-                    '<a class="res-action" href="' + videoUrls[0] + '" download="lsv-video.mp4"><span class="ms">download</span> Télécharger</a>' +
+                    '<button type="button" class="res-action" data-preview="' + safe0 + '" data-preview-type="video"><span class="ms">zoom_in</span> Ouvrir</button>' +
+                    '<button type="button" class="res-action" data-download="' + safe0 + '" data-download-name="lsv-video.mp4"><span class="ms">download</span> Télécharger</button>' +
                 '</div>';
         } else {
             const pid = 'playlist-' + Date.now();
             card.innerHTML =
-                '<div class="result-media"><video id="' + pid + '" controls playsinline preload="metadata" src="' + videoUrls[0] + '"></video></div>' +
+                '<div class="result-media"><video id="' + pid + '" controls playsinline preload="metadata" src="' + safe0 + '"></video></div>' +
                 '<div class="result-meta"><div class="res-name">' + Utils.escapeHtml(style.name) + '</div><div class="res-details">' + videoUrls.length + ' segments</div></div>' +
                 '<div class="result-actions">' +
-                    '<a class="res-action" href="' + videoUrls[0] + '" target="_blank" rel="noopener"><span class="ms">open_in_new</span> Segment 1</a>' +
-                    '<a class="res-action" href="' + videoUrls[0] + '" download="lsv-seg1.mp4"><span class="ms">download</span> Seg 1</a>' +
+                    '<button type="button" class="res-action" data-preview="' + safe0 + '" data-preview-type="video"><span class="ms">zoom_in</span> Segment 1</button>' +
+                    '<button type="button" class="res-action" data-download="' + safe0 + '" data-download-name="lsv-seg1.mp4"><span class="ms">download</span> Seg 1</button>' +
                 '</div>';
             setTimeout(() => {
                 const v = document.getElementById(pid);

@@ -33,6 +33,16 @@ const Handlers = {
                 ratio: UIState.imageRatio, style: UIState.imageStyle,
                 mode: UIState.imageMode, source: 'main', duration_s: Math.round(dt)
             });
+            /* Auto-téléchargement optionnel — IMAGES. Jusqu'ici ce réglage
+               n'agissait que sur les vidéos, donc il ne se passait rien du
+               tout pour une image. */
+            if (StorageService.getAutoDownload()) {
+                const fn = 'lsv-image-' + Date.now() + '.png';
+                Utils.triggerDownload(url, fn).then(ok => {
+                    DebugService.log(ok ? 'info' : 'warn', 'IMAGE',
+                        ok ? 'Auto-téléchargement : ' + fn : 'Auto-téléchargement impossible (octets inaccessibles)');
+                });
+            }
             Dashboard.refresh();
             UI.showToast('Image générée', 'success');
             UI.setStatus(null);
@@ -116,12 +126,15 @@ const Handlers = {
                 ratio: UIState.videoRatio, size: UIState.videoSize,
                 source: 'main', duration_s: Math.round(totalTime)
             });
-            // Auto-téléchargement optionnel
+            // Auto-téléchargement optionnel (vidéos)
             if (StorageService.getAutoDownload()) {
                 videoUrls.forEach((url, idx) => {
-                    setTimeout(() => Utils.triggerDownload(url, 'lsv-video-' + Date.now() + '-seg' + (idx + 1) + '.mp4'), idx * 500);
+                    const fn = 'lsv-video-' + Date.now() + '-seg' + (idx + 1) + '.mp4';
+                    setTimeout(() => Utils.triggerDownload(url, fn).then(ok => {
+                        DebugService.log(ok ? 'info' : 'warn', 'VIDÉO',
+                            ok ? 'Auto-téléchargement : ' + fn : 'Auto-téléchargement impossible (octets inaccessibles)');
+                    }), idx * 500);
                 });
-                DebugService.log('info', 'VIDÉO', 'Auto-téléchargement activé');
             }
             Dashboard.refresh();
             UI.showToast('Vidéo générée', 'success', 3500);
@@ -307,6 +320,19 @@ const Handlers = {
         UI.applyAutoDownload(next);
         UI.showToast(next ? 'Auto-téléchargement activé' : 'Auto-téléchargement désactivé', next ? 'success' : 'warn', 2000);
     },
+    /* Téléchargement demandé par un bouton (carte de résultat ou
+       bibliothèque). Si les octets sont inaccessibles (CORS côté CDN du
+       fournisseur), on n'ouvre JAMAIS un onglet : on montre l'aperçu et on
+       explique, au lieu de perdre l'application sur une page distante. */
+    downloadAsset(url, name) {
+        if (!url) return;
+        const isVideo = /\.mp4(\?|$)/i.test(url);
+        Utils.triggerDownload(url, name || 'lsv-fichier').then(ok => {
+            if (ok) { UI.showToast('Téléchargement démarré', 'success', 2500); return; }
+            UI.openPreview(url, '', isVideo ? 'video' : 'image');
+            UI.showToast('Téléchargement direct impossible : clic droit sur l\'aperçu puis « Enregistrer sous… ».', 'error', 6000);
+        });
+    },
     toggleSidebar() {
         const current = StorageService.getSidebarCollapsed();
         const next = !current;
@@ -330,15 +356,16 @@ function restoreResultsFromLibrary() {
                 const card = document.createElement('div');
                 card.className = 'result-card';
                 const style = Utils.getStyleById(asset.metadata.style) || { name: 'Image' };
+                const safe = Utils.escapeHtml(asset.url);
                 card.innerHTML =
-                    '<div class="result-media"><img src="' + asset.url + '" alt="" loading="lazy"></div>' +
+                    '<div class="result-media" data-preview="' + safe + '" data-preview-type="image" title="Aperçu"><img src="' + safe + '" alt="" loading="lazy"></div>' +
                     '<div class="result-meta">' +
                         '<div class="res-name">' + Utils.escapeHtml(style.name) + '</div>' +
                         '<div class="res-details">' + Utils.escapeHtml(asset.metadata.size || '') + '</div>' +
                     '</div>' +
                     '<div class="result-actions">' +
-                        '<a class="res-action" href="' + asset.url + '" target="_blank" rel="noopener"><span class="ms">open_in_new</span> Ouvrir</a>' +
-                        '<a class="res-action" href="' + asset.url + '" download="lsv-' + asset.id + '.jpg"><span class="ms">download</span> Télécharger</a>' +
+                        '<button type="button" class="res-action" data-preview="' + safe + '" data-preview-type="image"><span class="ms">zoom_in</span> Ouvrir</button>' +
+                        '<button type="button" class="res-action" data-download="' + safe + '" data-download-name="lsv-' + asset.id + '.png"><span class="ms">download</span> Télécharger</button>' +
                     '</div>';
                 grid.appendChild(card);
             });
@@ -358,15 +385,16 @@ function restoreResultsFromLibrary() {
                 const card = document.createElement('div');
                 card.className = 'result-card';
                 const style = Utils.getStyleById(asset.metadata.style) || { name: 'Vidéo' };
+                const safe = Utils.escapeHtml(asset.url);
                 card.innerHTML =
-                    '<div class="result-media"><video src="' + asset.url + '" controls playsinline preload="metadata"></video></div>' +
+                    '<div class="result-media"><video src="' + safe + '" controls playsinline preload="metadata"></video></div>' +
                     '<div class="result-meta">' +
                         '<div class="res-name">' + Utils.escapeHtml(style.name) + '</div>' +
                         '<div class="res-details">' + Utils.escapeHtml((asset.metadata.duration || '') + 's') + '</div>' +
                     '</div>' +
                     '<div class="result-actions">' +
-                        '<a class="res-action" href="' + asset.url + '" target="_blank" rel="noopener"><span class="ms">open_in_new</span> Ouvrir</a>' +
-                        '<a class="res-action" href="' + asset.url + '" download="lsv-' + asset.id + '.mp4"><span class="ms">download</span> Télécharger</a>' +
+                        '<button type="button" class="res-action" data-preview="' + safe + '" data-preview-type="video"><span class="ms">zoom_in</span> Ouvrir</button>' +
+                        '<button type="button" class="res-action" data-download="' + safe + '" data-download-name="lsv-' + asset.id + '.mp4"><span class="ms">download</span> Télécharger</button>' +
                     '</div>';
                 grid.appendChild(card);
             });
@@ -383,6 +411,32 @@ function init() {
     UI.applyTheme(StorageService.getTheme());
     UI.applySidebarState(StorageService.getSidebarCollapsed());
     UI.applyAutoDownload(StorageService.getAutoDownload());
+
+    /* Délégation UNIQUE : les cartes de résultat sont reconstruites à chaque
+       rafraîchissement, un écouteur posé élément par élément serait donc
+       perdu. Un seul écouteur sur le document suffit, pour l'aperçu comme
+       pour le téléchargement. */
+    document.addEventListener('click', (e) => {
+        const t = e.target;
+        if (!t || !t.closest) return;
+        if (t.closest('#preview-close')) { e.preventDefault(); UI.closePreview(); return; }
+        if (t.closest('#preview-save')) { e.preventDefault(); UI.savePreview(); return; }
+        if (t.id === 'preview-backdrop') { UI.closePreview(); return; }
+        const dl = t.closest('[data-download]');
+        if (dl) {
+            e.preventDefault();
+            Handlers.downloadAsset(dl.getAttribute('data-download'), dl.getAttribute('data-download-name'));
+            return;
+        }
+        const pv = t.closest('[data-preview]');
+        if (pv) {
+            e.preventDefault();
+            UI.openPreview(pv.getAttribute('data-preview'), '', pv.getAttribute('data-preview-type'));
+        }
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e && e.key === 'Escape') UI.closePreview();
+    });
 
     document.querySelectorAll('.nav-item').forEach(t => {
         t.addEventListener('click', () => UI.switchTab(t.dataset.tab));

@@ -141,19 +141,23 @@ const LibraryView = {
                 e.stopPropagation();
                 const a = AssetService.get(el.dataset.assetDownload);
                 if (!a) return;
-                Utils.triggerDownload(a.url, 'lsv-' + a.id);
+                Handlers.downloadAsset(a.url, 'lsv-' + a.id + (a.type === 'video' ? '.mp4' : '.png'));
             });
         });
     },
     _item(a) {
         const isVideo = a.type === 'video';
+        /* La vignette est cliquable : elle ouvre l'aperçu sur cette page.
+           Auparavant, seul un bouton de téléchargement existait — et il
+           ouvrait l'URL distante dans un nouvel onglet. */
+        const safe = Utils.escapeHtml(a.url);
         return '<div class="lib-item">' +
-            '<div class="lib-item-media">' +
-                (isVideo ? '<video src="' + a.url + '" muted playsinline preload="metadata"></video>' : '<img src="' + a.url + '" alt="" loading="lazy">') +
+            '<div class="lib-item-media" data-preview="' + safe + '" data-preview-type="' + a.type + '" title="Aperçu">' +
+                (isVideo ? '<video src="' + safe + '" muted playsinline preload="metadata"></video>' : '<img src="' + safe + '" alt="" loading="lazy">') +
                 '<span class="lib-item-badge ' + (isVideo ? 'video' : '') + '">' + a.type + '</span>' +
                 '<div class="lib-item-actions">' +
-                    '<button class="project-action-btn" data-asset-download="' + a.id + '"><span class="ms">download</span></button>' +
-                    '<button class="project-action-btn delete" data-asset-delete="' + a.id + '"><span class="ms">delete</span></button>' +
+                    '<button type="button" class="project-action-btn" data-asset-download="' + a.id + '"><span class="ms">download</span></button>' +
+                    '<button type="button" class="project-action-btn delete" data-asset-delete="' + a.id + '"><span class="ms">delete</span></button>' +
                 '</div>' +
             '</div>' +
             '<div class="lib-item-meta">' +
