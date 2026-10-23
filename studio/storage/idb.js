@@ -26,7 +26,11 @@
     function open() {
         if (dbPromise) return dbPromise;
         dbPromise = new Promise((resolve, reject) => {
-            if (!S.Storage || !S.Storage.supported()) {
+            /* Garde d'identité : `IDB.supported()`, jamais un module externe.
+               Un `S.Storage` fantôme (module inexistant) faisait échouer
+               `open()` à CHAQUE appel : toute écriture — projets comme
+               médias — était rejetée, même avec un IndexedDB parfait. */
+            if (!IDB.supported()) {
                 reject(new Error('IndexedDB indisponible'));
                 return;
             }

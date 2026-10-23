@@ -103,6 +103,14 @@
            plutôt qu'une alternative floue. */
         async explainWriteFailure(err) {
             const name = String((err && err.name) || '').slice(0, 40);
+            /* Nos propres rejets portent le diagnostic dans `message`
+               (« IndexedDB indisponible », « Base de données bloquée ») :
+               sans le message, on n'affiche que « (Error) », inutile.
+               Sanitizé (pas de HTML, taille bornée) car `message` peut
+               aussi venir du navigateur. */
+            const msg = String((err && err.message) || '')
+                .replace(/[^\w\s().,:\/+\-\u00C0-\u024F\u2010-\u203A]/g, ' ')
+                .replace(/\s+/g, ' ').trim().slice(0, 60);
             const mo = n => Math.max(0, Math.round(n / (1024 * 1024))) + ' Mo';
             if (name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED') {
                 let est = null;
@@ -111,7 +119,8 @@
                     ? 'stockage local plein (' + mo(est.usage) + ' utilisés sur ' + mo(est.quota) + ')'
                     : 'stockage local plein';
             }
-            if (name) return 'écriture refusée (' + name + ')';
+            if (name && name !== 'Error') return 'écriture refusée (' + name + ')';
+            if (msg) return 'écriture refusée (' + msg + ')';
             if (!this.supported()) return 'stockage local indisponible (navigation privée ?)';
             return 'écriture refusée';
         },

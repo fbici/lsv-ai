@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.16.13
+# LSV.ai — Studio Viral v3.16.14
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -170,7 +170,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -1457,6 +1457,71 @@ sans crash, propagation de `error.name` jusqu'à l'UI.
 
 ---
 
+### 2.25 Cause réelle de « écriture refusée (Error) » : IndexedDB n'ouvre jamais - v3.16.14
+
+Le diagnostic de la §2.24 a fait exactement ce qu'on lui demandait : le
+navigateur rendait un `Error` **générique** — pas un `QuotaExceededError`.
+Le stockage n'était donc **pas plein**. On cherchait dans la mauvaise
+direction ; le symptôme désignait un autre défaut, là où personne ne le
+regardait.
+
+#### La racine : `S.Storage`, un module qui n'existe pas
+
+`studio/storage/idb.js`, depuis le **premier commit Studio** (`acc30ea`),
+gardait l'ouverture de la base derrière :
+
+```js
+if (!S.Storage || !S.Storage.supported()) reject(new Error('IndexedDB indisponible'));
+```
+
+`S.Storage` **n'a jamais existé** : le symbole n'apparaît dans toute
+l'historique git que dans cette ligne, et nulle définition ne l'assigne.
+`!undefined` → `true` → `open()` rejetait **à chaque appel**, alors que le
+vrai test `IDB.supported()` (« y a-t-il IndexedDB ? ») renvoie `true` : le
+navigateur est sain, c'est le code qui refuse avant même d'essayer.
+
+`supported()` des couches applicatives renvoyait donc `true` (IndexedDB
+existe bien), l'application décidait d'écrire, puis `open()` échouait
+systématiquement. **Aucune écriture locale n'a jamais réussi depuis M1** :
+
+- médias → `MediaStorage.import` → `write-failed` → « écriture refusée
+  (Error) » (l'`Error` : c'était son `name`, sa cause « IndexedDB
+  indisponible » vivait dans `message`, que le libellé n'affichait pas) ;
+- projets → `ProjectStorage.save` → échec : l'autosave s'arrêtait sur
+  l'état « erreur », et la création de projet affichait « enregistré »
+  malgré l'échec — le projet n'apparaissait pas à l'ouverture suivante.
+
+**Correctifs**
+
+- `open()` vérifie `!IDB.supported()` : la **même** source de vérité que
+  `MediaStorage.supported()` et `ProjectStorage.supported()`.
+- `explainWriteFailure` affiche maintenant `message` quand `name` est un
+  générique `Error` — d'où « écriture refusée (IndexedDB indisponible) » au
+  lieu de « (Error) », sanitizé et borné à 60 caractères.
+- la création de projet n'affiche plus « enregistré » après un échec.
+
+**Vérifié par** `tests/studio.test.js` §15quater (+8) : garde statique
+`S.Storage` interdit, puis comportement avec un faux IndexedDB injecté —
+`putMedia` écrit, `ProjectStorage.save` renvoie `ok`, le projet se relit,
+et la cause portée par `message` est affichée. **Contrôlé par réintroduction
+temporaire du bug** : ces tests tombent alors avec exactement
+`IndexedDB indisponible` / `write-failed` — la fuite de non-régression est
+bien armée.
+
+**Nouveaux totaux : studio 179/179 · suite 1055.**
+
+> **⚠️ Données avant correction.** IndexedDB n'a jamais rien écrit : à
+> l'ouverture, la liste des projets était **vide**. Si un projet était à
+> l'écran en mémoire, **exporte-le en JSON** (bouton d'export) avant de
+> recharger — seul import/export le préserve.
+>
+> **Déploiement** : fichiers statiques uniquement
+> (`studio/storage/idb.js`, `studio/storage/media-storage.js`,
+> `studio/main.js`) → **rafraîchir le navigateur** (v3.16.14). Rien à
+> redéployer côté passerelle.
+
+---
+
 ## 3. Installation locale
 
 ```bash
@@ -1833,7 +1898,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 1047 assertions, 6 suites
+npm test                      # 1055 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -1902,7 +1967,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 1047 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 1055 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (78 assertions, **90 avec `ORIG`**) — non-régression
@@ -2041,7 +2106,7 @@ npm test        # 1047 assertions (6 suites, hors ORIG=… voir plus bas)
   d'activité ;
 - aucun mot de passe codé en dur, aucune `service_role`.
 
-**`tests/studio.test.js`** (171 assertions) — LSV Studio (`/studio/`, §12)
+**`tests/studio.test.js`** (179 assertions) — LSV Studio (`/studio/`, §12)
 
 - ouverture, rendu des panneaux, import de média, timeline ;
 - ratios visuels (`RATIOS`, grille rendue par `UI.renderRatioGrid`) ;

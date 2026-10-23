@@ -562,6 +562,87 @@ function S_ProjectModel_addTextTrack(project) {
     check('motif exploitable par l’UI (l’erreur traverse jusqu’au toast)',
         /plein/.test(rejLabel), rejLabel);
 
+    console.log('\n=== 15quater. RÉGRESSION : IndexedDB doit S’OUVRIR ===');
+    /* Bug réel présent depuis le commit Studio M1 (acc30ea) : `open()` testait
+       `S.Storage`, un module qui n'a JAMAIS existé. Résultat : TOUTE écriture
+       — média comme projet — était rejetée avec un `Error` générique, même
+       sur un navigateur sain, alors même que `supported()` renvoyait vrai.
+       C'est la cause exacte de « écriture refusée (Error) ». */
+    const idbSrc = fs.readFileSync(path.join(PROJECT, 'studio', 'storage', 'idb.js'), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    check('S.Storage (module fantôme) absent du code exécuté', !/S\.Storage\b/.test(idbSrc));
+    check('garde-fou porté par IDB.supported(), source unique', /!IDB\.supported\(\)/.test(idbSrc));
+    check('ce module n’existe effectivement pas dans l’app',
+        w.LSVStudio.Storage === undefined);
+
+    /* Faux IndexedDB : assez pour `open` + les deux object stores, sans
+       dépendre du navigateur. Avant la correction, ce bloc échoue. */
+    function installFakeIDB(win) {
+        const data = { projects: {}, media: {} };
+        const has = n => Object.prototype.hasOwnProperty.call(data, n);
+        function makeTx(name) {
+            const tx = { error: null, oncomplete: null, onerror: null, onabort: null, _fired: false };
+            const fire = () => {
+                if (tx._fired) return;
+                tx._fired = true;
+                setTimeout(() => { if (tx.oncomplete) tx.oncomplete(); }, 0);
+            };
+            const asyncReq = value => {
+                const r = { result: value, error: null, onsuccess: null, onerror: null };
+                setTimeout(() => { if (r.onsuccess) r.onsuccess(); }, 0);
+                return r;
+            };
+            tx.objectStore = () => ({
+                put: (value, key) => { data[name][key !== undefined ? key : value.id] = value; fire(); },
+                delete: key => { delete data[name][key]; fire(); },
+                get: key => asyncReq(data[name][key]),
+                getAll: () => asyncReq(Object.keys(data[name]).map(k => data[name][k])),
+                getAllKeys: () => asyncReq(Object.keys(data[name]))
+            });
+            return tx;
+        }
+        win.indexedDB = {
+            open: () => {
+                const r = { result: null, error: null, onsuccess: null, onerror: null,
+                    onblocked: null, onupgradeneeded: null };
+                setTimeout(() => {
+                    r.result = {
+                        objectStoreNames: { contains: has },
+                        createObjectStore: n => { data[n] = data[n] || {}; },
+                        transaction: n => makeTx(n)
+                    };
+                    if (r.onsuccess) r.onsuccess();
+                }, 0);
+                return r;
+            }
+        };
+        return data;
+    }
+    installFakeIDB(w);
+
+    let putKey = null, putErr = null;
+    try {
+        putKey = await w.LSVStudio.IDB.putMedia('m-regression', new w.Blob(['x'], { type: 'image/png' }), null);
+    } catch (e) { putErr = e; }
+    check('open() réussit : putMedia écrit', putKey === 'm-regression', putErr ? putErr.message : putKey);
+
+    const projIdb = w.LSVStudio.ProjectModel.create({ name: 'PIDB' });
+    const svIdb = await w.LSVStudio.ProjectStorage.save(projIdb);
+    check('un projet s’enregistre — même cause que les médias',
+        svIdb.ok === true, svIdb.reason || 'ok');
+    const backIdb = await w.LSVStudio.IDB.getProject(projIdb.id);
+    check('…et se relit depuis la base', !!backIdb && backIdb.name === 'PIDB',
+        backIdb ? backIdb.name : 'null');
+
+    /* Le diagnostic doit dire quoi : la cause portée par `message`, pas
+       un simple « (Error) ». */
+    const lblMsg = await w.LSVStudio.MediaStorage.explainWriteFailure(new Error('IndexedDB indisponible'));
+    check('cause portée par `message` affichée (plus de « (Error) »)',
+        /IndexedDB indisponible/.test(lblMsg) && !/\(Error\)/.test(lblMsg), lblMsg);
+    const lblRaw = await w.LSVStudio.MediaStorage.explainWriteFailure(new Error('<b>txt</b>'));
+    check('message du navigateur sanitisé avant affichage',
+        lblRaw.indexOf('<') === -1 && lblRaw.indexOf('>') === -1, lblRaw);
+
     console.log('\n=== 16. NON-RÉGRESSION DE L’APP PRINCIPALE ===');
     const appScripts = (appHtml.match(/<script src="\.\/([^"]+)"><\/script>/g) || []).join(',');
     check('ordre des modules de l’app inchangé',

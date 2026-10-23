@@ -292,9 +292,11 @@
                 };
             }
 
-            /* Enregistre à l'entrée pour que le projet apparaisse dans la liste. */
-            await S.ProjectStorage.save(project);
-            this.setSaveState('saved');
+            /* Enregistre à l'entrée pour que le projet apparaisse dans la
+               liste. Le résultat compte : afficher « enregistré » après un
+               échec d'écriture masquait la perte silencieuse du projet. */
+            const created = await S.ProjectStorage.save(project);
+            this.setSaveState(created.ok ? 'saved' : 'error');
             if (S.HistoryManager) S.HistoryManager.reset(project);
 
             if (S.MediaPanel) S.MediaPanel.render();
