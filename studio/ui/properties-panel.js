@@ -30,6 +30,7 @@
 
     const PropertiesPanel = {
         els: {},
+        _histTimer: null,
 
         init() {
             this.els.body = document.getElementById('sv-props-body');
@@ -167,12 +168,36 @@
 
         _bind(clip) {
             const body = this.els.body;
-            const apply = (mutate, useHistory) => {
+
+            /* ── Historique : UNE entrée par interaction, pas par pixel ──
+               Un curseur émet des dizaines d'événements `input` par seconde ;
+               chaque `begin()` empilait un niveau, si bien que la pile de 60
+               était consumée par un SEUL réglage. On ouvre au plus une fois,
+               on réarme le compte à rebours à chaque événement, et on
+               referme après une accalmie de 350 ms (ou à la relâche). */
+            const touchHistory = () => {
+                const p = S.App.project;
+                if (!p) return;
+                if (!S.HistoryManager._pending) S.HistoryManager.begin(p);
+                clearTimeout(this._histTimer);
+                this._histTimer = setTimeout(() => {
+                    this._histTimer = null;
+                    S.HistoryManager.commit(S.App.project);
+                    S.HistoryManager.syncButtons();
+                }, 350);
+            };
+            const closeHistory = () => {
+                clearTimeout(this._histTimer);
+                this._histTimer = null;
+                S.HistoryManager.commit(S.App.project);
+                S.HistoryManager.syncButtons();
+            };
+
+            const apply = mutate => {
                 const project = S.App.project;
-                if (useHistory !== false) S.HistoryManager.begin(project);
+                if (!project) return;
                 mutate();
                 S.ProjectModel.touch(project);
-                if (useHistory !== false) S.HistoryManager.commit(project);
                 S.HistoryManager.syncButtons();
                 S.App.setSaveState('dirty');
                 if (S.Preview) S.Preview.refresh();
@@ -184,6 +209,7 @@
                 const key = input.dataset.svp;
                 input.addEventListener('input', () => {
                     const v = Number(input.value);
+                    touchHistory();
                     apply(() => {
                         if (kind === 'style') clip.style = Object.assign(clip.style || {}, { [key]: v });
                         else if (kind === 'effect') setEffect(clip, key, v);
@@ -194,27 +220,30 @@
                     const out = body.querySelector('[data-svp-out="' + key + '"]');
                     if (out) out.textContent = formatVal(v, input.dataset.svpUnit);
                 });
-                /* Un seul historique par glisser-curseur, pas par pixel. */
-                input.addEventListener('change', () => S.HistoryManager.commit(S.App.project));
-                input.addEventListener('pointerdown', () => S.HistoryManager.begin(S.App.project));
+                input.addEventListener('change', closeHistory);
+                input.addEventListener('pointerdown', touchHistory);
             });
 
             body.querySelectorAll('select[data-svp]').forEach(sel => {
                 sel.addEventListener('change', () => {
                     const kind = sel.dataset.svpKind, key = sel.dataset.svp;
+                    touchHistory();
                     apply(() => {
                         if (kind === 'style') { clip.style = clip.style || {}; clip.style[key] = sel.value; }
                         else if (key === 'transitionIn') clip.transitionIn = sel.value ? { type: sel.value, duration: (clip.transitionIn && clip.transitionIn.duration) || 0.5 } : null;
                         else if (key === 'transitionOut') clip.transitionOut = sel.value ? { type: sel.value, duration: (clip.transitionOut && clip.transitionOut.duration) || 0.5 } : null;
                         else clip[key] = sel.value;
                     });
+                    closeHistory();
                 });
             });
 
             body.querySelectorAll('input[type=checkbox][data-svp]').forEach(cb => {
                 cb.addEventListener('change', () => {
                     const key = cb.dataset.svp;
+                    touchHistory();
                     apply(() => { clip[key] = cb.checked; });
+                    closeHistory();
                 });
             });
 
@@ -223,13 +252,13 @@
                 let timer = null;
                 text.addEventListener('input', () => {
                     clearTimeout(timer);
-                    timer = setTimeout(() => apply(() => { clip.text = text.value; }), 250);
+                    timer = setTimeout(() => { touchHistory(); apply(() => { clip.text = text.value; }); closeHistory(); }, 250);
                 });
             }
             const color = body.querySelector('#svp-color');
-            if (color) color.addEventListener('input', () => apply(() => { clip.style = Object.assign(clip.style || {}, { color: color.value }); }));
+            if (color) color.addEventListener('input', () => { touchHistory(); apply(() => { clip.style = Object.assign(clip.style || {}, { color: color.value }); }); });
             const stroke = body.querySelector('#svp-stroke');
-            if (stroke) stroke.addEventListener('input', () => apply(() => { clip.style = Object.assign(clip.style || {}, { stroke: stroke.value }); }));
+            if (stroke) stroke.addEventListener('input', () => { touchHistory(); apply(() => { clip.style = Object.assign(clip.style || {}, { stroke: stroke.value }); }); });
         }
     };
 

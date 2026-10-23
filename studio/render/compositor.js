@@ -17,8 +17,28 @@
     const easeOut = p => 1 - Math.pow(1 - p, 3);
     const easeIn = p => p * p * p;
 
+    /* Attend un événement média AVEC une limite. Sans plafond, un élément qui
+       ne se déclenche jamais (codec absent, fichier corrompu) faisait échouer
+       `drawFrame` à vie : l'aperçu restait figé sur la frame précédente. */
+    function once(el, names, ms) {
+        return new Promise(resolve => {
+            let done = false;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                for (const n of names) el.removeEventListener(n, finish);
+                resolve();
+            };
+            const timer = setTimeout(finish, ms);
+            for (const n of names) el.addEventListener(n, finish);
+        });
+    }
+
     const Compositor = {
-        /* Retourne (ou crée) l'élément DOM utilisé pour lire un média. */
+        /* Retourne (ou crée) l'élément DOM utilisé pour lire un média.
+           L'audio a maintenant SON propre élément : sans lui, une piste
+           musique n'existait nulle part (ni aperçu, ni export). */
         async elementFor(media, project) {
             if (elementCache.has(media.id)) return elementCache.get(media.id);
             const url = await S.MediaStorage.getURL(media.blobKey);
@@ -27,16 +47,16 @@
             if (media.kind === 'image') {
                 el = new Image();
                 el.src = url;
-                await new Promise(res => { el.onload = res; el.onerror = res; });
-            } else if (media.kind === 'video') {
-                el = document.createElement('video');
+                if (!el.complete) await once(el, ['load', 'error'], 2500);
+            } else if (media.kind === 'video' || media.kind === 'audio') {
+                el = document.createElement(media.kind);
                 el.src = url;
                 el.muted = false;
-                el.playsInline = true;
                 el.preload = 'auto';
-                await new Promise(res => { el.onloadeddata = res; el.onerror = res; });
+                if (media.kind === 'video') el.playsInline = true;
+                if (el.readyState < 2) await once(el, ['loadeddata', 'error'], 2500);
             } else {
-                return null;   // l'audio n'est pas dessiné
+                return null;
             }
             elementCache.set(media.id, el);
             return el;
@@ -46,16 +66,19 @@
         clearCache() {
             for (const el of elementCache.values()) {
                 try {
-                    if (el.tagName === 'VIDEO') { el.pause(); el.removeAttribute('src'); el.load(); }
+                    if (el.tagName === 'VIDEO' || el.tagName === 'AUDIO') {
+                        el.pause(); el.removeAttribute('src'); el.load();
+                    }
                 } catch (e) { /* rien */ }
             }
             elementCache.clear();
         },
 
-        /* Accès contrôlé depuis le moniteur (lecture des vidéos). */
+        /* Accès contrôlé depuis le moniteur (lecture des vidéos ET des sons). */
         _elementById(mediaId) { return elementCache.get(mediaId) || null; },
         _elementsForPlayback() {
-            return Array.from(elementCache.values()).filter(el => el.tagName === 'VIDEO');
+            return Array.from(elementCache.values())
+                .filter(el => el.tagName === 'VIDEO' || el.tagName === 'AUDIO');
         },
 
         /* ── Rendu d'une frame ──────────────────────────────────────────── */
@@ -73,14 +96,16 @@
             let drawn = 0;
 
             for (const layer of layers) {
-                const track = layer.track;
-                if (track.muted && track.kind === 'audio') continue;
                 for (const item of layer.items) {
                     const clip = item.clip;
-                    if (clip.muted) continue;
                     if (clip.kind === 'text') { this._drawText(ctx, clip, w, h, seq); drawn++; continue; }
                     const media = S.TimelineModel.media(project, clip.mediaId);
                     if (!media || media.missing) { this._drawMissing(ctx, w, h, item); continue; }
+                    /* Son pur : rien à dessiner, mais la frame n'est PAS vide
+                       (sinon l'état « aucun média » s'affiche alors qu'une
+                       piste musique défile). Volumes/muet sont gérés par
+                       `applyVolumes` et l'AudioMixer, jamais par le dessin. */
+                    if (media.kind === 'audio') { drawn++; continue; }
                     const el = await this.elementFor(media, project);
                     if (!el) { this._drawMissing(ctx, w, h, item); continue; }
 
@@ -207,23 +232,26 @@
             ctx.restore();
         },
 
-        /* Met à jour le volume des vidéos actives (M1 : simple volume natif). */
+        /* Met à jour le volume des médias SONORES actifs (vidéos ET pistes
+           audio : la musique doit suivre volume/muet exactement comme une
+           vidéo). Les clips absents de la frame sont mis en pause. */
         applyVolumes(project, time) {
             const layers = S.TimelineModel.clipsAt(project, time);
             const active = new Set();
             for (const layer of layers) {
                 for (const item of layer.items) {
                     const media = S.TimelineModel.media(project, item.clip.mediaId);
-                    if (!media || media.kind !== 'video') continue;
+                    if (!media || (media.kind !== 'video' && media.kind !== 'audio')) continue;
+                    if (layer.track.hidden) continue;
                     active.add(media.id);
                     const el = elementCache.get(media.id);
                     if (el) el.volume = Math.max(0, Math.min(1,
                         (item.clip.muted || layer.track.muted) ? 0 : (item.clip.volume == null ? 1 : item.clip.volume)));
                 }
             }
-            /* Coupe les vidéos qui ne sont plus à l'écran. */
+            /* Coupe les médias qui ne sont plus à l'écran. */
             for (const [id, el] of elementCache) {
-                if (el.tagName === 'VIDEO' && !active.has(id) && !el.paused) el.pause();
+                if ((el.tagName === 'VIDEO' || el.tagName === 'AUDIO') && !active.has(id) && !el.paused) el.pause();
             }
         }
     };

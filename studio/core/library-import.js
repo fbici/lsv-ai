@@ -43,12 +43,12 @@
             if (!Array.isArray(arr)) return [];
             return arr
                 .filter(a => a && typeof a === 'object' && typeof a.url === 'string' && a.url)
-                .filter(a => a.type === 'image' || a.type === 'video')
+                .filter(a => a.type === 'image' || a.type === 'video' || a.type === 'audio')
                 .map(a => ({
                     id: String(a.id || ''),
                     type: a.type,
                     url: a.url,
-                    name: String(a.name || (a.type === 'image' ? 'Image' : 'Vidéo')).slice(0, 200),
+                    name: String(a.name || ({ image: 'Image', video: 'Vidéo', audio: 'Audio' })[a.type] || 'Média').slice(0, 200),
                     ratio: (a.metadata && a.metadata.ratio) || null,
                     size: (a.metadata && a.metadata.size) || null,
                     style: (a.metadata && a.metadata.style) || null,

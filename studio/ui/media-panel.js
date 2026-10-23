@@ -69,14 +69,41 @@
                 this.els.input.value = '';
             });
 
+            this.els.panel = q('sv-media');
             const dz = this.els.dropzone;
             if (dz) {
+                /* Surbrillance pendant le survol : les deux paires sont
+                   branchées sur la zone, pas sur chaque enfant. */
                 dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
                 dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
-                dz.addEventListener('drop', e => {
+            }
+            /* Le dépôt de fichiers fonctionne PARTOUT dans le panneau. Avant,
+               il n'était écouté que sur la dropzone — laquelle disparaissait
+               après le premier import : impossible de déposer un second
+               fichier depuis le disque sans repasser par le bouton « + ». */
+            const zone = this.els.panel || dz;
+            const hasFiles = d => {
+                const t = d && d.types;
+                if (!t) return false;
+                return t.contains ? t.contains('Files') : Array.prototype.indexOf.call(t, 'Files') !== -1;
+            };
+            if (zone) {
+                zone.addEventListener('dragover', e => {
+                    if (!hasFiles(e.dataTransfer)) return;
                     e.preventDefault();
-                    dz.classList.remove('dragover');
-                    if (e.dataTransfer && e.dataTransfer.files.length) this.importFiles(e.dataTransfer.files);
+                    e.dataTransfer.dropEffect = 'copy';
+                    if (dz) dz.classList.add('dragover');
+                });
+                zone.addEventListener('dragleave', e => {
+                    if (dz && (e.target === zone || !zone.contains(e.relatedTarget))) {
+                        dz.classList.remove('dragover');
+                    }
+                });
+                zone.addEventListener('drop', e => {
+                    if (!hasFiles(e.dataTransfer) || !e.dataTransfer.files.length) return;
+                    e.preventDefault();
+                    if (dz) dz.classList.remove('dragover');
+                    this.importFiles(e.dataTransfer.files);
                 });
             }
         },
@@ -85,9 +112,13 @@
         async importFiles(files) {
             const project = S.App.project;
             if (!project) return;
+            S.HistoryManager.begin(project);
             const res = await S.MediaManager.importFiles(project, files, (p, name) => {
                 if (S.App.setProgress) S.App.setProgress(p, name);
             });
+            /* Un import est annulable comme n'importe quelle mutation. */
+            S.HistoryManager.commit(project);
+            S.HistoryManager.syncButtons();
             if (S.App.setProgress) S.App.setProgress(0, '');
 
             if (res.added.length && !res.rejected.length) {
@@ -112,11 +143,19 @@
             const project = S.App.project;
             if (!project) return;
             if (S.App.setProgress) S.App.setProgress(0.1, asset.name);
+            /* La mutation a lieu DANS `import` : on ouvre l'historique avant
+               et on le referme après. L'ancien code appelait
+               `HistoryManager.run(project, 'import-bibliothèque')` — une
+               chaîne là où `run` attend une fonction : TypeError, donc
+               `render()` et `setSaveState('dirty')` n'étaient JAMAIS
+               atteints, le média disparaissait au rechargement. */
+            S.HistoryManager.begin(project);
             const r = await S.LibraryImport.import(project, asset);
+            S.HistoryManager.commit(project);
+            S.HistoryManager.syncButtons();
             if (S.App.setProgress) S.App.setProgress(0, '');
             if (r.ok) {
                 S.App.toast('« ' + asset.name + ' » importé depuis LSV.ai', 'success');
-                S.HistoryManager.run(project, 'import-bibliothèque');
                 this.render();
                 if (S.TimelineView) S.TimelineView.render();
                 if (S.Preview) S.Preview.refresh();
@@ -148,12 +187,14 @@
                 S.App.toast('Aucune création à importer — tout est déjà dans le projet', 'warn');
                 return;
             }
+            S.HistoryManager.begin(project);
             const res = await S.LibraryImport.importMany(project, pending, (p, name) => {
                 if (S.App.setProgress) S.App.setProgress(p, name);
             });
+            S.HistoryManager.commit(project);
+            S.HistoryManager.syncButtons();
             if (S.App.setProgress) S.App.setProgress(0, '');
             if (res.added.length) {
-                S.HistoryManager.run(project, 'import-bibliothèque');
                 S.App.toast(
                     res.added.length + ' média' + (res.added.length > 1 ? 's importés' : ' importé') +
                     ' depuis LSV.ai' + (res.failed.length ? ' — ' + res.failed.length + ' échec(s)' : ''),
@@ -186,6 +227,7 @@
                 '<li class="sv-lib-item' + (done.has(a.url) ? ' imported' : '') + '" data-url="' + esc(a.url) + '">' +
                 '  <span class="sv-lib-thumb">' + (a.type === 'video'
                     ? '<span class="ms">movie</span>'
+                    : a.type === 'audio' ? '<span class="ms">audio_file</span>'
                     : '<span class="ms">image</span>') + '</span>' +
                 '  <span class="sv-lib-meta">' +
                 '    <span class="sv-lib-name" title="' + esc(a.name) + '">' + esc(a.name) + '</span>' +
@@ -225,7 +267,9 @@
                 if (dz) dz.hidden = false;
                 return;
             }
-            if (dz) dz.hidden = true;
+            /* La dropzone reste TOUJOURS visible : c'est la cible de dépôt
+               depuis le disque (elle disparaissait dès le premier import). */
+            if (dz) dz.hidden = false;
 
             for (const m of project.media) {
                 const li = document.createElement('li');

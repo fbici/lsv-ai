@@ -89,6 +89,7 @@
             if (this.els.play) this.els.play.setAttribute('aria-label', playing ? 'Pause' : 'Lecture');
         },
 
+        /* Éléments média pilotables en lecture : vidéos ET musique. */
         _videos() {
             return (S.Compositor && S.Compositor._elementsForPlayback) ? S.Compositor._elementsForPlayback() : [];
         },
@@ -117,7 +118,7 @@
             if (!project) return 0;
             for (const layer of S.TimelineModel.clipsAt(project, this.time)) {
                 for (const item of layer.items) {
-                    if (item.clip.kind !== 'video') continue;
+                    if (item.clip.kind !== 'video' && item.clip.kind !== 'audio') continue;
                     const media = S.TimelineModel.media(project, item.clip.mediaId);
                     if (media && S.Compositor._elementById(media.id) === el) return item.sourceTime;
                 }

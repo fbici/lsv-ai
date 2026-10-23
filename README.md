@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.16.14
+# LSV.ai — Studio Viral v3.16.15
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -170,7 +170,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -1522,6 +1522,92 @@ bien armée.
 
 ---
 
+### 2.26 L'outil de montage devient réellement utilisable - v3.16.15
+
+Le Studio s'affichait, mais chaque parcours concret s'arrêtait : déposer un
+fichier, ajouter une piste, importer depuis LSV.ai, poser une musique,
+exporter. Relevé complet sur les sources, puis correction — 11 fichiers,
+chaque correctif couvert par des tests.
+
+#### Ce qui bloquait (P0)
+
+- **Boutons « Piste » et « Texte »** : `S.ProjectModel.addTrack` **n'a jamais
+  existé** (même famille de fantôme que `S.Storage`, §2.25) → TypeError au
+  premier clic. `timeline-view.js` appelle maintenant `TM().addTrack`.
+- **Dépôt en timeline** : la position lâchée était calculée puis **écrasée**
+  (`appendClip` systématique) → le clip arrivait toujours en bout de piste.
+  Maintenant `addClip` à l'endroit lâché, repli en fin de piste si
+  l'emplacement est pris, et **création de la piste** (audio notamment)
+  lorsqu'aucune n'accepte le média : le dépôt aboutit toujours (§7.2).
+- **Bouton « Dupliquer »** : son gestionnaire existait, le bouton était
+  **absent** de `index.html` (ajouté).
+- **Import depuis LSV.ai** : `HistoryManager.run(project,
+  'import-bibliothèque')` passait une **chaîne** là où `run` attend une
+  fonction → TypeError : `render()`, `syncButtons()` et
+  `setSaveState('dirty')` n'étaient jamais atteints, et le média importé
+  **disparaissait au rechargement**. Passage à `begin()` / `commit()`
+  explicites dans les trois entrées d'import.
+- **La musique n'existait nulle part** : `Compositor.elementFor` ne créait
+  rien pour un média sonore, `_elementsForPlayback` ne renvoyait que des
+  `<video>`, et `AudioMixer.attach` **refusait** tout ce qui n'était pas
+  `VIDEO` → un fichier son ne faisait rien, ni en aperçu ni en export.
+  Élément `<audio>` créé et mis en cache, pilotage lecture/son complet,
+  `AUDIO` accepté par le mixeur.
+- **Export muet** : `_prepareAudio` — qui raccorde chaque média sonore à la
+  destination d'enregistrement — **n'était jamais appelé**, et les éléments
+  étaient raccordés *après* la construction du flux. Maintenant `await
+  _prepareAudio(project)` **avant** `new MediaStream(...)` : le fichier
+  produit contient enfin le son.
+- **Annulation d'export qui fige** : `cancel()` posait un drapeau, mais la
+  boucle s'appuyait sur `requestAnimationFrame` (gelé dès que l'onglet passe
+  en arrière-plan) et **rien ne coupait l'enregistreur** → promesse jamais
+  résolue, `_running` restait `true` : « Un export est déjà en cours » pour
+  le reste de la session. Boucle en `setTimeout`, `recorder.stop()` immédiat
+  à l'annulation, session libérée.
+
+#### Ce qui nuisait (P1)
+
+- **Dropzone** : disparaissait dès le premier import → plus de cible de
+  dépôt. Elle reste visible et le dépôt de fichiers est écouté sur **tout le
+  panneau** médias.
+- **Déplacement de clip** : possible uniquement dans la même piste (le drag
+  vers une autre piste était perdu). `moveClip` reçoit la piste visée
+  (`_trackIdAt`) et le DOM du clip est transposé.
+- **Historique inondé** : chaque `input` d'un curseur empilait une entrée →
+  un seul réglage consumait les 60 niveaux. `touchHistory()` /
+  `closeHistory()` n'ouvrent qu'**une entrée par interaction**, refermée
+  après 350 ms ou à la relâche.
+- **Qualité d'export ignorée** : `exportSettings.quality` n'était jamais lu.
+  `bitrateFor(sequence, quality)` est désormais alimenté par le réglage.
+- **Aperçu pouvant se figer** : `elementFor` attendait `loadeddata` **sans
+  limite** — un média qui ne se déclenche plus gelait `drawFrame` à vie.
+  Attente bornée à 2,5 s ; vignettes d'import bornées aussi (6 s).
+- **Vignettes jamais stockées** : `putMedia` recevait `thumbBlob`, variable
+  **jamais alimentée** → `getThumb()` retournait toujours `null`. On
+  transmet le `thumbData` réellement produit.
+- **Clip « muet » invisible** : `drawFrame` sautait le dessin d'un clip dont
+  `muted` était vrai — couper le son effaçait l'image. Le muet ne concerne
+  plus que le volume, et un média sonore compte comme frame remplie.
+- **Bibliothèque LSV.ai** : `list()` écartait tout type hors image/vidéo →
+  aucune musique importable depuis le site. Désormais image / vidéo / audio
+  (les types non média restent écartés).
+
+**Vérifié par** `tests/studio.test.js` §15quinquies (+23, et §15 adapté à
+l'audio) : création de piste, dépôt à la position lâchée et repli en fin de
+piste, scission → historique + bouton Annuler actif, import depuis LSV.ai
+sans exception avec fin de fonction atteinte, dropzone toujours visible,
+élément `<audio>` pilotable, mixeur qui accepte la musique,
+`connectToExport` appelé pour chaque média sonore, qualité lue,
+**annulation résolue et session libérée**, export complet avec blob et
+progression.
+
+**Nouveaux totaux : studio 203/203 · suite 1079.**
+
+> **Déploiement** : fichiers statiques uniquement (`studio/**`) →
+> **rafraîchir le navigateur** (v3.16.15). Rien à redéployer côté passerelle.
+
+---
+
 ## 3. Installation locale
 
 ```bash
@@ -1898,7 +1984,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 1055 assertions, 6 suites
+npm test                      # 1079 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -1967,7 +2053,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 1055 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 1079 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (78 assertions, **90 avec `ORIG`**) — non-régression
@@ -2106,7 +2192,7 @@ npm test        # 1055 assertions (6 suites, hors ORIG=… voir plus bas)
   d'activité ;
 - aucun mot de passe codé en dur, aucune `service_role`.
 
-**`tests/studio.test.js`** (179 assertions) — LSV Studio (`/studio/`, §12)
+**`tests/studio.test.js`** (203 assertions) — LSV Studio (`/studio/`, §12)
 
 - ouverture, rendu des panneaux, import de média, timeline ;
 - ratios visuels (`RATIOS`, grille rendue par `UI.renderRatioGrid`) ;

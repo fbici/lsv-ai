@@ -55,7 +55,9 @@
         /* Idempotent : le même élément n'est branché qu'une fois. Renvoie le
            GainNode pilotable, ou null si Web Audio est indisponible. */
         attach(el, mediaId) {
-            if (!el || el.tagName !== 'VIDEO') return null;
+            /* VIDEO **et** AUDIO : refuser les <audio> laissait toute piste
+               musique hors du graphe (aucun son, ni en aperçu ni en export). */
+            if (!el || (el.tagName !== 'VIDEO' && el.tagName !== 'AUDIO')) return null;
             if (this._nodes.has(mediaId)) return this._nodes.get(mediaId).gain;
             const ctx = this.context();
             if (!ctx) return null;

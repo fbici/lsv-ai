@@ -78,8 +78,10 @@
             const audioDest = S.AudioMixer.streamDestination();
             const tracks = [...videoStream.getVideoTracks()];
             if (audioDest) {
-                /* Branche les vidéos du compositeur + les pistes audio seules. */
-                this._prepareAudio(project);
+                /* `await` OBLIGATOIRE : les éléments (vidéos du cache
+                   compositeur + <audio> de la musique) doivent exister et
+                   être raccordés au mixeur AVANT d'ajouter ses pistes. */
+                await this._prepareAudio(project);
                 tracks.push(...audioDest.stream.getAudioTracks());
             }
             const stream = new MediaStream(tracks);
@@ -89,7 +91,8 @@
             try {
                 recorder = new MediaRecorder(stream, {
                     mimeType: caps.bestMime,
-                    videoBitsPerSecond: bitrateFor(project.sequence)
+                    videoBitsPerSecond: this.bitrateFor(project.sequence,
+                        (project.exportSettings && project.exportSettings.quality) || 'high')
                 });
             } catch (e) {
                 this._cleanup(videoStream);
@@ -108,52 +111,65 @@
             /* ── Lecture de la séquence ── */
             const t0 = performance.now();
             recorder.start(250);
+            this._time = 0;
             const drawAll = () => S.Compositor.drawFrame(ctx, project, this._time);
 
-            /* Éléments vidéo : mise à l'heure + lecture. */
-            const videos = S.Compositor._elementsForPlayback();
-            this._time = 0;
+            /* Éléments sonores (vidéos ET musique) : mise à l'heure + lecture. */
+            const mediaEls = S.Compositor._elementsForPlayback();
+            const interval = Math.max(16, Math.round(1000 / fps));
 
-            let raf = null;
-            const tick = () => {
-                if (this._cancelled) return;
+            const stopRecording = () => {
+                this._stopAll(mediaEls);
+                try { recorder.stop(); } catch (e) { /* déjà arrêté */ }
+            };
+
+            /* Boucle pilotée par un TIMER, pas par requestAnimationFrame :
+               rAF est GELÉ quand l'onglet passe en arrière-plan, ce qui
+               laissait un export interrompu, une barre bloquée et
+               `_running` coincé à true pour le reste de la session. */
+            let timer = null;
+            const tick = async () => {
+                /* Annulation : il faut COUPER l'enregistreur, sinon la
+                   promesse `finished` ne se résout jamais. */
+                if (this._cancelled) { stopRecording(); return; }
                 const elapsed = (performance.now() - t0) / 1000;
                 this._time = Math.min(duration, elapsed);
-                /* Synchro des vidéos. */
+
+                /* Synchro des médias sonores (vidéo comme musique). */
                 for (const layer of S.TimelineModel.clipsAt(project, this._time)) {
                     for (const item of layer.items) {
-                        if (item.clip.kind !== 'video') continue;
-                        const media = S.TimelineModel.media(project, item.clip.mediaId);
-                        const el = media && S.Compositor._elementById(media.id);
+                        const clip = item.clip;
+                        if (clip.kind !== 'video' && clip.kind !== 'audio') continue;
+                        const media = S.TimelineModel.media(project, clip.mediaId);
+                        if (!media || media.missing) continue;
+                        const el = S.Compositor._elementById(media.id);
                         if (!el) continue;
                         try {
                             if (Math.abs(el.currentTime - item.sourceTime) > 0.08) el.currentTime = item.sourceTime;
                             if (el.paused) el.play().catch(() => {});
                         } catch (e) { /* seek non prêt */ }
                         S.AudioMixer.setLevel(media.id,
-                            (item.clip.muted || layer.track.muted) ? 0 : item.clip.volume, false);
+                            (clip.muted || layer.track.muted) ? 0 : (clip.volume == null ? 1 : clip.volume), false);
                     }
                 }
-                /* Coupe les vidéos absentes. */
-                for (const el of videos) { if (el.paused === false && !this._isVideoActive(project, this._time, el)) el.pause(); }
+                /* Coupe les médias absents de l'instant. */
+                for (const el of mediaEls) {
+                    if (el.paused === false && !this._isMediaActive(project, this._time, el)) el.pause();
+                }
 
-                drawAll();
+                try { await drawAll(); } catch (e) { /* frame non dessinée */ }
                 if (onProgress) onProgress(Math.min(1, this._time / duration),
                     'Export en cours — ' + Math.round(this._time) + ' / ' + Math.round(duration) + ' s');
 
-                if (elapsed >= duration + 0.15) {
-                    this._stopAll(videos, audioDest);
-                    try { recorder.stop(); } catch (e) {}
-                    return;
-                }
-                raf = requestAnimationFrame(tick);
+                if (elapsed >= duration + 0.15) { stopRecording(); return; }
+                timer = setTimeout(tick, interval);
             };
-            raf = requestAnimationFrame(tick);
+            timer = setTimeout(tick, interval);
 
             /* Attente de la fin (ou de l'annulation). */
             await finished;
-            if (raf) cancelAnimationFrame(raf);
-            this._stopAll(videos, audioDest);
+            if (timer) clearTimeout(timer);
+            this._stopAll(mediaEls);
             this._cleanup(videoStream);
             S.AudioMixer.disconnectExport();
             this._running = false;
@@ -174,45 +190,46 @@
 
         cancel() { this._cancelled = true; },
 
+        /* Débit vidéo (§12.4) : `quality` le double/halve autour de la
+           référence ~0,12 bit/pixel/image — le réglage de l'UI était
+           écrit dans le modèle mais JAMAIS lu par l'exporteur. */
+        bitrateFor(seq, quality) {
+            const pixels = seq.width * seq.height;
+            const base = Math.round(pixels * seq.fps * (quality === 'low' ? 0.06 : 0.12));
+            const v = Math.max(2_000_000, Math.min(16_000_000, base));
+            return quality === 'low' ? Math.max(1_000_000, Math.round(v / 2)) : v;
+        },
+
         /* ── Audio ──────────────────────────────────────────────────────── */
-        _prepareAudio(project) {
+        /* Branche CHAQUE média sonore (vidéo ET musique) sur le mixeur, puis
+           LE RELIE à la destination d'export — sans quoi le fichier produit
+           était silencieux, l'audio n'allant qu'au haut-parleur. */
+        async _prepareAudio(project) {
             if (!S.AudioMixer.supported()) return;
-            /* Les vidéos : déjà dans le cache du compositeur. */
             for (const m of project.media) {
-                if (m.kind === 'video') {
-                    const el = S.Compositor._elementById(m.id);
-                    if (el) S.AudioMixer.attach(el, m.id);
-                } else if (m.kind === 'audio') {
-                    /* Les sons seuls ont besoin de leur propre élément. */
-                    this._audioEls = this._audioEls || new Map();
-                    if (this._audioEls.has(m.id)) continue;
-                    const url = S.MediaStorage._cache.get(m.blobKey);
-                    if (!url) continue;
-                    const a = new Audio();
-                    a.src = url;
-                    a.preload = 'auto';
-                    this._audioEls.set(m.id, a);
-                    S.AudioMixer.attach(a, m.id);
+                if (m.kind !== 'video' && m.kind !== 'audio') continue;
+                let el = S.Compositor._elementById(m.id);
+                if (!el) {
+                    try { el = await S.Compositor.elementFor(m, project); } catch (e) { el = null; }
                 }
+                if (!el) continue;
+                if (S.AudioMixer.attach(el, m.id)) S.AudioMixer.connectToExport(m.id);
             }
         },
 
-        _isVideoActive(project, time, el) {
+        _isMediaActive(project, time, el) {
             for (const layer of S.TimelineModel.clipsAt(project, time)) {
                 for (const item of layer.items) {
+                    if (item.clip.kind !== 'video' && item.clip.kind !== 'audio') continue;
                     const media = S.TimelineModel.media(project, item.clip.mediaId);
-                    if (media && media.kind === 'video' && S.Compositor._elementById(media.id) === el) return true;
+                    if (media && S.Compositor._elementById(media.id) === el) return true;
                 }
             }
             return false;
         },
 
-        _stopAll(videos, audioDest) {
-            for (const el of videos) { try { el.pause(); } catch (e) {} }
-            if (this._audioEls) {
-                for (const a of this._audioEls.values()) { try { a.pause(); } catch (e) {} }
-                this._audioEls.clear();
-            }
+        _stopAll(els) {
+            for (const el of els || []) { try { el.pause(); } catch (e) {} }
             if (S.AudioMixer) S.AudioMixer.disconnectExport();
         },
 
@@ -220,13 +237,6 @@
             try { for (const t of videoStream.getTracks()) t.stop(); } catch (e) {}
         }
     };
-
-    /* Débit vidéo raisonnable selon le format de séquence (§12.4). */
-    function bitrateFor(seq) {
-        const pixels = seq.width * seq.height;
-        const base = Math.round(pixels * seq.fps * 0.12);   // ~0,12 bit/pixel/image
-        return Math.max(2_000_000, Math.min(16_000_000, base));
-    }
 
     S.Exporter = Exporter;
 })();

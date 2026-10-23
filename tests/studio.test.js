@@ -413,13 +413,18 @@ function S_ProjectModel_addTextTrack(project) {
     const siteAssets = [
         { id: 'a1', type: 'image', url: 'https://cdn.example/img1.png', name: 'Tour Eiffel', metadata: { ratio: '9:16', size: '2K', style: 'cinématique' }, createdAt: 3 },
         { id: 'a2', type: 'video', url: 'https://cdn.example/vid1.mp4', name: 'Cascade', metadata: { ratio: '16:9', duration: 4.5 }, createdAt: 2 },
-        { id: 'a3', type: 'audio', url: 'https://cdn.example/a.mp3', name: 'Ignoré', metadata: {}, createdAt: 1 },
-        { id: 'a4', type: 'image', url: '', name: 'Sans URL', metadata: {}, createdAt: 0 }
+        { id: 'a3', type: 'audio', url: 'https://cdn.example/a.mp3', name: 'Musique', metadata: {}, createdAt: 1 },
+        { id: 'a4', type: 'image', url: '', name: 'Sans URL', metadata: {}, createdAt: 0 },
+        /* Type non média (le site peut écrire autre chose sous cette clé). */
+        { id: 'a5', type: 'widget', url: 'https://cdn.example/w.json', name: 'Hors sujet', metadata: {}, createdAt: 4 }
     ];
     w.localStorage.setItem('lsv4_assets', JSON.stringify(siteAssets));
 
-    check('list() lit localStorage du site (même origine)', LI.list().length === 2, LI.list().length);
-    check('les entrées non image/vidéo sont écartées', LI.list().every(a => a.type === 'image' || a.type === 'video'));
+    check('list() lit localStorage du site (même origine)', LI.list().length === 3, LI.list().length);
+    check('seuls image/vidéo/audio sont retenus (la musique incluse)',
+        LI.list().every(a => a.type === 'image' || a.type === 'video' || a.type === 'audio') &&
+        LI.list().some(a => a.type === 'audio'));
+    check('les types non média sont écartés', !LI.list().some(a => a.type === 'widget'));
     check('les entrées sans URL sont écartées', LI.list().every(a => !!a.url));
     check('ordre : plus récent d’abord', LI.list()[0].url === 'https://cdn.example/img1.png');
     check('métadonnées ratio/style/reportées', LI.list()[0].ratio === '9:16' && LI.list()[0].style === 'cinématique');
@@ -456,7 +461,7 @@ function S_ProjectModel_addTextTrack(project) {
     w.LSVStudio.MediaStorage.import = () => Promise.resolve({ ok: true, media: { id: 'm-b', kind: 'image', name: 'b' } });
     const fresh = w.LSVStudio.ProjectModel.create({ name: 'P2' });
     const many = await LI.importMany(fresh, LI.list());
-    check('importMany rapporte ajoutés / échecs', many.added.length === 2 && many.skipped.length === 0,
+    check('importMany rapporte ajoutés / échecs', many.added.length === 3 && many.skipped.length === 0,
         JSON.stringify({ a: many.added.length, s: many.skipped.length, f: many.failed.length }));
     let lastP = -1;
     await LI.importMany(w.LSVStudio.ProjectModel.create({ name: 'P3' }), [], p => { lastP = p; });
@@ -642,6 +647,222 @@ function S_ProjectModel_addTextTrack(project) {
     const lblRaw = await w.LSVStudio.MediaStorage.explainWriteFailure(new Error('<b>txt</b>'));
     check('message du navigateur sanitisé avant affichage',
         lblRaw.indexOf('<') === -1 && lblRaw.indexOf('>') === -1, lblRaw);
+
+    console.log('\n=== 15quinquies. MONTAGE OPÉRATIONNEL (pistes, dépôt, musique, export) ===');
+    const TMm = w.LSVStudio.TimelineModel;
+    const HMm = w.LSVStudio.HistoryManager;
+    const MMm = w.LSVStudio.MediaManager;
+    const AppQ = w.LSVStudio.App;
+    const TLV = w.LSVStudio.TimelineView;
+
+    /* ── A. Boutons « Piste » / « Texte » ───────────────────────────────────
+       L'ancien code appelait `S.ProjectModel.addTrack` : méthode fantôme, le
+       bouton plantait au premier clic. */
+    check('ProjectModel.addTrack (ancien appel fantôme) toujours absent',
+        w.LSVStudio.ProjectModel.addTrack === undefined);
+    check('bouton Piste relié à TimelineModel.addTrack',
+        /TM\(\)\.addTrack/.test(fs.readFileSync(path.join(PROJECT, 'studio', 'ui', 'timeline-view.js'), 'utf8')));
+    const pTrk = w.LSVStudio.ProjectModel.create({ name: 'PTRK' });
+    const nTracks0 = pTrk.tracks.length;
+    const trkTxt = TMm.addTrack(pTrk, 'text', 'Texte');
+    check('addTrack crée réellement la piste',
+        !!trkTxt && pTrk.tracks.length === nTracks0 + 1 && trkTxt.kind === 'text',
+        trkTxt ? trkTxt.kind : 'null');
+
+    /* ── B. Dépôt en timeline : la position lâchée est respectée ─────────── */
+    const pDrop = w.LSVStudio.ProjectModel.create({ name: 'PDROP' });
+    pDrop.media.push({ id: 'm-img', kind: 'image', name: 'i.png', blobKey: 'k1', missing: false });
+    const d1 = MMm.dropOnTimeline(pDrop, 'm-img', null, 7);
+    check('dépôt à l’endroit lâché (l’ancien code l’écrasait toujours)',
+        d1.ok === true && d1.clip.start === 7, d1.ok ? d1.clip.start : d1.reason);
+    const d2 = MMm.dropOnTimeline(pDrop, 'm-img', null, 8);
+    check('emplacement pris → repli en fin de piste (le dépôt aboutit)',
+        d2.ok === true && d2.clip.start === 10, d2.ok ? d2.clip.start : d2.reason);
+    const pAud = w.LSVStudio.ProjectModel.create({ name: 'PAUD' });
+    pAud.tracks = pAud.tracks.filter(t => t.kind !== 'audio');
+    pAud.media.push({ id: 'm-mus', kind: 'audio', name: 'musique.mp3', blobKey: 'k3', missing: false });
+    const d3 = MMm.dropOnTimeline(pAud, 'm-mus', null, 0);
+    check('projet sans piste audio → la piste est créée',
+        d3.ok === true && d3.track && d3.track.kind === 'audio',
+        d3.ok ? (d3.track && d3.track.kind) : d3.reason);
+
+    /* ── C. Scission → historique + bouton Annuler synchronisé ───────────── */
+    const pUndo = w.LSVStudio.ProjectModel.create({ name: 'PUNDO' });
+    pUndo.media.push({ id: 'm-u', kind: 'image', name: 'u.png', blobKey: 'k-u', missing: false });
+    MMm.dropOnTimeline(pUndo, 'm-u', pUndo.tracks[0].id, 0);
+    AppQ.project = pUndo;
+    HMm.reset(); HMm.syncButtons();
+    const undoBtn = doc.getElementById('sv-undo');
+    TLV.select(pUndo.tracks[0].clips[0].id);
+    TLV.setPlayhead(1.5);
+    TLV.splitAtPlayhead();
+    check('scission → entrée d’historique enregistrée', HMm.canUndo() === true);
+    check('bouton Annuler activé après l’opération (syncButtons manquait)',
+        !!undoBtn && undoBtn.disabled === false, undoBtn ? String(undoBtn.disabled) : 'absent');
+
+    /* ── D. Import depuis LSV.ai : la fin de la fonction est atteinte ──────
+       (l'ancien `run(project, 'import-bibliothèque')` lançait un TypeError) */
+    const MP = w.LSVStudio.MediaPanel;
+    const beforeLib = AppQ.project.media.length;
+    const saveTxt = doc.getElementById('sv-save-text');
+    if (saveTxt) saveTxt.textContent = '';
+    const savedLibImport = w.LSVStudio.LibraryImport.import;
+    w.LSVStudio.LibraryImport.import = p => {
+        p.media.push({ id: 'm-lib', kind: 'image', name: 'depot.png', blobKey: 'k-lib', missing: false });
+        return Promise.resolve({ ok: true, media: { id: 'm-lib' } });
+    };
+    let libErr = null;
+    try {
+        await MP.importOneFromLibrary({ url: 'https://cdn.example/depot.png', name: 'Dépôt', type: 'image' });
+    } catch (e) { libErr = e; }
+    w.LSVStudio.LibraryImport.import = savedLibImport;
+    check('import depuis LSV.ai : aucune exception',
+        !libErr, libErr ? String(libErr.message || libErr).slice(0, 60) : 'ok');
+    check('le média importé est bien dans le projet',
+        AppQ.project.media.length === beforeLib + 1, AppQ.project.media.length);
+    check('état « Modifications… » atteint (fin de la fonction exécutée)',
+        !!saveTxt && saveTxt.textContent === 'Modifications…', saveTxt && saveTxt.textContent);
+    check('annulable : l’entrée d’historique est conservée', HMm.canUndo() === true);
+
+    /* ── E. La dropzone reste la cible de dépôt ──────────────────────────── */
+    MP.render();
+    const dzEl = doc.getElementById('sv-dropzone');
+    check('dropzone toujours visible après import (cible de dépôt disque)',
+        !!dzEl && dzEl.hidden === false, dzEl ? String(dzEl.hidden) : 'absent');
+
+    /* ── F. La musique : un vrai élément <audio> pilotable ───────────────── */
+    const MSt = w.LSVStudio.MediaStorage;
+    const savedGetURL = MSt.getURL;
+    MSt.getURL = () => Promise.resolve('blob:audio-q');
+    w.LSVStudio.Compositor.clearCache();
+    const audioEl = await w.LSVStudio.Compositor.elementFor(
+        { id: 'm-aud-x', kind: 'audio', blobKey: 'k-aud' }, AppQ.project);
+    check('un média audio crée un élément <audio> (aucun auparavant)',
+        !!audioEl && audioEl.tagName === 'AUDIO', audioEl ? audioEl.tagName : 'null');
+    check('l’élément est pilotable en lecture (aperçu + export)',
+        w.LSVStudio.Compositor._elementsForPlayback().indexOf(audioEl) !== -1);
+    MSt.getURL = savedGetURL;
+
+    /* ── G. Le mixeur accepte la musique ─────────────────────────────────── */
+    const prevAC = w.AudioContext;
+    const AMq = w.LSVStudio.AudioMixer;
+    w.AudioContext = function () {
+        this.state = 'running';
+        this.currentTime = 0;
+        this.destination = {};
+        this.createMediaElementSource = () => ({ connect() {} });
+        this.createGain = () => ({ connect() {}, disconnect() {}, context: { currentTime: 0 }, gain: { setTargetAtTime() {}, value: 1 } });
+        this.createMediaStreamDestination = () => ({ stream: { getAudioTracks: () => [], addTrack() {} } });
+        this.resume = () => {};
+    };
+    AMq._supported = null; AMq.ctx = null;
+    const gainQ = AMq.attach(audioEl, 'm-aud-x');
+    check('le mixeur accepte un <audio> (il refusait les non-VIDEO)',
+        gainQ !== null, gainQ === null ? 'null' : 'gain');
+    AMq.detachAll(); AMq._dest = null; AMq._supported = null; AMq.ctx = null;
+    w.AudioContext = prevAC;
+
+    /* ── H. L’export raccorde chaque média sonore (fichier muet avant) ───── */
+    const hooked = [];
+    const savedSupported = AMq.supported;
+    const savedAttach = AMq.attach;
+    const savedConnect = AMq.connectToExport;
+    const savedById = w.LSVStudio.Compositor._elementById;
+    AMq.supported = () => true;
+    AMq.attach = (el, id) => { hooked.push('attach:' + id); return {}; };
+    AMq.connectToExport = id => { hooked.push('connect:' + id); return true; };
+    w.LSVStudio.Compositor._elementById = () => audioEl;
+    await w.LSVStudio.Exporter._prepareAudio(pAud);
+    check('chaque média sonore est raccordé à la destination d’export',
+        hooked.indexOf('connect:m-mus') !== -1, JSON.stringify(hooked));
+    w.LSVStudio.Compositor._elementById = savedById;
+    AMq.supported = savedSupported; AMq.attach = savedAttach; AMq.connectToExport = savedConnect;
+
+    /* ── I. Export : qualité, annulation, session libérée ─────────────────── */
+    const seqQ = { width: 1080, height: 1920, fps: 30 };
+    check('réglage de qualité lu par l’exporteur (ignoré auparavant)',
+        w.LSVStudio.Exporter.bitrateFor(seqQ, 'low') < w.LSVStudio.Exporter.bitrateFor(seqQ, 'high'),
+        w.LSVStudio.Exporter.bitrateFor(seqQ, 'low') + '/' + w.LSVStudio.Exporter.bitrateFor(seqQ, 'high'));
+
+    /* jsdom ne fournit ni contexte 2D, ni capture, ni MediaRecorder :
+       doubles suffisants pour piloter la boucle d'export. */
+    const savedGetContext = w.HTMLCanvasElement.prototype.getContext;
+    const savedCapture = w.HTMLCanvasElement.prototype.captureStream;
+    w.HTMLCanvasElement.prototype.getContext = function () {
+        return {
+            canvas: this, fillStyle: '', filter: 'none', globalAlpha: 1,
+            save() {}, restore() {}, fillRect() {}, clearRect() {},
+            drawImage() {}, fillText() {}, strokeText() {}, setTransform() {},
+            translate() {}, scale() {}, rotate() {}, measureText: () => ({ width: 10 })
+        };
+    };
+    w.HTMLCanvasElement.prototype.captureStream = function () {
+        return { getVideoTracks: () => [{ stop() {} }], getTracks: () => [{ stop() {} }] };
+    };
+    const savedMediaStream = w.MediaStream;
+    w.MediaStream = function (tracks) {
+        this.getTracks = () => tracks || [];
+        this.getVideoTracks = () => (tracks || []).filter(t => typeof t.stop === 'function');
+        this.getAudioTracks = () => [];
+    };
+    const savedMediaRecorder = w.MediaRecorder;
+    w.MediaRecorder = function () {
+        const self = this;
+        this.state = 'inactive';
+        this.start = () => { self.state = 'recording'; };
+        this.stop = () => {
+            if (self.state === 'inactive') return;
+            self.state = 'inactive';
+            setTimeout(() => {
+                if (self.ondataavailable) {
+                    self.ondataavailable({ data: new w.Blob(['frame'], { type: 'video/webm' }) });
+                }
+                if (self.onstop) self.onstop();
+            }, 0);
+        };
+    };
+    const Cap = w.LSVStudio.Capability;
+    const savedDetect = Cap.detect;
+    Cap.detect = () => ({ canvasCapture: true, mediaRecorder: true, bestMime: 'video/webm', bestExt: 'webm', bestLabel: 'WebM' });
+    const CompQ = w.LSVStudio.Compositor;
+    const savedDrawFrame = CompQ.drawFrame;
+    const savedElems = CompQ._elementsForPlayback;
+    CompQ.drawFrame = () => Promise.resolve(1);
+    CompQ._elementsForPlayback = () => [];
+
+    const pExp = w.LSVStudio.ProjectModel.create({ name: 'PEXP' });
+    pExp.media.push({ id: 'm-exp', kind: 'image', name: 'fond.png', blobKey: 'k-e', missing: false });
+    TMm.addClip(pExp, pExp.tracks[0].id, TMm.makeClip(pExp.media[0], { start: 0, duration: 0.3 }));
+    check('préflight accepte un projet rempli', w.LSVStudio.Exporter.preflight(pExp) === null);
+
+    /* Annulation : l'ancien code ne coupait PAS l'enregistreur → promesse
+       jamais résolue et `_running` bloqué à true pour la session entière. */
+    const runP = w.LSVStudio.Exporter.export(pExp, () => {});
+    await sleep(80);
+    w.LSVStudio.Exporter.cancel();
+    const resC = await runP;
+    check('annulation → l’export se termine (promesse résolue)',
+        resC.ok === false && resC.cancelled === true, JSON.stringify(resC).slice(0, 60));
+    check('après annulation, session libérée (un nouvel export part)',
+        w.LSVStudio.Exporter.isRunning() === false && w.LSVStudio.Exporter.preflight(pExp) === null);
+
+    let lastProg = -1;
+    const resF = await w.LSVStudio.Exporter.export(pExp, p => { lastProg = p; });
+    check('export complet → blob + extension réelle',
+        resF.ok === true && !!resF.blob && resF.ext === 'webm',
+        resF.ok ? resF.ext + ' ' + resF.blob.size : resF.error);
+    check('barre de progression avance (0 → 1)', lastProg > 0 && lastProg <= 1, lastProg);
+
+    /* ── Remise en état ──────────────────────────────────────────────────── */
+    Cap.detect = savedDetect;
+    CompQ.drawFrame = savedDrawFrame;
+    CompQ._elementsForPlayback = savedElems;
+    CompQ.clearCache();
+    w.HTMLCanvasElement.prototype.getContext = savedGetContext;
+    if (savedCapture) w.HTMLCanvasElement.prototype.captureStream = savedCapture;
+    else delete w.HTMLCanvasElement.prototype.captureStream;
+    w.MediaStream = savedMediaStream;
+    w.MediaRecorder = savedMediaRecorder;
 
     console.log('\n=== 16. NON-RÉGRESSION DE L’APP PRINCIPALE ===');
     const appScripts = (appHtml.match(/<script src="\.\/([^"]+)"><\/script>/g) || []).join(',');

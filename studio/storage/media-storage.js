@@ -93,6 +93,20 @@
         });
     }
 
+    /* Attend un événement DOM avec une limite de temps : un média qui ne
+       charge jamais (fichier corrompu, codec absent, décodage impossible) ne
+       doit PAS bloquer l'import indéfiniment — la vignette est alors absente,
+       l'import continue (§20.14). */
+    function withTimeout(promise, ms) {
+        return new Promise(resolve => {
+            const timer = setTimeout(() => resolve(false), ms);
+            promise.then(
+                v => { clearTimeout(timer); resolve(v); },
+                () => { clearTimeout(timer); resolve(false); }
+            );
+        });
+    }
+
     const MediaStorage = {
         supported() { return S.IDB && S.IDB.supported(); },
 
@@ -141,18 +155,18 @@
             const key = uidKey();
 
             /* Vignette : images directement, vidéo après une frame, audio : rien. */
-            let thumbBlob = null, thumbURL = null, thumbData = null;
+            let thumbData = null;
             try {
                 if (kind === 'image') {
                     const img = new Image();
-                    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = URL.createObjectURL(file); });
+                    await withTimeout(new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = URL.createObjectURL(file); }), 6000);
                     const c = canvasThumb(img, 320);
                     if (c) thumbData = c.toDataURL('image/webp', 0.7);
                     URL.revokeObjectURL(img.src);
                 } else if (kind === 'video') {
                     const v = document.createElement('video');
                     v.muted = true; v.playsInline = true; v.preload = 'auto';
-                    await new Promise((res, rej) => { v.onloadeddata = res; v.onerror = rej; v.src = URL.createObjectURL(file); });
+                    await withTimeout(new Promise((res, rej) => { v.onloadeddata = res; v.onerror = rej; v.src = URL.createObjectURL(file); }), 6000);
                     await grabVideoFrame(v);
                     const c = canvasThumb(v, 320);
                     if (c) thumbData = c.toDataURL('image/webp', 0.7);
@@ -165,7 +179,10 @@
 
             if (this.supported()) {
                 try {
-                    await S.IDB.putMedia(key, file, thumbBlob);
+                    /* `thumbBlob` n'était JAMAIS alimenté : `getThumb()` lisait
+                       donc toujours null. On stocke la vignette produite
+                       ci-dessus (dataURL), même format que `media.thumb`. */
+                    await S.IDB.putMedia(key, file, thumbData || null);
                 } catch (e) {
                     return { ok: false, reason: 'write-failed', error: e };
                 }

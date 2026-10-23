@@ -110,13 +110,22 @@
             if (track && !TM.accepts(track, m.kind)) track = null;
             if (!track) track = project.tracks.find(t => !t.locked && TM.accepts(t, m.kind)) || null;
             if (!track) {
-                track = S.ProjectModel.addTrack(project, m.kind === 'audio' ? 'audio' : 'video',
+                /* Aucune piste compatible : `addTrack` vit sur TimelineModel
+                   (l'ancien appel à `ProjectModel.addTrack` n'existait pas et
+                   plantait au premier dépôt sur un projet sans piste). */
+                track = TM.addTrack(project, m.kind === 'audio' ? 'audio' : 'video',
                     m.kind === 'audio' ? 'Audio ' + (project.tracks.filter(t => t.kind === 'audio').length + 1)
                         : 'Vidéo ' + (project.tracks.filter(t => t.kind !== 'audio').length + 1));
             }
+            if (!track) return { ok: false, reason: 'impossible de créer une piste' };
 
             const clip = TM.makeClip(m, { start: time });
-            const added = TM.appendClip(project, track.id, clip);
+            /* 1) à l'endroit exact où l'utilisateur a lâché ; 2) si cet
+               emplacement est pris, à la fin de la piste (le dépôt doit
+               TOUJOURS aboutir, §7.2). L'ancien code écrasait toujours la
+               position : impossible d'insérer un clip ailleurs qu'en bout. */
+            let added = (typeof time === 'number') ? TM.addClip(project, track.id, clip) : null;
+            if (!added) added = TM.appendClip(project, track.id, clip);
             if (!added) return { ok: false, reason: 'chevauchement' };
             this.emit('dropped', { clip: added, track: track, media: m });
             return { ok: true, clip: added, track: track };
