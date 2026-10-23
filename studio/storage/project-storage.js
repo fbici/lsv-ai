@@ -94,12 +94,16 @@
            Le fichier est donc léger et partageable ; à l'import ailleurs, les
            médias seront marqués « manquant » (§5.2) et devront être re-reliés. */
         serialize(project) {
+            /* Les vignettes dataURL pèsent quelques dizaines de Ko chacune :
+               le fichier exporté reste léger et « sans les médias ». */
+            const light = JSON.parse(JSON.stringify(project));
+            for (const m of light.media || []) m.thumb = '';
             return JSON.stringify({
                 format: 'lsv-studio-project',
                 schemaVersion: M().SCHEMA_VERSION,
                 app: 'LSV Studio',
                 exportedAt: new Date().toISOString(),
-                project: JSON.parse(JSON.stringify(project))
+                project: light
             }, null, 2);
         },
 

@@ -864,6 +864,97 @@ function S_ProjectModel_addTextTrack(project) {
     w.MediaStream = savedMediaStream;
     w.MediaRecorder = savedMediaRecorder;
 
+    console.log('\n=== 15sexies. IMPORT SANS DÉBORDMENT + TIMELINE (POIGNÉES, DÉPLACEMENT) ===');
+    const cssSx = fs.readFileSync(path.join(PROJECT, 'studio', 'studio.css'), 'utf8');
+    check('vignette importée contrainte à sa boîte (image géante impossible)',
+        /\.sv-media-thumb\s+img\s*\{[^}]*width:\s*100%/.test(cssSx) &&
+        /\.sv-media-thumb\s+img\s*\{[^}]*object-fit:\s*cover/.test(cssSx));
+    check('boîte vignette en overflow hidden', /\.sv-media-thumb\s*\{[^}]*overflow:\s*hidden/.test(cssSx));
+    check('poignées de recadrage aux extrémités (type CapCut)',
+        /\.sv-clip::before/.test(cssSx) && /\.sv-clip::after/.test(cssSx));
+
+    /* 1) La vignette doit survivre au rechargement : `migrate` la tronquait
+       à 200 caractères, d'où une source cassée dès l'actualisation. */
+    const PMq = w.LSVStudio.ProjectModel;
+    const rawThumb = PMq.create({ name: 'VIGN' });
+    const longThumb = 'data:image/webp;base64,' + 'A'.repeat(500);
+    rawThumb.media.push({
+        id: 'm-t', name: 'a.png', kind: 'image', mime: 'image/webp',
+        duration: 0, width: 0, height: 0, size: 10, fps: 0,
+        thumb: longThumb, blobKey: 'k', missing: false
+    });
+    const migThumb = PMq.migrate(JSON.parse(JSON.stringify(rawThumb)));
+    check('migrate conserve la vignette complète (tronquée à 200 avant)',
+        migThumb.media[0].thumb.length === longThumb.length, migThumb.media[0].thumb.length);
+    const sxSer = w.LSVStudio.ProjectStorage.serialize(rawThumb);
+    check('export fichier JSON sans vignette (reste léger)',
+        sxSer.indexOf('base64') === -1);
+
+    /* 2) Le panneau n'affiche une image que si la source est exploitable. */
+    const MPq = w.LSVStudio.MediaPanel;
+    AppQ.project = rawThumb;
+    MPq.render();
+    check('vignette valide → <img> affiché dans la liste',
+        doc.querySelector('#sv-media-list .sv-media-thumb img') !== null);
+    rawThumb.media[0].thumb = 'data:image/webp;base64,AAAA';   /* tronquée */
+    MPq.render();
+    check('vignette tronquée → icône, pas d’image cassée',
+        doc.querySelector('#sv-media-list .sv-media-thumb img') === null &&
+        doc.querySelector('#sv-media-list .sv-media-thumb .ms') !== null);
+
+    /* 3) Timeline : le clic sélectionne, le glisser DÉPLACE. */
+    const pTl = w.LSVStudio.ProjectModel.create({ name: 'PTL' });
+    pTl.media.push({ id: 'm-tl', kind: 'image', name: 'photo.png', blobKey: 'k-tl', missing: false });
+    MMm.dropOnTimeline(pTl, 'm-tl', pTl.tracks[0].id, 0);
+    AppQ.project = pTl;
+    HMm.reset();
+    TLV.zoom = 60;
+    TLV.render();
+    const clipTl = pTl.tracks[0].clips[0];
+    const clipElSx = doc.querySelector('.sv-clip[data-clip-id="' + clipTl.id + '"]');
+    check('clip rendu dans la timeline', !!clipElSx, clipElSx ? 'ok' : 'absent');
+    clipElSx.getBoundingClientRect = () => ({
+        left: 100, right: 100 + clipTl.duration * 60, top: 0, bottom: 40, width: 180, height: 40
+    });
+    clipElSx.dispatchEvent(new w.MouseEvent('pointerdown',
+        { clientX: 190, clientY: 20, bubbles: true, cancelable: true }));
+    check('clic → sélection ET Propriétés du clip affichées',
+        doc.getElementById('sv-props-body').textContent.indexOf('photo.png') !== -1);
+    check('clic seul : aucun niveau d’historique consommé', HMm.canUndo() === false);
+    /* Glisser depuis le centre : c'est un DÉPLACEMENT. Avant la correction,
+       la poignée droite était toujours détectée et le clip s'allongeait. */
+    doc.dispatchEvent(new w.MouseEvent('pointermove', { clientX: 1000, clientY: 20, bubbles: true }));
+    check('glisser le centre déplace le clip (durée inchangée)',
+        clipTl.start > 5 && clipTl.duration === 3,
+        JSON.stringify({ start: clipTl.start, duration: clipTl.duration }));
+    check('la piste s’allonge avec le clip (rien ne déborde)', TLV._lane > 12, TLV._lane);
+    doc.dispatchEvent(new w.MouseEvent('pointerup', { clientX: 1000, clientY: 20, bubbles: true }));
+    check('après glisser : annulation disponible', HMm.canUndo() === true);
+
+    /* Poignée droite : recadrage (l'extrémité détectée AVANT le re-rendu). */
+    const sxDur = clipTl.duration;
+    const clipElSx2 = doc.querySelector('.sv-clip[data-clip-id="' + clipTl.id + '"]');
+    clipElSx2.getBoundingClientRect = () => ({ left: 100, right: 280, top: 0, bottom: 40, width: 180, height: 40 });
+    clipElSx2.dispatchEvent(new w.MouseEvent('pointerdown',
+        { clientX: 275, clientY: 20, bubbles: true, cancelable: true }));
+    doc.dispatchEvent(new w.MouseEvent('pointermove', { clientX: 375, clientY: 20, bubbles: true }));
+    check('poignée droite → recadrage (durée qui augmente)',
+        clipTl.duration > sxDur, clipTl.duration);
+    doc.dispatchEvent(new w.MouseEvent('pointerup', { clientX: 375, clientY: 20, bubbles: true }));
+
+    /* 4) Raccourcis d'annulation standards. */
+    const sxDurBefore = clipTl.duration;
+    HMm.reset();
+    HMm.begin(pTl); clipTl.duration = 1; HMm.commit(pTl);
+    AppQ.inEditor = true;
+    doc.dispatchEvent(new w.KeyboardEvent('keydown',
+        { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+    check('Ctrl+Z annule (aucun raccourci avant)',
+        HMm.canUndo() === false &&
+        Math.abs(AppQ.project.tracks[0].clips[0].duration - sxDurBefore) < 0.01,
+        AppQ.project.tracks[0].clips[0].duration);
+    AppQ.inEditor = false;
+
     console.log('\n=== 16. NON-RÉGRESSION DE L’APP PRINCIPALE ===');
     const appScripts = (appHtml.match(/<script src="\.\/([^"]+)"><\/script>/g) || []).join(',');
     check('ordre des modules de l’app inchangé',

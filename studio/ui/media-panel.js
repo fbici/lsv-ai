@@ -41,6 +41,12 @@
         if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' Ko';
         return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
     }
+    /* Une vignette n'est affichable que si c'est un `data:image` COMPLET :
+       les projets enregistrés avant la correction de `migrate` en contiennent
+       une tronquée à 200 caractères, dont l'<img> cassait le rendu. */
+    function hasThumb(t) {
+        return typeof t === 'string' && t.length > 300 && t.indexOf('data:image') === 0;
+    }
     function esc(s) {
         return String(s == null ? '' : s)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -278,7 +284,7 @@
                 li.dataset.mediaId = m.id;
                 li.innerHTML =
                     '<span class="sv-media-thumb">' +
-                    (m.thumb
+                    (hasThumb(m.thumb)
                         ? '<img alt="" src="' + m.thumb + '">'
                         : '<span class="ms">' + (m.missing ? 'link_off' : (KIND_ICON[m.kind] || 'draft')) + '</span>') +
                     '</span>' +

@@ -246,7 +246,10 @@
                     height: num(m.height, 0, LIMITS.MAX_DIMENSION, 0),
                     size: num(m.size, 0, Number.MAX_SAFE_INTEGER, 0),
                     fps: num(m.fps, 0, LIMITS.MAX_FPS, 0),
-                    thumb: str(m.thumb, 200),
+                    /* Vignette dataURL (webp ~320 px) : 200 caractères la
+                       tronquait en une source illisible au rechargement —
+                       l'image disparaissait dès qu'on actualisait la page. */
+                    thumb: str(m.thumb, 120000),
                     blobKey: str(m.blobKey, 80),
                     /* Un média dont le blob est introuvable n'est PAS supprimé :
                        on le marque et on propose de le re-relier (§5.2). */

@@ -179,6 +179,14 @@ body { font-size: 13px; }
     object-fit: cover;
     display: flex; align-items: center; justify-content: center;
     color: var(--ink-3);
+    overflow: hidden;
+}
+/* La vignette générée à l'import fait 320 px de large : SANS cette règle,
+   l'<img> s'affichait à sa taille réelle DANS une boîte de 42 px — l'image
+   débordait de tout le panneau jusqu'au rechargement de la page. */
+.sv-media-thumb img {
+    width: 100%; height: 100%;
+    object-fit: cover; display: block;
 }
 .sv-media-meta { flex: 1; min-width: 0; }
 .sv-media-name {
@@ -222,6 +230,10 @@ body { font-size: 13px; }
     border-radius: var(--radius-xs);
     background: var(--bg-4); color: var(--ink-3);
     display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+}
+.sv-lib-thumb img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
 }
 .sv-lib-item.imported .sv-lib-thumb { color: var(--accent); }
 .sv-lib-meta { flex: 1; min-width: 0; }
@@ -336,7 +348,21 @@ body { font-size: 13px; }
     cursor: grab;
     user-select: none;
     white-space: nowrap;
+    touch-action: none;
 }
+/* Poignées de recadrage (type CapCut) : 8 px à chaque extrémité, visibles
+   au survol ou sur la sélection. `pointerdown` les lit avant tout re-rendu. */
+.sv-clip::before, .sv-clip::after {
+    content: ''; position: absolute; top: 0; bottom: 0; width: 8px;
+    background: rgba(255, 255, 255, 0.75);
+    opacity: 0; transition: opacity 0.12s;
+    z-index: 1;
+}
+.sv-clip::before { left: 0; border-radius: var(--radius-xs) 0 0 var(--radius-xs); }
+.sv-clip::after { right: 0; border-radius: 0 var(--radius-xs) var(--radius-xs) 0; }
+.sv-clip:hover::before, .sv-clip:hover::after,
+.sv-clip.selected::before, .sv-clip.selected::after { opacity: 1; }
+.sv-clip.dragging { cursor: grabbing; z-index: 5; }
 .sv-clip.selected { outline: 2px solid var(--accent); outline-offset: -2px; }
 .sv-clip.video { background: var(--blue); }
 .sv-clip.image { background: var(--violet); }

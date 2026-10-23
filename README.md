@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.16.15
+# LSV.ai — Studio Viral v3.16.16
 
 Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -170,7 +170,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -1608,6 +1608,81 @@ progression.
 
 ---
 
+### 2.27 Image géante après import + clip impossible à contrôler - v3.16.16
+
+Deux signalements faits après la §2.26 — qui a réparé l'écriture locale, donc
+l'apparition des vignettes et le vrai parcours d'import.
+
+#### 1. « L'élément importé s'affiche en grand, il faut actualiser la page »
+
+Deux causes enchaînées :
+
+- **La vignette existe enfin** (§2.25 : `thumbData` transmis à `putMedia`)
+  mais **aucune règle CSS** ne dimensionnait l'`<img>` de `.sv-media-thumb`.
+  La vignette fait 320 px de large : l'image s'affichait donc à sa taille
+  réelle **dans une boîte de 42 px** — elle sortait du panneau dédié.
+- **`migrate()` tronquait `thumb` à 200 caractères** : dès le
+  rechargement, la source dataURL était illisible, l'image disparaissait —
+  d'où « F5 et tout redevient normal ».
+
+**Correctifs** : `.sv-media-thumb img` en 100 % × 100 % + `object-fit: cover`
+(boîte en `overflow: hidden`), `migrate` accepte 120 000 caractères,
+`ProjectStorage.serialize()` retire les vignettes du fichier exporté (qui
+reste léger et « sans les médias »), et le panneau n'affiche une image que si
+la source est un `data:image` complet de plus de 300 caractères — sinon
+l'icône de remplacement.
+
+#### 2. « Je clique sur le clip : il prend toute la timeline et déborde »
+
+Cause exacte : `_clipPointerDown` appelait `render()` **avant** de mesurer
+l'élément. `render()` vide `#sv-tl-tracks`, donc `getBoundingClientRect()`
+portait sur un nœud **détaché** → rectangle `(0,0)` → la condition
+`(rect.right - e.clientX) < 6` était **toujours vraie** → le mode était
+« recadrer à droite » **à chaque clic**. Impossible de déplacer un clip :
+chaque glisser l'allongeait, il finissait par couvrir toute la piste, et
+l'annulation ne pouvait pas le replacer.
+
+Trois défauts voisins corrigés en même temps :
+
+- la sélection ne déclenchait **pas** `PropertiesPanel.onSelection` → le
+  clip sélectionné n'avait **aucun contrôle** ;
+- `HistoryManager.begin()` était appelé dès le clic : un simple clic
+  consommait un niveau d'annulation **et** effaçait la pile « rétablir » ;
+- **aucun raccourci Ctrl+Z / Ctrl+Y** (seule la barre d'outils annulait) ;
+- la piste n'était jamais allongée : un clip plus loin que la largeur calée
+  sortait du cadre.
+
+**Correctifs** : zone de saisie mesurée **avant** toute mutation du DOM,
+sélection sans reconstruction du DOM (`_markSelection`, l'élément reste
+attaché sous le pointeur), ouverture d'historique **au premier mouvement
+seulement**, poignées de 8 px visibles au survol/sélection (style CapCut) +
+`.sv-clip.dragging`, piste s'allongeant de 4 s de marge dès que le clip la
+dépasse (`_ensureLane`), garde `isFinite` sur position/largeur, raccourcis
+**Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z**, et un réglage **Cadrage**
+(« Remplir » / « Adapter ») ajouté aux propriétés image/vidéo — c'est ce
+réglage qui décide si une image en 16:9 est recadrée dans une séquence
+9:16 (« l'export n'est pas normal »).
+
+**Vérifié par** `tests/studio.test.js` §15sexies (+15) : règles CSS vignette
+et poignées, `migrate` conserve une vignette complète, export JSON sans
+vignette, `<img>` seulement si la source est valide, **clic → sélection +
+Propriétés sans consommer d'historique**, glisser le centre **déplace** le
+clip (durée inchangée), la piste s'allonge avec lui, poignée droite →
+recadrage, Ctrl+Z restaure l'état antérieur.
+
+**Nouveaux totaux : studio 218/218 · suite 1094.**
+
+> **Reste à faire** pour une timeline « niveau CapCut » : multi-sélection,
+> défilement horizontal à la molette, recadrage au zoom de la timeline,
+> keyframes, pistes redimensionnables en hauteur, et alignement magnétique
+> réglable. Rien de tout cela n'est cassé aujourd'hui : ce sont des
+> ajouts, pas des correctifs.
+>
+> **Déploiement** : fichiers statiques uniquement (`studio/**`) →
+> **rafraîchir le navigateur** (v3.16.16).
+
+---
+
 ## 3. Installation locale
 
 ```bash
@@ -1984,7 +2059,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 1079 assertions, 6 suites
+npm test                      # 1094 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -2053,7 +2128,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 1079 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 1094 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (78 assertions, **90 avec `ORIG`**) — non-régression
@@ -2192,7 +2267,7 @@ npm test        # 1079 assertions (6 suites, hors ORIG=… voir plus bas)
   d'activité ;
 - aucun mot de passe codé en dur, aucune `service_role`.
 
-**`tests/studio.test.js`** (203 assertions) — LSV Studio (`/studio/`, §12)
+**`tests/studio.test.js`** (218 assertions) — LSV Studio (`/studio/`, §12)
 
 - ouverture, rendu des panneaux, import de média, timeline ;
 - ratios visuels (`RATIOS`, grille rendue par `UI.renderRatioGrid`) ;

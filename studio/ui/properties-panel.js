@@ -97,6 +97,18 @@
                     '</div>';
             }
 
+            /* ── Cadrage (image / vidéo) ── */
+            if (!isText && !isAudio) {
+                html += '<div class="sv-prop-group">' +
+                    '<div class="sv-prop-title">Cadrage</div>' +
+                    select('fit', 'Remplissage', style.fit || 'cover',
+                        [{ id: 'cover', label: 'Remplir (recadre)' },
+                         { id: 'contain', label: 'Adapter (sans recadrer)' }], 'style') +
+                    '<p class="sv-muted">« Remplir » couvre toute la séquence (le dépassement est coupé), ' +
+                    '« Adapter » montre tout le visuel avec des bandes noires.</p>' +
+                    '</div>';
+            }
+
             /* ── Effets ── */
             if (!isAudio) {
                 html += '<div class="sv-prop-group"><div class="sv-prop-title">Effets</div>';
