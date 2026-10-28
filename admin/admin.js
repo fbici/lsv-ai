@@ -263,6 +263,7 @@
         $('settings-logout').addEventListener('click', doLogout);
         initKeyCard();
     initToolKeys();
+    initMistralKey();
     }
 
     function doLogout() {
@@ -1100,6 +1101,109 @@
         });
     }
 
+    /* ── Clé Mistral (chat IA) ───────────────────────────────────────────────
+       Fournisseur DISTINCT d'Agnes : la passerelle n'appelle api.mistral.ai
+       que lorsque le modèle demandé commence par « mistral- », et elle y
+       injecte CETTE clé-là. Aucun repli sur la clé partagée ni sur la clé
+       d'outil : l'une ou l'autre donnerait un 401 chez Mistral, impossible
+       à distinguer d'une panne. Nécessite supabase/upgrade-mistral.sql,
+       sinon la contrainte app_settings_key_check refuse l'écriture. */
+    function renderMistralKey() {
+        var el = $('mistral-key-status');
+        var cnt = $('mistral-key-count');
+        if (!el) return;
+        if (!State.client || !State.isAdmin) {
+            el.innerHTML = kvHTML([['Statut', '<span class="badge err">réservé à l\'administrateur</span>']]);
+            if (cnt) cnt.textContent = '—';
+            return;
+        }
+        el.innerHTML = kvHTML([['Statut', '<span class="badge">lecture.</span>']]);
+        State.client.from('app_settings')
+            .select('value, updated_at')
+            .eq('key', 'provider_api_key_mistral')
+            .then(function (res) {
+                if (res && res.error) {
+                    if (cnt) cnt.textContent = '—';
+                    el.innerHTML = kvHTML([
+                        ['Statut', '<span class="badge err">base non prête</span>'],
+                        ['Cause', esc(friendlyAuthError(res.error.message)), true],
+                        ['Action', 'exécuter supabase/upgrade-mistral.sql']
+                    ]);
+                    return;
+                }
+                var row = res && res.data && res.data[0];
+                if (!row || !row.value) {
+                    if (cnt) cnt.textContent = 'vide';
+                    el.innerHTML = kvHTML([
+                        ['Statut', '<span class="badge">non configurée</span>'],
+                        ['Effet', 'option Mistral grisée dans le chat'],
+                        ['Source utilisée', 'secret serveur MISTRAL_API_KEY (si présent)']
+                    ]);
+                    return;
+                }
+                if (cnt) cnt.textContent = 'configurée';
+                el.innerHTML = kvHTML([
+                    ['Statut', '<span class="badge ok">configurée</span>'],
+                    ['Clé', '••••••••' + esc(String(row.value).slice(-4)), true],
+                    ['Modifiée', row.updated_at ? fmtDateTime(row.updated_at) : '-']
+                ]);
+            })
+            .catch(function (e) {
+                if (cnt) cnt.textContent = '—';
+                el.innerHTML = kvHTML([
+                    ['Statut', '<span class="badge err">lecture impossible</span>'],
+                    ['Détail', esc((e && e.message) || 'réseau'), true]
+                ]);
+            });
+    }
+
+    function initMistralKey() {
+        var save = $('mistral-key-save');
+        var clear = $('mistral-key-clear');
+        if (!save || !clear) return;
+        save.addEventListener('click', function () {
+            var input = $('mistral-key-input');
+            var v = (input.value || '').trim();
+            if (v.length < 8) { toast('Clé trop courte : 8 caractères minimum.', 'error'); input.focus(); return; }
+            if (!State.client || !State.isAdmin) { toast('Réservé à l\'administrateur.', 'error'); return; }
+            save.disabled = true;
+            State.client.from('app_settings')
+                .upsert({ key: 'provider_api_key_mistral', value: v, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+                .then(function (res) {
+                    save.disabled = false;
+                    if (res && res.error) {
+                        toast('Enregistrement impossible : ' + friendlyAuthError(res.error.message) +
+                            ' — exécute d\'abord supabase/upgrade-mistral.sql.', 'error');
+                        return;
+                    }
+                    input.value = '';
+                    toast('Clé Mistral enregistrée - prise en compte sous ~30 s.', 'success');
+                    /* Journalise l'action SANS la valeur de la clé. */
+                    logAdmin('cle_mistral_modifiee', 'provider_api_key_mistral', { longueur: v.length });
+                    renderMistralKey();
+                })
+                .catch(function (e) {
+                    save.disabled = false;
+                    toast('Enregistrement impossible : ' + ((e && e.message) || 'réseau'), 'error');
+                });
+        });
+        clear.addEventListener('click', function () {
+            if (!State.client || !State.isAdmin) { toast('Réservé à l\'administrateur.', 'error'); return; }
+            State.client.from('app_settings')
+                .delete()
+                .eq('key', 'provider_api_key_mistral')
+                .then(function (res) {
+                    if (res && res.error) { toast('Retrait impossible : ' + friendlyAuthError(res.error.message), 'error'); return; }
+                    toast('Clé Mistral retirée : l\'option est grisée dans le chat.', 'success');
+                    logAdmin('cle_mistral_retiree', 'provider_api_key_mistral', {});
+                    renderMistralKey();
+                })
+                .catch(function (e) {
+                    toast('Retrait impossible : ' + ((e && e.message) || 'réseau'), 'error');
+                });
+        });
+    }
+
     function renderSettings() {
         var c = window.LSV_CONFIG || {};
         var url = String(c.SUPABASE_URL || '');
@@ -1124,6 +1228,7 @@
         ]);
         renderKeyCard();
         renderToolKeys();
+        renderMistralKey();
     }
 
     /* ── Comptes (page Utilisateurs) ────────────────────────────────────────

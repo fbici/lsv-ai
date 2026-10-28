@@ -92,7 +92,9 @@ const AgnesProvider = {
                     DebugService.log('warn', 'SERVICE', '503 ' + (code || '—') + ' — attente ' + wait + 's');
                     /* Une file saturée n'est pas un incident : l'utilisateur a
                        besoin de savoir que c'est le service vidéo qui est pris,
-                       pas que « quelque chose » ne va pas. */
+                       pas que « quelque chose » ne va pas. Ce refus RÉEL met
+                       aussi le bandeau d'état en « saturée » tout de suite. */
+                    if (code === 'video_queue_full') VideoAvailabilityService.markSaturated(120);
                     UI.setStatus(code === 'video_queue_full'
                         ? 'File vidéo saturée — nouvel essai dans ' + wait + 's'
                         : 'Service indisponible… (' + wait + 's)');
@@ -302,6 +304,276 @@ const VideoService = {
     }
 };
 
+/* ── Disponibilité du service vidéo ───────────────────────────────────────
+   Ni le front ni la passerelle ne savent si une génération VA aboutir :
+   Agnes n'expose aucun état de file. Ce service affiche donc ce qui est
+   MESURABLE, et rien de plus :
+     - la passerelle sonde GET /v1/models (0 unité de quota) : le
+       fournisseur répond-il, la clé du serveur est-elle acceptée ;
+     - elle garde 2 min la dernière saturation observée (503
+       `video_queue_full`) sur un vrai POST /v1/videos.
+   Trois règles de vérité :
+     1. « opérationnel » signifie joignable et non saturée au moment de la
+        mesure — JAMAIS « ta vidéo va passer » ;
+     2. l'état est caché 60 s côté serveur et localement : re-sonder en
+        boucle est précisément ce qui vide une file déjà limitée ;
+     3. un échec de sonde affiche « inconnu », pas « indisponible » : on ne
+        présente pas une erreur de mesure comme un incident constaté.
+   Une saturation vue sur une vraie tentative (`markSaturated`) prime : elle
+   vient d'un refus réel du fournisseur, pas d'une sonde. */
+const VideoAvailabilityService = {
+    TTL: 60000,
+    _state: null,
+    _at: 0,
+    _recvAt: 0,
+    _pending: null,
+    _bound: false,
+
+    get status() { return (this._state && this._state.status) || 'unknown'; },
+    get probe() { return (this._state && this._state.probe) || ''; },
+
+    _save() {
+        try {
+            localStorage.setItem(STORAGE_KEYS.VIDEO_AVAIL, JSON.stringify({
+                at: this._at, recv: this._recvAt, s: this._state
+            }));
+        } catch (e) {}
+    },
+    _load() {
+        if (this._state) return;
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.VIDEO_AVAIL);
+            if (!raw) return;
+            const o = JSON.parse(raw);
+            if (o && o.s && typeof o.s === 'object') {
+                this._state = o.s;
+                this._at = o.at || 0;
+                this._recvAt = o.recv || 0;
+            }
+        } catch (e) {}
+    },
+    /** Sonde la passerelle. `force` ignore le cache local (bouton Re-vérifier). */
+    async refresh(force) {
+        this._load();
+        if (!force && this._state && (Date.now() - this._at) < this.TTL) {
+            this.render();
+            return this._state;
+        }
+        if (!CONFIG.GATEWAY_READY) { this.render(); return this._state; }
+        if (this._pending) return this._pending;
+        this._pending = (async () => {
+            try {
+                const res = await fetch(CONFIG.API_BASE + '/video-availability', {
+                    method: 'GET',
+                    headers: Gateway.withHeaders({ 'Accept': 'application/json' })
+                });
+                if (res && res.ok) {
+                    const s = await res.json();
+                    if (s && s.status) {
+                        this._state = s;
+                        this._at = Date.now();
+                        this._recvAt = Date.now();
+                        this._save();
+                    }
+                } else if (res && res.status === 429) {
+                    /* Sondé trop souvent : on garde l'état connu plutôt que
+                       de le remplacer par une erreur de débit. */
+                    DebugService.log('warn', 'DISPO', '429 — état conservé');
+                } else {
+                    DebugService.log('warn', 'DISPO', 'HTTP ' + (res ? res.status : 0));
+                }
+            } catch (e) {
+                /* Sonde impossible : deux écueils à éviter — afficher « en
+                   panne » alors que seul le RÉSEAU a échoué, ou afficher
+                   « opérationnel » avec une mesure qui n'a pas eu lieu. On
+                   passe donc en « non vérifié », en rappelant la dernière
+                   mesure réussie si elle existe. Exception : un refus RÉEL
+                   de la file (vu sur une tentative) prime sur la sonde
+                   ratée — il vient du fournisseur, pas d'un réseau. */
+                DebugService.log('warn', 'DISPO', e.message);
+                const prev = this._state;
+                this._at = Date.now();
+                if (!(prev && prev.status === 'queue_full' && this.remaining() > 0)) {
+                    this._state = {
+                        available: false, status: 'unknown', probe: 'sonde_echouee',
+                        provider: 'agnes', checked_at: prev ? prev.checked_at : 0,
+                        ttl: this.TTL / 1000, retry_after: 0
+                    };
+                }
+                this._save();
+            }
+            this._pending = null;
+            this.render();
+            return this._state;
+        })();
+        return this._pending;
+    },
+    /** Saturation vue sur une vraie tentative de génération (503 refusé). */
+    markSaturated(retryAfterSec) {
+        const secs = Math.max(15, Math.min(300, retryAfterSec || 120));
+        this._state = {
+            available: false, status: 'queue_full', probe: 'refus_reel',
+            provider: 'agnes', checked_at: Date.now(), ttl: this.TTL / 1000,
+            retry_after: secs, source: 'tentative'
+        };
+        this._at = Date.now();
+        this._recvAt = Date.now();
+        this._save();
+        this.render();
+    },
+    /** Secondes restantes avant la fin de la saturation mesurée (0 si hors). */
+    remaining() {
+        if (!this._state || this._state.status !== 'queue_full') return 0;
+        const total = this._state.retry_after || 0;
+        const gone = Math.floor((Date.now() - (this._recvAt || this._at)) / 1000);
+        return Math.max(0, total - gone);
+    },
+    _copy() {
+        const s = this._state;
+        const st = (s && s.status) || 'unknown';
+        const when = s && s.checked_at
+            ? new Date(s.checked_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+            : '';
+        if (st === 'ok') return {
+            tone: 'ok', badge: 'Opérationnel',
+            title: 'Service vidéo opérationnel',
+            hint: 'Vérifié à ' + when + ' — fournisseur joignable et file non saturée à cet instant. ' +
+                'Une génération reste soumise à la file du fournisseur.'
+        };
+        if (st === 'queue_full') return {
+            tone: 'warn', badge: 'File saturée',
+            title: 'File vidéo saturée — nouvelles demandes refusées',
+            hint: 'Le fournisseur refuse les nouvelles générations. Réessaie dans ' +
+                this.remaining() + ' s (ou Re-vérifier). Ton prompt et tes images sont conservés.'
+        };
+        if (st === 'amont_injoignable') return {
+            tone: 'warn', badge: 'Hors ligne',
+            title: 'Fournisseur injoignable',
+            hint: 'La connexion vers le fournisseur a échoué (réseau ou incident chez lui). Réessaie dans un instant.'
+        };
+        if (st === 'auth_error') return {
+            tone: 'err', badge: 'Clé refusée',
+            title: 'Clé de génération refusée par le fournisseur',
+            hint: 'Le service répond mais refuse la clé configurée. Seule la personne responsable du site peut la corriger.'
+        };
+        if (st === 'amont_erreur') return {
+            tone: 'err', badge: 'Erreur amont',
+            title: 'Le fournisseur répond en erreur',
+            hint: 'Le service est accessible mais signale un incident. Réessaie plus tard.'
+        };
+        if (s && s.probe === 'sonde_echouee') return {
+            tone: 'idle', badge: 'Non vérifié',
+            title: 'Vérification impossible pour l\'instant',
+            hint: 'La sonde n\'a pas abouti (réseau ou passerelle). Rien n\'est confirmé : l\'état réel du service reste à vérifier.' +
+                (when ? ' Dernière mesure : ' + when + '.' : '')
+        };
+        if ((s && s.probe) === 'no_key') return {
+            tone: 'err', badge: 'Non configuré',
+            title: 'Aucune clé de génération configurée',
+            hint: 'La génération est désactivée tant qu\'aucune clé n\'a été enregistrée côté serveur.'
+        };
+        return {
+            tone: 'idle', badge: 'Inconnu',
+            title: 'État du service vidéo non vérifié',
+            hint: 'Aucune mesure disponible pour le moment. Utilise Re-vérifier pour lancer une sonde.'
+        };
+    },
+    render() {
+        this._load();
+        const box = document.getElementById('video-availability');
+        if (!box) return;
+        if (!this._bound) {
+            const btn = document.getElementById('video-avail-recheck');
+            if (btn) {
+                btn.addEventListener('click', () => {
+                    UI.showToast('Vérification du service vidéo…', 'info', 2000);
+                    this.refresh(true);
+                });
+                this._bound = true;
+            }
+        }
+        const c = this._copy();
+        box.classList.remove('avail-ok', 'avail-warn', 'avail-err', 'avail-idle');
+        box.classList.add('avail-' + c.tone);
+        const dot = document.getElementById('video-avail-dot');
+        const title = document.getElementById('video-avail-title');
+        const hint = document.getElementById('video-avail-hint');
+        const badge = document.getElementById('video-avail-badge');
+        if (dot) dot.textContent = c.tone === 'ok' ? 'check_circle' : (c.tone === 'idle' ? 'help' : 'warning');
+        if (title) title.textContent = c.title;
+        if (hint) hint.textContent = c.hint;
+        if (badge) badge.textContent = c.badge;
+        /* Un problème CONSTATÉ ouvre le centre d'alternatives : l'utilisateur
+           a une piste concrète au lieu d'une impasse. Un simple échec de
+           mesure (« non vérifié ») n'y suffit pas — on ne panique pas pour
+           un réseau qui a manqué. Le panneau ne se referme jamais tout seul. */
+        const st = (this._state && this._state.status) || 'unknown';
+        const problem = st === 'queue_full' || st === 'amont_injoignable' ||
+            st === 'auth_error' || st === 'amont_erreur' || this.probe === 'no_key';
+        if (problem && typeof VideoAlternatives !== 'undefined') VideoAlternatives.open();
+    }
+};
+
+/* ── Centre « Alternatives vidéo » ────────────────────────────────────────
+   Quand le service intégré est saturé, l'utilisateur a besoin d'une PISTE
+   concrète, pas d'un cul-de-sac. Ce centre liste des sites web gratuits
+   dont le quota a été relevé sur leur page officielle (VIDEO_ALTERNATIVES)
+   : chacun s'ouvre dans un nouvel onglet, aucun appel API n'est fait et
+   aucune donnée LSV.ai ne quitte la page. Le service ne promet rien au nom
+   d'un tiers : il affiche ce qui est écrit chez lui, avec la date. */
+const VideoAlternatives = {
+    _bound: false,
+    _open: false,
+    _host(u) {
+        return String(u || '').replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+    },
+    render() {
+        const intro = document.getElementById('video-alt-intro');
+        const list = document.getElementById('video-alt-list');
+        if (!list || !intro) return;
+        intro.textContent = 'Le service intégré est saturé ? Ces sites gratuits fonctionnent dans leur propre ' +
+            'interface : ouvre un onglet, colle ton prompt, récupère ta vidéo. Aucune donnée LSV.ai n\'est envoyée ' +
+            'et aucun compte n\'est créé ici. Quotas gratuits relevés sur les pages officielles le ' + ALT_CHECKED +
+            ' — le format vertical 9:16 se règle dans chaque service.';
+        list.innerHTML = VIDEO_ALTERNATIVES.map(a => (
+            '<a class="alt-item" href="' + a.url + '" target="_blank" rel="noopener noreferrer" data-alt="' + a.id + '">' +
+                '<span class="alt-head">' +
+                    '<span class="alt-name">' + Utils.escapeHtml(a.name) + '</span>' +
+                    '<span class="alt-free">' + Utils.escapeHtml(a.free) + '</span>' +
+                '</span>' +
+                '<span class="alt-meta">Image → vidéo : ' + a.i2v + '</span>' +
+                '<span class="alt-meta">Filigrane : ' + a.watermark +
+                    (a.watermarkNote ? ' — ' + Utils.escapeHtml(a.watermarkNote) : '') + '</span>' +
+                '<span class="alt-meta">Usage commercial : ' + a.license +
+                    (a.licenseNote ? ' — ' + Utils.escapeHtml(a.licenseNote) : '') + '</span>' +
+                '<span class="alt-note">' + Utils.escapeHtml(a.note) + '</span>' +
+                '<span class="alt-src">Vérifié le ' + ALT_CHECKED + ' sur ' + this._host(a.source) + '</span>' +
+            '</a>'
+        )).join('');
+        if (!this._bound) {
+            const btn = document.getElementById('video-alt-toggle');
+            if (btn) {
+                btn.addEventListener('click', () => this.toggle());
+                this._bound = true;
+            }
+        }
+    },
+    _set(open) {
+        this._open = !!open;
+        const panel = document.getElementById('video-alt-panel');
+        const btn = document.getElementById('video-alt-toggle');
+        if (panel) panel.hidden = !this._open;
+        if (btn) {
+            btn.setAttribute('aria-expanded', this._open ? 'true' : 'false');
+            btn.innerHTML = (this._open ? 'Masquer ' : 'Afficher ') +
+                '<span class="ms">' + (this._open ? 'expand_less' : 'expand_more') + '</span>';
+        }
+    },
+    open() { if (!this._open) this._set(true); },
+    toggle() { this._set(!this._open); },
+    get isOpen() { return this._open; }
+};
+
 const FileService = {
     toDataUri(file) {
         return new Promise((res, rej) => {
@@ -427,6 +699,126 @@ const EnhancerService = {
         try { return JSON.parse(c); } catch (e) {}
         try { return JSON.parse(c.slice(0, c.lastIndexOf('}') + 1)); } catch (e) {}
         return null;
+    }
+};
+
+/* STUDIO DE SCÉNARIOS IA
+   Trois modes (SCENARIO_MODES), un seul contrat de sortie : JSON
+   { title, logline, scenes[] }. Le JSON rend le résultat affichable et
+   transmissible au Storyboard sans interprétation de texte libre — c'est la
+   même raison pour laquelle l'Enhancer y a recours. Le modèle choisi est
+   celui de l'onglet Chat (intégré ou Mistral) : la requête passe par la
+   passerelle, donc par le même quota que le chat. */
+const ScenarioService = {
+    async generate(idea, modeId) {
+        const mode = SCENARIO_MODES.find(m => m.id === modeId) || SCENARIO_MODES[0];
+        const prompt = [
+            'Tu es scénariste et chef de plateau pour des vidéos courtes générées par IA.',
+            '',
+            'Idée de départ : « ' + idea + ' »',
+            '',
+            'Format demandé : ' + mode.name,
+            mode.brief,
+            '',
+            'Règles :',
+            '- français, concret, tournable, sans jargon ni référence à un outil ;',
+            '- chaque scène décrit ce qui se VOIT et ce qui s\'ENTEND ;',
+            '- le champ "prompt" d\'une scène est un prompt image/vidéo autonome (sujet, décor, lumière, caméra).',
+            '',
+            'Réponds en JSON valide, sans markdown, avec cette structure exacte :',
+            '{',
+            '  "title": "titre du scénario",',
+            '  "logline": "une phrase d\'accroche",',
+            '  "scenes": [',
+            '    { "act": "Acte I", "title": "titre de scène", "description": "ce qui s\'y passe", "prompt": "prompt image ou vidéo autonome" }',
+            '  ]',
+            '}'
+        ].join('\n');
+
+        const res = await AgnesProvider.fetch(
+            CONFIG.API_BASE + '/chat/completions',
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: ChatService.model(),
+                    messages: [
+                        { role: 'system', content: 'Tu réponds toujours en JSON valide sans markdown.' },
+                        { role: 'user', content: prompt }
+                    ],
+                    temperature: 0.8,
+                    max_tokens: 3000,
+                    response_format: { type: 'json_object' }
+                })
+            },
+            'Scénarios'
+        );
+        if (!res.ok) throw await AgnesProvider.fail(res);
+        const data = await res.json();
+        const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+        return this._normalize(content, mode.id);
+    },
+    _normalize(text, modeId) {
+        const raw = EnhancerService._extractJson(text);
+        if (!raw || !Array.isArray(raw.scenes)) throw new Error('Réponse illisible');
+        const scenes = raw.scenes
+            .filter(s => s && (s.title || s.description || s.prompt))
+            .map((s, i) => ({
+                number: i + 1,
+                act: String(s.act || '').slice(0, 60),
+                title: String(s.title || 'Scène ' + (i + 1)).slice(0, 120),
+                description: String(s.description || '').slice(0, 1200),
+                prompt: String(s.prompt || '').slice(0, 2000)
+            }));
+        if (!scenes.length) throw new Error('Aucune scène');
+        return {
+            title: String(raw.title || 'Scénario').slice(0, 120),
+            logline: String(raw.logline || '').slice(0, 300),
+            format: modeId,
+            scenes: scenes
+        };
+    }
+};
+
+/* AMÉLIORATION DE PROMPT (AVANT / APRÈS)
+   Distinct de l'Enhancer, qui part d'une idée BRUTE pour produire un prompt
+   structuré : ici on part d'un prompt EXISTANT, qu'on montre intact à côté
+   de sa version améliorée. La consigne impose de renvoyer le seul prompt —
+   sinon le modèle ajouterait des commentaires que rien ne pourrait
+   distinguer du prompt lui-même. */
+const PromptImproveService = {
+    async improve(prompt) {
+        const sys = [
+            'Tu es expert en ingénierie de prompts pour IA génératives.',
+            'Réécris le prompt fourni pour le rendre plus précis et plus efficace :',
+            'détaille le sujet, la lumière, la caméra et le style SANS changer son intention.',
+            'Réponds UNIQUEMENT par le prompt amélioré, sans explication, sans titre,',
+            'sans guillemets et sans bloc markdown.'
+        ].join(' ');
+
+        const res = await AgnesProvider.fetch(
+            CONFIG.API_BASE + '/chat/completions',
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: ChatService.model(),
+                    messages: [
+                        { role: 'system', content: sys },
+                        { role: 'user', content: prompt }
+                    ],
+                    temperature: 0.7,
+                    max_tokens: 1500
+                })
+            },
+            'Prompt'
+        );
+        if (!res.ok) throw await AgnesProvider.fail(res);
+        const data = await res.json();
+        const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+        const out = String(content || '').replace(/```[a-z]*\n?/gi, '').replace(/```/g, '').trim();
+        if (!out) throw new Error('Réponse vide');
+        return out;
     }
 };
 

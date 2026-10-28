@@ -367,6 +367,11 @@
         </a>
 
         <div class="sidebar-section-label">Studio pro</div>
+        <button type="button" class="nav-item" data-tab="scenarios">
+            <span class="ms">edit_note</span>
+            <span class="nav-label">Scénarios</span>
+            <span class="nav-badge">NEW</span>
+        </button>
         <button type="button" class="nav-item" data-tab="storyboard">
             <span class="ms">view_timeline</span>
             <span class="nav-label">Storyboard</span>
@@ -549,6 +554,10 @@
                         </div>
                         <div class="chat-header-meta">
                             <span id="chat-context-chip-wrap"></span>
+                            <label class="chat-model" title="Modèle utilisé par le chat">
+                                <span class="ms">dns</span>
+                                <select id="chat-model-select" aria-label="Modèle du chat"></select>
+                            </label>
                         </div>
                     </div>
 
@@ -663,6 +672,43 @@
             <div class="page-header">
                 <h2 class="page-title">Génération de vidéos</h2>
                 <p class="page-subtitle">Texte → Vidéo, Image → Vidéo, ou Keyframes. Jusqu'à 30 secondes via multi-segment.</p>
+            </div>
+
+            <!-- État du service vidéo : ce qui est MESURÉ (sonde passerelle +
+                 dernière saturation réellement observée), jamais une promesse
+                 de génération. Rendu par VideoAvailabilityService. -->
+            <div class="card avail-card" id="video-availability">
+                <div class="card-header">
+                    <div class="card-title"><span class="ms">monitor_heart</span> Service vidéo</div>
+                    <span class="avail-badge" id="video-avail-badge">…</span>
+                </div>
+                <div class="avail-body">
+                    <span class="ms avail-dot" id="video-avail-dot">help</span>
+                    <div class="avail-text">
+                        <div class="avail-title" id="video-avail-title">Vérification du service…</div>
+                        <div class="avail-hint" id="video-avail-hint">Sonde du fournisseur en cours.</div>
+                    </div>
+                    <button type="button" class="btn btn-secondary avail-recheck" id="video-avail-recheck">
+                        <span class="ms">refresh</span> Re-vérifier
+                    </button>
+                </div>
+            </div>
+
+            <!-- Centre « Alternatives vidéo » : des sites web gratuits, ouverts
+                 dans un nouvel onglet. Aucun appel API tiers, aucune donnée
+                 LSV.ai envoyée. Rendu par VideoAlternatives. -->
+            <div class="card alt-card" id="video-alternatives">
+                <div class="card-header">
+                    <div class="card-title"><span class="ms">alt_route</span> Alternatives vidéo</div>
+                    <button type="button" class="alt-toggle" id="video-alt-toggle"
+                            aria-expanded="false" aria-controls="video-alt-panel">
+                        Afficher <span class="ms">expand_more</span>
+                    </button>
+                </div>
+                <div class="alt-panel" id="video-alt-panel" hidden>
+                    <p class="alt-intro" id="video-alt-intro"></p>
+                    <div class="alt-list" id="video-alt-list"></div>
+                </div>
             </div>
 
             <div class="card">
@@ -897,6 +943,42 @@
                     </button>
                 </div>
             </div>
+
+            <div class="card" id="improve-card" style="margin-top:1rem;">
+                <div class="card-header">
+                    <div class="card-title"><span class="ms">difference</span> Améliorer un prompt existant</div>
+                    <span class="card-badge blue">Avant / Après</span>
+                </div>
+                <textarea id="improve-input" placeholder="Colle ici le prompt que tu utilises déjà…"></textarea>
+                <button type="button" class="btn btn-violet" id="improve-generate" style="width:100%;padding:0.9rem;margin-top:0.8rem;">
+                    <span class="ms">auto_fix_high</span>
+                    Améliorer ce prompt
+                </button>
+
+                <div class="improve-output" id="improve-output">
+                    <div class="improve-panes">
+                        <div class="improve-pane">
+                            <div class="improve-pane-label">Avant</div>
+                            <div class="improve-pane-text" id="improve-before"></div>
+                        </div>
+                        <div class="improve-pane after">
+                            <div class="improve-pane-label">Après</div>
+                            <div class="improve-pane-text" id="improve-after"></div>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap;">
+                        <button type="button" class="btn btn-secondary btn-sm" id="improve-copy" style="width:auto;">
+                            <span class="ms">content_copy</span> Copier l'amélioré
+                        </button>
+                        <button type="button" class="btn btn-primary btn-sm" id="improve-use-image" style="width:auto;">
+                            <span class="ms">image</span> Utiliser pour image
+                        </button>
+                        <button type="button" class="btn btn-violet btn-sm" id="improve-use-video" style="width:auto;">
+                            <span class="ms">movie</span> Utiliser pour vidéo
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- MOTION -->
@@ -907,6 +989,67 @@
             </div>
             <div class="info-block warn">
                 <strong>Fonctionnalité en préparation.</strong> Le pipeline de transfert de mouvement (vidéo source + image cible → animation du personnage) sera ajouté prochainement.
+            </div>
+        </div>
+
+        <!-- STUDIO DE SCÉNARIOS IA -->
+        <div class="tab-content" id="tab-scenarios">
+            <div class="page-header">
+                <h2 class="page-title">Studio de scénarios IA</h2>
+                <p class="page-subtitle">Une idée → un scénario tournable : format court, format long ou storyboard plan par plan.</p>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><span class="ms">edit_note</span> Ton idée</div>
+                    <span class="card-badge blue">Studio scénarios</span>
+                </div>
+                <textarea id="scenario-input" placeholder="Ex : Une barista découvre que sa tasse de café prédit l'avenir"></textarea>
+                <div class="mode-grid" id="scenario-mode-grid" style="margin-top:0.9rem;">
+                    <div class="mode-tile selected" data-mode="court">
+                        <span class="ms">bolt</span>
+                        <div>
+                            <div class="mode-name">Format court</div>
+                            <div class="mode-desc">Synopsis + 3 à 5 scènes</div>
+                        </div>
+                    </div>
+                    <div class="mode-tile" data-mode="long">
+                        <span class="ms">history_edu</span>
+                        <div>
+                            <div class="mode-name">Format long</div>
+                            <div class="mode-desc">Actes, arc narratif, scènes détaillées</div>
+                        </div>
+                    </div>
+                    <div class="mode-tile" data-mode="storyboard">
+                        <span class="ms">view_storyboard</span>
+                        <div>
+                            <div class="mode-name">Storyboard</div>
+                            <div class="mode-desc">Plans : image, mouvement, dialogue</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button type="button" class="btn btn-primary" id="scenario-generate" style="width:100%;padding:1rem;">
+                <span class="ms">auto_awesome</span>
+                Générer le scénario
+            </button>
+
+            <div class="card hidden" id="scenario-output">
+                <div class="card-header">
+                    <div class="card-title"><span class="ms">check_circle</span> <span id="scenario-out-title">Scénario</span></div>
+                    <span class="card-badge blue" id="scenario-mode-label">Format court</span>
+                </div>
+                <div class="scenario-logline" id="scenario-logline"></div>
+                <div class="scenario-scenes" id="scenario-scenes"></div>
+                <div style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap;">
+                    <button type="button" class="btn btn-secondary btn-sm" id="scenario-copy" style="width:auto;">
+                        <span class="ms">content_copy</span> Copier
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm" id="scenario-to-storyboard" style="width:auto;">
+                        <span class="ms">view_timeline</span> Ajouter au Storyboard
+                    </button>
+                </div>
             </div>
         </div>
 

@@ -30,6 +30,16 @@ const CONFIG = Object.freeze({
     VIDEO_MODE_TEXT: 'text',
     VIDEO_MODE_KEYFRAME: 'keyframe',
     MODEL_CHAT: 'agnes-2.5-flash',
+    /* Modèles proposés dans le sélecteur du chat.
+       `id` = modèle DÉCLARÉ dans le corps de la requête ; c'est lui qui
+       décide de la destination côté passerelle (« mistral-* » → api.mistral.ai,
+       sinon Agnes). `provider` n'est qu'un libellé affiché.
+       Aucune clé ni URL de fournisseur n'apparaît ici : tout se règle côté
+       serveur (back-office), jamais dans le navigateur. */
+    CHAT_MODELS: Object.freeze([
+        { id: 'agnes-2.5-flash', label: 'Standard (intégré)', provider: 'agnes' },
+        { id: 'mistral-small-2603', label: 'Mistral Small 4', provider: 'mistral' }
+    ]),
     MAX_IMAGE_DIMENSION: 4096,
     MAX_IMAGE_SIZE: 12 * 1024 * 1024,
     VIDEO_INTERVAL_MIN: 62000,
@@ -59,7 +69,12 @@ const STORAGE_KEYS = Object.freeze({
     THEME: 'lsv4_theme',
     LOCKS: 'lsv4_locks',
     AUTODOWNLOAD: 'lsv4_autodownload',
-    SIDEBAR_COLLAPSED: 'lsv4_sidebar_collapsed'
+    SIDEBAR_COLLAPSED: 'lsv4_sidebar_collapsed',
+    /* Dernier état du service vidéo (bandeau de l'onglet Vidéo) : conservé
+       pour afficher un état juste immédiatement au chargement, avant la
+       première sonde. */
+    VIDEO_AVAIL: 'lsv4_video_avail',
+    CHAT_MODEL: 'lsv4_chat_model'
 });
 
 const STYLES = Object.freeze([
@@ -134,5 +149,100 @@ const LOCK_TYPES = Object.freeze([
     { id: 'character', name: 'Personnage', icon: 'person', desc: 'Nom, visage, coiffure, vêtements — cohérents entre toutes les scènes' },
     { id: 'product', name: 'Produit', icon: 'shopping_bag', desc: 'Forme, couleur, matériaux — identiques sur toutes les images' },
     { id: 'environment', name: 'Environnement', icon: 'landscape', desc: 'Architecture, lumière, ambiance — même lieu à chaque plan' }
+]);
+
+/* ── Studio de scénarios IA : les trois formats proposés ────────────────────
+   Le mode change la CONSIGNE envoyée au modèle (longueur, structure), jamais
+   le contrat de sortie : dans les trois cas le modèle répond en JSON
+   { title, logline, scenes[] }, sinon rien ne serait affichable ni
+   transmissible au Storyboard. Les valeurs de `id` servent d'identifiants
+   de test et de journal, pas de texte affiché. */
+const SCENARIO_MODES = Object.freeze([
+    {
+        id: 'court', name: 'Format court', icon: 'bolt',
+        desc: 'Synopsis + 3 à 5 scènes',
+        brief: 'Format court : un synopsis percutant, puis 3 à 5 scènes maximum, chacune tournable en une seule prise.'
+    },
+    {
+        id: 'long', name: 'Format long', icon: 'history_edu',
+        desc: 'Actes, arc narratif, scènes détaillées',
+        brief: 'Format long : découpe en trois actes, un arc narratif clair (déclencheur, montée, résolution), 8 à 12 scènes détaillées, chaque scène portant son numéro d\'acte.'
+    },
+    {
+        id: 'storyboard', name: 'Storyboard', icon: 'view_storyboard',
+        desc: 'Plans : image, mouvement, dialogue',
+        brief: 'Storyboard : chaque scène devient une série de plans précis — champ, mouvement de caméra, son ou dialogue — pour être dessinée image par image.'
+    }
+]);
+
+/* ── Alternatives vidéo externes (centre de l'onglet Vidéo) ────────────────
+   Affiché quand le service vidéo intégré est saturé ou injoignable. Ce sont
+   des SITES WEB gratuits : LSV.ai n'appelle jamais leur API, n'envoie aucun
+   de leurs comptes, et l'utilisateur ouvre un nouvel onglet de son côté.
+
+   RÈGLES DE VÉRITÉ, appliquées à chaque champ :
+     - `free`   : quota gratuit tel qu'annoncé sur LA PAGE OFFICIELLE
+                  indiquée dans `source` — jamais une estimation ;
+     - `i2v` / `watermark` / `license` : « oui », « non » ou
+                  « non vérifié » — on n'invente jamais une valeur ;
+     - `source` : URL exacte où le quota a été lu (la carte l'affiche) ;
+     - `checked`: date de la vérification.
+   Le quota GRATUIT DU SITE n'a rien à voir avec le quota de l'API : c'est
+   toujours le premier qui est annoncé ici. Aucun service n'est présenté
+   comme gratuit s'il ne l'est pas vérifié — Pika, Luma et Veo ont été
+   écartés (offre gratuite inexistante ou payante), tout comme Sora
+   (service arrêté en 2026). */
+const ALT_CHECKED = '25 octobre 2026';
+const VIDEO_ALTERNATIVES = Object.freeze([
+    {
+        id: 'pixverse', name: 'PixVerse',
+        url: 'https://app.pixverse.ai/',
+        source: 'https://app.pixverse.ai/subscribe',
+        free: '30 crédits par jour (reset 00:00 UTC), + 60 au départ',
+        i2v: 'oui',
+        watermark: 'oui', watermarkNote: 'sans filigrane dès le plan Standard',
+        license: 'non vérifié', licenseNote: 'selon les conditions du service',
+        note: 'Offre gratuite de base la plus régulière.'
+    },
+    {
+        id: 'vidu', name: 'Vidu',
+        url: 'https://www.vidu.com/',
+        source: 'https://www.vidu.com/ai-video-generator',
+        free: '40 crédits par mois pour tous les comptes',
+        i2v: 'non vérifié',
+        watermark: 'oui', watermarkNote: 'en 720p',
+        license: 'non', licenseNote: 'usage non commercial',
+        note: 'Crédits mensuels, vidéo limitée en qualité.'
+    },
+    {
+        id: 'hailuo', name: 'Hailuo (MiniMax)',
+        url: 'https://hailuoai.video/',
+        source: 'https://hailuoai.video/doc/payment-policy.html',
+        free: 'file standard gratuite + crédits d\'accueil',
+        i2v: 'non vérifié',
+        watermark: 'oui', watermarkNote: 'offre gratuite',
+        license: 'non', licenseNote: 'usage non commercial',
+        note: 'Crédits d\'accueil à durée de vie limitée.'
+    },
+    {
+        id: 'kling', name: 'Kling',
+        url: 'https://klingai.com/',
+        source: 'https://kling.ai/docs/point-policy',
+        free: 'plan Basic gratuit à vie (crédits mensuels de connexion)',
+        i2v: 'non vérifié',
+        watermark: 'oui', watermarkNote: '',
+        license: 'non', licenseNote: 'plan Basic : usage non commercial',
+        note: 'Crédits régénérés chaque mois.'
+    },
+    {
+        id: 'runway', name: 'Runway',
+        url: 'https://runwayml.com/',
+        source: 'https://runwayml.com/pricing',
+        free: '125 crédits, une seule fois',
+        i2v: 'non vérifié',
+        watermark: 'non vérifié', watermarkNote: '',
+        license: 'non vérifié', licenseNote: '',
+        note: 'Crédits de bienvenue, pas de renouvellement.'
+    }
 ]);
 

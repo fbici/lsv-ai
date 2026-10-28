@@ -121,6 +121,7 @@ create table if not exists public.app_settings (
         'provider_api_key_image',
         'provider_api_key_video',
         'provider_api_key_chat',
+        'provider_api_key_mistral',
         'quota_enabled',
         'quota_suspended',
         'quota_image_daily',

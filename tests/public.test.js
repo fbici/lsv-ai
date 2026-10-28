@@ -570,6 +570,162 @@ async function load(html, url) {
     check('statut de saturation borné au seul code connu',
         /code === 'video_queue_full'[\s\S]{0,40}\? 'File vidéo saturée/.test(mediaSrc));
 
+    console.log('\n=== 11ter. DISPONIBILITÉ DU SERVICE VIDÉO (bandeau) ===');
+    /* Le bandeau ne dit QUE ce qui est MESURÉ : sonde passerelle + dernière
+       saturation réellement observée. Il ne promet jamais qu'une génération
+       va aboutir, et ne déclare jamais « en panne » sur la base d'un simple
+       échec de réseau. */
+    const avail = wb.LSV.services.availability;
+    check('service de disponibilité exposé',
+        !!avail && typeof avail.refresh === 'function' && typeof avail.markSaturated === 'function' &&
+        typeof avail.render === 'function');
+    check('bandeau complet dans l\'onglet Vidéo',
+        !!doc.getElementById('video-availability') && !!doc.getElementById('video-avail-title') &&
+        !!doc.getElementById('video-avail-hint') && !!doc.getElementById('video-avail-badge') &&
+        !!doc.getElementById('video-avail-recheck') && !!doc.getElementById('video-avail-dot'));
+    check('bouton Re-vérifier actionnable',
+        doc.getElementById('video-avail-recheck').tagName === 'BUTTON' &&
+        !doc.getElementById('video-avail-recheck').disabled);
+
+    /* a) Refus RÉEL (503 saturé) sur une tentative de génération : le
+       bandeau suit immédiatement, et surtout RIEN n'est perdu pour
+       l'utilisateur — c'est ce qui permet de réessayer sans tout refaire. */
+    const promptBefore = wb.LSV.uiState.videoPrompt;
+    const refsBefore = wb.LSV.uiState.videoRefs;
+    wb.LSV.uiState.videoPrompt = 'Plan large d\'une ville au crépuscule';
+    wb.LSV.uiState.videoRefs = [{ id: 1, name: 'ref.png', dataUri: 'data:image/png;base64,AAA' }];
+    wb.LSV.services.account._s = {
+        access_token: 'jwt-de-test', refresh_token: 'rfr-de-test',
+        expires_at: Math.floor(Date.now() / 1000) + 3600, email: 'test@lsv.ai'
+    };
+    const realSleep = wb.LSV.utils.sleep;
+    wb.LSV.utils.sleep = () => Promise.resolve();      /* 7 essais sans attendre */
+    const failCalls = [];
+    wb.fetch = (url) => {
+        failCalls.push(String(url));
+        return Promise.resolve({
+            ok: false, status: 503,
+            headers: { get: n => ({
+                'x-lsv-upstream-code': 'video_queue_full',
+                'x-lsv-upstream-status': '503',
+                'x-lsv-request-id': 'test-503'
+            }[n] || null) },
+            text: async () => '{"code":"video_queue_full"}',
+            json: async () => ({})
+        });
+    };
+    let taskErr = null;
+    try { await wb.LSV.services.video.createTask(null, null, 'prompt de test', 121); }
+    catch (e) { taskErr = e; }
+    wb.LSV.utils.sleep = realSleep;
+    wb.LSV.ui.setStatus(null);
+    check('tentative refusée avec le jeton exact du fournisseur', taskErr && taskErr.code === 'video_queue_full', taskErr && taskErr.code);
+    check('essais bornés (aucune reprise illimitée)', failCalls.length <= 8, failCalls.length);
+    check('refus réel → bandeau en « file saturée »', avail.status === 'queue_full', avail.status);
+    check('badge DOM à jour', doc.getElementById('video-avail-badge').textContent === 'File saturée',
+        doc.getElementById('video-avail-badge').textContent);
+    check('aucune promesse de réussite dans le bandeau',
+        !/prêt|réussi|garanti|disponible/i.test(
+            doc.getElementById('video-avail-title').textContent + ' ' +
+            doc.getElementById('video-avail-hint').textContent),
+        doc.getElementById('video-avail-title').textContent);
+    check('compte à rebours borné (15 s à 300 s)', avail.remaining() >= 15 && avail.remaining() <= 300, avail.remaining());
+    check('état mémorisé pour la prochaine ouverture', !!wb.localStorage.getItem('lsv4_video_avail'));
+    check('prompt conservé malgré l\'échec', wb.LSV.uiState.videoPrompt === 'Plan large d\'une ville au crépuscule',
+        wb.LSV.uiState.videoPrompt);
+    check('image de référence conservée malgré l\'échec', wb.LSV.uiState.videoRefs.length === 1,
+        wb.LSV.uiState.videoRefs.length);
+
+    /* b) Sonde de la passerelle : URL, cache local, affichage. */
+    const probeCalls = [];
+    wb.fetch = (url) => {
+        probeCalls.push(String(url));
+        return Promise.resolve({
+            ok: true, status: 200,
+            headers: { get: () => null },
+            json: async () => ({
+                available: true, status: 'ok', probe: 'models_ok', provider: 'agnes',
+                checked_at: Date.now(), ttl: 60, retry_after: 0
+            })
+        });
+    };
+    await avail.refresh(true);
+    check('sonde vers la passerelle uniquement (jamais le fournisseur)',
+        probeCalls.length === 1 && probeCalls[0].indexOf('/v1/video-availability') !== -1 &&
+        probeCalls[0].indexOf('agnes-ai') === -1, probeCalls[0]);
+    check('état « ok » affiché après sonde réussie', avail.status === 'ok', avail.status);
+    check('boîte verte = mesure, pas promesse', doc.getElementById('video-availability').classList.contains('avail-ok'));
+    const probesAfterOk = probeCalls.length;
+    await avail.refresh(false);
+    check('cache local : pas de sonde inutile dans le TTL', probeCalls.length === probesAfterOk, probeCalls.length);
+
+    /* c) Échec de la sonde : « non vérifié », ni « ok » ni « en panne ». */
+    wb.fetch = () => Promise.reject(new Error('reseau'));
+    await avail.refresh(true);
+    check('sonde en échec → « unknown » (pas d\'incident inventé)', avail.status === 'unknown' && avail.probe === 'sonde_echouee',
+        avail.status + '/' + avail.probe);
+    check('bandeau dit « non vérifié », pas « indisponible »',
+        /non vérifié/i.test(doc.getElementById('video-avail-badge').textContent) &&
+        !/panne|indisponible/i.test(doc.getElementById('video-avail-hint').textContent),
+        doc.getElementById('video-avail-badge').textContent);
+
+    /* d) L'ouverture de l'onglet Vidéo déclenche bien la vérification. */
+    let refreshCalls = 0;
+    const realRefresh = avail.refresh;
+    avail.refresh = function (f) { refreshCalls++; return realRefresh.call(avail, f); };
+    wb.LSV.ui.switchTab('video');
+    avail.refresh = realRefresh;
+    check('ouverture de l\'onglet Vidéo → vérification lancée', refreshCalls >= 1, refreshCalls);
+
+    /* e) L'état d'erreur ne contamine pas la suite des tests. */
+    wb.LSV.uiState.videoPrompt = promptBefore;
+    wb.LSV.uiState.videoRefs = refsBefore;
+    check('données de test nettoyées', wb.LSV.uiState.videoRefs.length === refsBefore.length, wb.LSV.uiState.videoRefs.length);
+
+    console.log('\n=== 11quater. CENTRE « ALTERNATIVES VIDÉO » ===');
+    /* Des SITES gratuits vérifiés sur leur page officielle, ouverts dans un
+       nouvel onglet : aucun appel API tiers, aucune donnée LSV.ai envoyée,
+       et aucun champ inconnu présenté comme certain. */
+    const alts = wb.LSV.alternatives;
+    check('catalogue d\'alternatives exposé (5 services)',
+        Array.isArray(alts) && alts.length === 5, alts && alts.length);
+    check('chaque fiche porte sa page source officielle',
+        alts.every(a => /^https:\/\/[a-z]/i.test(a.source)), alts.map(a => a.source).join(' '));
+    const known = v => v === 'oui' || v === 'non' || v === 'non vérifié';
+    check('image→vidéo / filigrane / licence : jamais d\'inconnu présenté pour acquis',
+        alts.every(a => known(a.i2v) && known(a.watermark) && known(a.license)));
+    check('quota gratuit formulé comme relevé, pas inventé',
+        alts.every(a => typeof a.free === 'string' && a.free.length > 10));
+    const altList = doc.getElementById('video-alt-list');
+    const altLinks = altList ? altList.querySelectorAll('a.alt-item') : [];
+    check('5 cartes rendues', altLinks.length === 5, altLinks.length);
+    check('chaque lien ouvre un nouvel onglet sans échange',
+        Array.from(altLinks).every(a => a.target === '_blank' && /noopener/.test(a.rel) && /^https:\/\//.test(a.href)));
+    check('domaines officiels uniquement (aucun lien fabriqué)',
+        Array.from(altLinks).every(a => /app\.pixverse\.ai|www\.vidu\.com|hailuoai\.video|klingai\.com|runwayml\.com/.test(a.href)),
+        Array.from(altLinks).map(a => a.href).join(' '));
+    const altText = doc.getElementById('video-alternatives').textContent;
+    check('aucun nom de fournisseur ni terme technique interdit dans le centre',
+        !/Agnes|agnes|Bearer|sk-|Token|Endpoint|Polling|apihub/i.test(altText));
+    check('le centre affirme que rien ne quitte LSV.ai', /Aucune donnée LSV\.ai n'est envoyée/.test(altText));
+    check('date de vérification affichée', altText.indexOf(wb.LSV.altChecked) !== -1, wb.LSV.altChecked);
+    check('origine des quotas indiquée (pages officielles)', /pages officielles/.test(altText));
+
+    const altPanel = doc.getElementById('video-alt-panel');
+    const altToggle = doc.getElementById('video-alt-toggle');
+    check('panneau replié par défaut dans le HTML', /id="video-alt-panel" hidden/.test(source));
+    /* 11ter s'est terminé sur un refus RÉEL : le centre est donc déjà ouvert,
+       et il ne se referme jamais tout seul (l'état reste consultable). */
+    check('refus réel de 11ter → centre déjà déplié', altPanel.hidden === false, altPanel.hidden);
+    altToggle.click();
+    check('refermeture manuelle possible', altPanel.hidden === true && altToggle.getAttribute('aria-expanded') === 'false');
+    avail.markSaturated(120);
+    check('problème constaté → centre déplié automatiquement',
+        altPanel.hidden === false && altToggle.getAttribute('aria-expanded') === 'true', altPanel.hidden);
+    check('bouton cohérent après dépliage', /Masquer/.test(altToggle.textContent), altToggle.textContent.trim());
+    altToggle.click();
+    check('bascule d\'ouverture/fermeture stable', altPanel.hidden === true, altPanel.hidden);
+
     console.log('\n=== 12. ARCHITECTURE MODULAIRE ===');
     check('index.html léger (squelette HTML seulement)', source.length < 90000, source.length + ' octets');
     check('aucun <style> inline dans index.html', !/<style>/.test(source));
@@ -745,6 +901,344 @@ async function load(html, url) {
        passerelle se charge de la conversion, jamais le navigateur. */
     check('aucun fetch de l\'URL côté client',
         wb.eval('JSON.stringify(UIState.videoRefs)').indexOf('fetch') === -1);
+
+    console.log('\n=== 15. MODÈLE DE CHAT : INTÉGRÉ / MISTRAL ===');
+    /* Le sélecteur choisit un MODÈLE déclaré ; c'est la passerelle qui
+       décide ensuite de la destination. Le navigateur ne connaît ni clé, ni
+       URL de fournisseur : la valeur d'une option est un index, pas un
+       identifiant qui révélerait un fournisseur dans le DOM public. */
+    const sel15 = wb.document.getElementById('chat-model-select');
+    check('sélecteur de modèle présent dans l\'en-tête du chat', !!sel15);
+    check('deux modèles proposés', !!sel15 && sel15.options.length === 2, sel15 && sel15.options.length);
+    check('valeurs = index (aucun identifiant de modèle dans le DOM)',
+        !!sel15 && sel15.options[0].value === '0' && sel15.options[1].value === '1',
+        sel15 && sel15.options[0].value + '/' + sel15.options[1].value);
+    check('libellés sans clé, URL ni jeton',
+        !!sel15 && !/agnes|apihub|sk-|Bearer|https?:/i.test(sel15.innerHTML), sel15 && sel15.innerHTML);
+    check('modèle par défaut = modèle intégré',
+        wb.eval('LSV.services.chat.model()') === wb.eval('LSV.config.MODEL_CHAT'),
+        wb.eval('LSV.services.chat.model()'));
+    check('deux modèles distincts exposés',
+        wb.eval('LSV.config.CHAT_MODELS.length') === 2 &&
+        wb.eval('LSV.config.CHAT_MODELS[0].id') !== wb.eval('LSV.config.CHAT_MODELS[1].id'));
+
+    /* Choix de l'option Mistral : événement normal du sélecteur. */
+    sel15.value = '1';
+    sel15.dispatchEvent(new wb.Event('change', { bubbles: true }));
+    check('choix Mistral enregistré', wb.eval('LSV.services.chat.model()') === 'mistral-small-2603',
+        wb.eval('LSV.services.chat.model()'));
+    check('choix persisté pour la prochaine session',
+        wb.localStorage.getItem('lsv4_chat_model') === 'mistral-small-2603',
+        wb.localStorage.getItem('lsv4_chat_model'));
+    check('choix annoncé en clair à l\'utilisateur',
+        doc.getElementById('toast-text').textContent.indexOf('Mistral') !== -1,
+        doc.getElementById('toast-text').textContent);
+
+    /* Une valeur inconnue (modèle retiré entre deux versions) retombe sur le
+       modèle intégré : elle n'est jamais envoyée telle quelle. */
+    wb.localStorage.setItem('lsv4_chat_model', 'modele-inconnu');
+    check('valeur inconnue en stockage → modèle intégré',
+        wb.eval('LSV.services.chat.model()') === wb.eval('LSV.config.MODEL_CHAT'),
+        wb.eval('LSV.services.chat.model()'));
+    wb.localStorage.removeItem('lsv4_chat_model');
+
+    /* Envoi réel : le corps porte le modèle CHOISI, la requête part vers la
+       passerelle — jamais vers un fournisseur. */
+    wb.eval('AccountService._save({access_token:"jwt-de-test", refresh_token:"refresh-de-test", ' +
+        'expires_at:' + (Math.floor(Date.now() / 1000) + 3600) + ', ' +
+        'email:"test@lsv.ai", name:"Test", id:"11111111-1111-4111-8111-111111111111"})');
+    sel15.value = '1';
+    sel15.dispatchEvent(new wb.Event('change', { bubbles: true }));
+    const chatCalls15 = [];
+    wb.fetch = function (url, options) {
+        const u = String(url);
+        chatCalls15.push({ url: u, options: options || {} });
+        if (u.indexOf('/chat/completions') !== -1) {
+            return Promise.resolve({
+                ok: true, status: 200,
+                body: {
+                    getReader() {
+                        let n = 0;
+                        const chunks = ['data: {"choices":[{"delta":{"content":"Réponse test"}}]}\n\ndata: [DONE]\n\n'];
+                        return {
+                            read() {
+                                if (n >= chunks.length) return Promise.resolve({ done: true, value: undefined });
+                                return Promise.resolve({ done: false, value: new TextEncoder().encode(chunks[n++]) });
+                            },
+                            releaseLock() {}
+                        };
+                    }
+                }
+            });
+        }
+        if (u.indexOf('/v1/providers') !== -1) {
+            return Promise.resolve({ ok: true, status: 200, json: async () => ({ chat: { agnes: true, mistral: true } }) });
+        }
+        if (u.indexOf('/rest/v1/analytics_events') !== -1) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    const conv15 = wb.eval('ConversationService.create({}).id');
+    const sent15 = await wb.LSV.services.chat.send({ id: conv15 }, 'Une idée de pub', {});
+    const chatReq15 = chatCalls15.find(c => c.url.indexOf('/chat/completions') !== -1);
+    check('réponse reçue et enregistrée dans la conversation', sent15 === 'Réponse test', sent15);
+    check('requête envoyée à la passerelle, jamais au fournisseur',
+        !!chatReq15 && chatReq15.url.indexOf('apihub') === -1 &&
+        chatReq15.url.indexOf('mistral.ai') === -1 &&
+        chatReq15.url.indexOf('/functions/v1/lsv-gateway/v1/chat/completions') !== -1,
+        chatReq15 && chatReq15.url);
+    check('le corps porte le modèle choisi', !!chatReq15 &&
+        JSON.parse(chatReq15.options.body).model === 'mistral-small-2603',
+        chatReq15 && JSON.parse(chatReq15.options.body).model);
+    check('aucune clé de fournisseur dans la requête', !!chatReq15 &&
+        JSON.stringify(chatReq15.options.headers || {}).indexOf('sk-') === -1,
+        chatReq15 && JSON.stringify(chatReq15.options.headers || {}).slice(0, 80));
+    check('deux messages enregistrés (utilisateur + assistant)',
+        wb.eval('ConversationService.get("' + conv15 + '").messages.length') === 2,
+        wb.eval('ConversationService.get("' + conv15 + '").messages.length'));
+
+    /* État des fournisseurs : la passerelle dit ce qu'elle SAIT (clé
+       configurée ou non), jamais si un service est en ligne. */
+    const sel15b = wb.document.getElementById('chat-model-select');
+    wb.fetch = function (url) {
+        if (String(url).indexOf('/v1/providers') !== -1) {
+            return Promise.resolve({ ok: false, status: 401, json: async () => ({}) });
+        }
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    await wb.LSV.services.chat.refreshAvailability();
+    check('compte non connecté (401) : aucune décision prise', sel15b.options[1].disabled === false);
+
+    wb.fetch = function (url) {
+        if (String(url).indexOf('/v1/providers') !== -1) {
+            return Promise.resolve({ ok: true, status: 200, json: async () => ({ chat: { agnes: true, mistral: false } }) });
+        }
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    await wb.LSV.services.chat.refreshAvailability();
+    check('clé Mistral absente → option grisée', sel15b.options[1].disabled === true);
+    check('grisée = « non configuré », jamais une panne',
+        /non configuré/.test(sel15b.options[1].textContent), sel15b.options[1].textContent);
+    check('modèle intégré toujours utilisable', sel15b.options[0].disabled === false);
+    check('choix devenu indisponible → retour au modèle intégré',
+        wb.eval('LSV.services.chat.model()') === wb.eval('LSV.config.MODEL_CHAT'),
+        wb.eval('LSV.services.chat.model()'));
+    check('aucun nom de clé ni URL dans le sélecteur',
+        !/sk-|https?:|Bearer/i.test(sel15b.innerHTML), sel15b.innerHTML);
+
+    wb.fetch = function (url) {
+        if (String(url).indexOf('/v1/providers') !== -1) {
+            return Promise.resolve({ ok: true, status: 200, json: async () => ({ chat: { agnes: true, mistral: true } }) });
+        }
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    await wb.LSV.services.chat.refreshAvailability();
+    check('clé à nouveau configurée → option rétablie', sel15b.options[1].disabled === false);
+
+    /* Nettoyage : aucune session de test ne doit survivre à la section. */
+    wb.eval('AccountService._save(null)');
+    wb.localStorage.removeItem('lsv4_chat_model');
+    check('aucune erreur console (modèle de chat)', errors.length === 0, errors.join('|'));
+
+    console.log('\n=== 16. STUDIO DE SCÉNARIOS IA (3 MODES) ===');
+    /* Trois formats, un seul contrat de sortie : le texte affiché vient de
+       champs normalisés, jamais d'une lecture à la volée de la réponse. */
+    const scenTab = doc.getElementById('tab-scenarios');
+    check('onglet Studio de scénarios présent', !!scenTab);
+    check('entrée de menu dédiée', !!doc.querySelector('.nav-item[data-tab="scenarios"]'));
+    const scenTiles = doc.querySelectorAll('#scenario-mode-grid .mode-tile');
+    check('trois formats proposés', scenTiles.length === 3, scenTiles.length);
+    check('formats = court, long, storyboard',
+        Array.from(scenTiles).map(t => t.dataset.mode).join(',') === 'court,long,storyboard',
+        Array.from(scenTiles).map(t => t.dataset.mode).join(','));
+    check('chaque format annoncé en clair',
+        Array.from(scenTiles).every(t => /Format court|Format long|Storyboard/.test(t.textContent)),
+        Array.from(scenTiles).map(t => t.textContent.replace(/\s+/g, ' ').trim()).join(' | '));
+    check('format par défaut = court', scenTiles[0].classList.contains('selected'));
+    check('sortie masquée tant que rien n\'est généré',
+        doc.getElementById('scenario-output').classList.contains('hidden'));
+    check('l\'onglet ne porte ni clé, ni URL de fournisseur',
+        !/sk-|Bearer|apihub|agnes-ai|https?:\/\/api/i.test(scenTab.innerHTML));
+
+    /* Le choix du format suit le clic et s'annonce dans le résultat. */
+    scenTiles[1].dispatchEvent(new wb.Event('click', { bubbles: true }));
+    check('clic sur « Format long » → sélection basculée',
+        scenTiles[1].classList.contains('selected') && !scenTiles[0].classList.contains('selected'));
+    check('libellé du format affiché pour le résultat',
+        doc.getElementById('scenario-mode-label').textContent === 'Format long',
+        doc.getElementById('scenario-mode-label').textContent);
+    scenTiles[0].dispatchEvent(new wb.Event('click', { bubbles: true }));
+    check('retour au format court', scenTiles[0].classList.contains('selected'));
+
+    /* Sans compte, aucune requête ne quitte la page. */
+    const scenCalls = [];
+    wb.fetch = function (url, options) {
+        scenCalls.push({ url: String(url), options: options || {} });
+        if (String(url).indexOf('/rest/v1/analytics_events') !== -1) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    doc.getElementById('scenario-input').value = 'Une barista découvre que sa tasse prédit l\'avenir';
+    doc.getElementById('scenario-input').dispatchEvent(new wb.Event('input', { bubbles: true }));
+    check('bouton de génération actif une fois l\'idée remplie',
+        !doc.getElementById('scenario-generate').disabled);
+    await wb.LSV.views.scenarios.generate();
+    check('sans compte : aucune requête envoyée',
+        !scenCalls.some(c => c.url.indexOf('/chat/completions') !== -1),
+        scenCalls.map(c => c.url).join(','));
+    check('sans compte : message d\'invitation, sans détail',
+        /Connecte-toi/.test(doc.getElementById('toast-text').textContent) &&
+        !/sk-|HTTP|apihub|agnes/i.test(doc.getElementById('toast-text').textContent),
+        doc.getElementById('toast-text').textContent);
+    doc.getElementById('auth-modal').classList.add('hidden');
+    doc.getElementById('account-form').classList.add('hidden');
+
+    /* Génération avec compte : requête vers la passerelle, corps en JSON. */
+    wb.eval('AccountService._save({access_token:"jwt-de-test", refresh_token:"refresh-de-test", ' +
+        'expires_at:' + (Math.floor(Date.now() / 1000) + 3600) + ', ' +
+        'email:"test@lsv.ai", name:"Test", id:"11111111-1111-4111-8111-111111111111"})');
+    const scenJson16 = JSON.stringify({
+        title: 'Tasse de veille',
+        logline: 'Une barista devine demain une seconde à la fois.',
+        scenes: [
+            { act: 'Acte I', title: 'Le service du matin', description: 'Marie sert un café, la tasse se trouble.', prompt: 'Plan large d\'une barista derrière son comptoir, lumière chaude de fin de matin' },
+            { act: 'Acte II', title: 'La première prédiction', description: 'La tasse annonce la fermeture de la rue.', prompt: 'Gros plan sur une tasse de café, vapeur en forme de chiffres' }
+        ]
+    });
+    scenCalls.length = 0;
+    wb.fetch = function (url, options) {
+        scenCalls.push({ url: String(url), options: options || {} });
+        if (String(url).indexOf('/chat/completions') !== -1) {
+            return Promise.resolve({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: scenJson16 } }] }) });
+        }
+        if (String(url).indexOf('/rest/v1/analytics_events') !== -1) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    await wb.LSV.views.scenarios.generate();
+    const scenReq = scenCalls.find(c => c.url.indexOf('/chat/completions') !== -1);
+    check('requête partie vers la passerelle',
+        !!scenReq && scenReq.url.indexOf('/functions/v1/lsv-gateway/v1/chat/completions') !== -1,
+        scenReq && scenReq.url);
+    check('le corps porte le modèle choisi dans le chat', !!scenReq &&
+        JSON.parse(scenReq.options.body).model === wb.eval('LSV.services.chat.model()'),
+        scenReq && JSON.parse(scenReq.options.body).model);
+    check('réponse attendue en JSON', !!scenReq &&
+        JSON.parse(scenReq.options.body).response_format.type === 'json_object');
+    check('aucune clé dans la requête', !!scenReq &&
+        JSON.stringify(scenReq.options.headers || {}).indexOf('sk-') === -1);
+    const scenMsg16 = JSON.parse(scenReq.options.body).messages[1].content;
+    check('le format choisi change la consigne envoyée', /Format court/.test(scenMsg16),
+        scenMsg16.slice(0, 60).replace(/\s+/g, ' '));
+    check('résultat affiché', !doc.getElementById('scenario-output').classList.contains('hidden'));
+    check('titre rendu', doc.getElementById('scenario-out-title').textContent === 'Tasse de veille',
+        doc.getElementById('scenario-out-title').textContent);
+    check('accroche rendue', /devine demain/.test(doc.getElementById('scenario-logline').textContent),
+        doc.getElementById('scenario-logline').textContent);
+    check('deux scènes rendues', doc.querySelectorAll('#scenario-scenes .scenario-scene').length === 2,
+        doc.querySelectorAll('#scenario-scenes .scenario-scene').length);
+    check('prompt de scène affiché', /barista derrière son comptoir/.test(doc.getElementById('scenario-scenes').textContent));
+    check('titre du format dans le résultat',
+        doc.getElementById('scenario-mode-label').textContent === 'Format court',
+        doc.getElementById('scenario-mode-label').textContent);
+    check('génération historisée',
+        wb.eval('JSON.stringify(HistoryService.all()[0])').indexOf('scenario.generate') !== -1,
+        wb.eval('HistoryService.all()[0].type'));
+
+    /* Un autre format envoie une autre consigne, sur la même route. */
+    scenTiles[2].dispatchEvent(new wb.Event('click', { bubbles: true }));
+    scenCalls.length = 0;
+    await wb.LSV.views.scenarios.generate();
+    const scenReq2 = scenCalls.find(c => c.url.indexOf('/chat/completions') !== -1);
+    check('mode storyboard → consigne storyboard', !!scenReq2 &&
+        /Storyboard/.test(JSON.parse(scenReq2.options.body).messages[1].content));
+    check('même passerelle quel que soit le format', !!scenReq2 &&
+        scenReq2.url.indexOf('/functions/v1/lsv-gateway/v1/chat/completions') !== -1);
+    scenTiles[0].dispatchEvent(new wb.Event('click', { bubbles: true }));
+
+    /* Transfert vers le Storyboard : sans projet, rien n'est écrit. */
+    wb.eval('Runtime.currentProjectId = null');
+    wb.LSV.views.scenarios.toStoryboard();
+    check('sans projet actif : aucune scène créée',
+        wb.eval('ProjectService.all().reduce((n, p) => n + (p.scenes || []).length, 0)') === 0,
+        wb.eval('ProjectService.all().reduce((n, p) => n + (p.scenes || []).length, 0)'));
+    check('sans projet actif : orientation vers Storyboard',
+        doc.getElementById('tab-storyboard').classList.contains('active'));
+
+    /* Avec un projet : chaque scène devient une scène éditable. */
+    const scenProject = wb.eval('ProjectService.create({name:"Projet scénario", type:"general"}).id');
+    wb.eval('Runtime.currentProjectId = "' + scenProject + '"');
+    wb.LSV.views.scenarios.toStoryboard();
+    check('scènes ajoutées au projet',
+        wb.eval('ProjectService.get("' + scenProject + '").scenes.length') === 2,
+        wb.eval('ProjectService.get("' + scenProject + '").scenes.length'));
+    check('scènes rendues dans le Storyboard',
+        doc.querySelectorAll('#storyboard-list .scene-card').length === 2,
+        doc.querySelectorAll('#storyboard-list .scene-card').length);
+    check('prompt de scène repris tel quel',
+        /barista derrière son comptoir/.test(doc.getElementById('storyboard-list').textContent));
+    check('projet actif annoncé', /2 scènes/.test(doc.getElementById('storyboard-project-info').textContent),
+        doc.getElementById('storyboard-project-info').textContent.replace(/\s+/g, ' ').trim().slice(0, 80));
+    check('aucune erreur console (studio de scénarios)', errors.length === 0, errors.join('|'));
+
+    console.log('\n=== 17. AMÉLIORATION DE PROMPT (AVANT / APRÈS) ===');
+    const enhTab = doc.getElementById('tab-enhancer');
+    check('outil « Améliorer un prompt existant » présent', !!doc.getElementById('improve-input'));
+    check('les deux panneaux avant / après existent',
+        !!doc.getElementById('improve-before') && !!doc.getElementById('improve-after'));
+    check('résultat masqué avant génération',
+        !doc.getElementById('improve-output').classList.contains('visible'));
+    check('Enhancer d\'origine intact (saisie et bouton présents)',
+        !!doc.getElementById('enhancer-input') && !!doc.getElementById('enhancer-generate') &&
+        !!doc.getElementById('enhancer-output'));
+    check('aucune clé ni URL de fournisseur dans l\'onglet',
+        !/sk-|Bearer|apihub|agnes-ai/i.test(enhTab.innerHTML));
+
+    const impCalls = [];
+    const impAfter = 'Portrait d\'une barista, lumière chaude de fin de matin, objectif 50 mm, plan serré, ambiance cinématographique';
+    wb.fetch = function (url, options) {
+        impCalls.push({ url: String(url), options: options || {} });
+        if (String(url).indexOf('/chat/completions') !== -1) {
+            return Promise.resolve({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: impAfter } }] }) });
+        }
+        if (String(url).indexOf('/rest/v1/analytics_events') !== -1) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    const impBefore = 'une barista dans un café';
+    doc.getElementById('improve-input').value = impBefore;
+    doc.getElementById('improve-input').dispatchEvent(new wb.Event('input', { bubbles: true }));
+    check('bouton actif une fois le prompt collé', !doc.getElementById('improve-generate').disabled);
+    await wb.LSV.views.improve.generate();
+    const impReq = impCalls.find(c => c.url.indexOf('/chat/completions') !== -1);
+    check('requête partie vers la passerelle',
+        !!impReq && impReq.url.indexOf('/functions/v1/lsv-gateway/v1/chat/completions') !== -1,
+        impReq && impReq.url);
+    check('consigne : conserver l\'intention d\'origine', !!impReq &&
+        /intention/.test(JSON.parse(impReq.options.body).messages[0].content),
+        impReq && JSON.parse(impReq.options.body).messages[0].content.slice(0, 60));
+    check('résultat affiché', doc.getElementById('improve-output').classList.contains('visible'));
+    check('AVANT = le prompt d\'origine, intact',
+        doc.getElementById('improve-before').textContent === impBefore,
+        doc.getElementById('improve-before').textContent);
+    check('APRÈS = la version améliorée',
+        doc.getElementById('improve-after').textContent === impAfter,
+        doc.getElementById('improve-after').textContent);
+    check('les deux textes diffèrent bel et bien',
+        doc.getElementById('improve-before').textContent !== doc.getElementById('improve-after').textContent);
+    check('la saisie d\'origine n\'est pas réécrite',
+        doc.getElementById('improve-input').value === impBefore, doc.getElementById('improve-input').value);
+    check('amélioration historisée',
+        wb.eval('JSON.stringify(HistoryService.all()[0])').indexOf('prompt.improve') !== -1,
+        wb.eval('HistoryService.all()[0].type'));
+
+    /* Utiliser le résultat : il part vers l'onglet choisi, la saisie reste. */
+    doc.getElementById('improve-use-image').dispatchEvent(new wb.Event('click', { bubbles: true }));
+    check('résultat envoyé vers l\'onglet Image',
+        doc.getElementById('image-prompt').value === impAfter &&
+        doc.getElementById('tab-image').classList.contains('active'));
+    check('saisie d\'amélioration conservée',
+        doc.getElementById('improve-input').value === impBefore, doc.getElementById('improve-input').value);
+    check('aucune erreur console (amélioration de prompt)', errors.length === 0, errors.join('|'));
+
+    /* Nettoyage : aucune session de test ne doit survivre à la page. */
+    wb.eval('AccountService._save(null)');
 
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');

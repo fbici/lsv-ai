@@ -1,12 +1,13 @@
-# LSV.ai — Studio Viral v3.16.16
+# LSV.ai — Studio Viral v3.17.0
 
-Application créative web : **Images · Vidéos · Chat IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
+Application créative web : **Images · Vidéos · Chat IA · Scénarios IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
 Le public n'utilise que **LSV.ai** : ni clé API à saisir, ni nom de fournisseur,
 ni endpoint, ni console de debug. L'application parle à **sa propre passerelle**,
 qui appelle le fournisseur de génération côté serveur avec un secret.
 
-**Création = compte** : toute génération (images, vidéos, chat, enhancer, batch)
+**Création = compte** : toute génération (images, vidéos, chat, enhancer,
+scénarios, batch)
 exige un **compte connecté** (inscription gratuite, page de connexion plein
 écran ouverte depuis la section « Compte »). Un
 visiteur non connecté conserve l'accès à la consultation, mais rien n'est envoyé
@@ -92,17 +93,17 @@ lsv-ai/
 │   └── views.css              #   projets, bibliothèque, historique, mobile-nav
 │
 ├── scripts/                   # Application JS (scripts classiques, dans l'ordre)
-│   ├── constants.js           #   GATEWAY_URL + styles d'enhancer
+│   ├── constants.js           #   GATEWAY_URL, styles d'enhancer, modes de scénario
 │   ├── core.js                #   Utils, Storage, Projects, Assets, History,
 │   │                          #   Conversation, Lock, Debug, Timing, WakeLock
 │   ├── account.js             #   Gateway, AccountService, AccountView, WelcomeView
 │   ├── media.js               #   Provider, Prompt, Image, Video, File, Runtime,
-│   │                          #   UIState, Enhancer
+│   │                          #   UIState, Enhancer, Scénarios, Amélioration
 │   ├── ui.js                  #   contrôleur UI (toasts, panneaux, rendu global)
 │   ├── chat.js                #   ChatService, ChatActions, ChatView
 │   ├── views.js               #   Dashboard, Projets, Bibliothèque, Historique,
-│   │                          #   Avancé, Enhancer, Storyboard, Workflows,
-│   │                          #   Verrous, Batch
+│   │                          #   Avancé, Enhancer, Scénarios, Amélioration,
+│   │                          #   Storyboard, Workflows, Verrous, Batch
 │   └── handlers.js            #   Handlers + restauration + init + window.LSV
 │
 ├── analytics/
@@ -140,6 +141,7 @@ lsv-ai/
 │   ├── upgrade-activity-logs.sql    # Migration : user_id + admin_logs
 │   ├── upgrade-quotas.sql     # Migration : quotas journaliers + usage_counters
 │   ├── upgrade-multi-key.sql  # Migration : clés du fournisseur par outil
+│   ├── upgrade-mistral.sql    # Migration : clé Mistral du chat (§2.28)
 │   ├── upgrade-contact.sql    # Migration : contact_messages + RPC submit_contact
 │   ├── email-confirm-signup.html    # Modèle d'e-mail « confirme ton compte »
 │   ├── email-reset-password.html    # Modèle d'e-mail « mot de passe oublié »
@@ -170,7 +172,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -344,11 +346,12 @@ de l'accueil et du dashboard, et des liens vers des fichiers dédiés.
    `TimingService`, `WakeLockService`
 3. `account.js` — `Gateway`, `AccountService`, `AccountView`, `WelcomeView`
 4. `media.js` — provider, prompts, images, vidéos, fichiers, `Runtime`,
-   `UIState`, `EnhancerService`
+   `UIState`, `EnhancerService`, `ScenarioService`, `PromptImproveService`
 5. `ui.js` — contrôleur UI (toasts, panneaux, rendu global)
 6. `chat.js` — `ChatService`, `ChatActions`, `ChatView`
 7. `views.js` — dashboard, projets, bibliothèque, historique, avancé,
-   enhancer, storyboard, workflows, verrous, batch
+   enhancer, scénarios, amélioration de prompt, storyboard, workflows,
+   verrous, batch
 8. `handlers.js` — `Handlers`, restauration des résultats, `init()`, `window.LSV`
 
 Le shim de sécurité Analytics (`window.LSVAnalytics = … || {track: inerte}`)
@@ -491,13 +494,15 @@ son quota deux fois, ni le consommer sans passer par la Gateway. Vérifié par
 
 ### 2.12 Clés du fournisseur par outil (nouveau)
 
-Trois clés **dédiées**, une par outil, saisies dans le back-office :
+Trois clés **dédiées**, une par outil, saisies dans le back-office, plus une
+clé **Mistral** réservée aux requêtes de chat routées vers ce modèle (§2.28) :
 
 | Clé `app_settings` | Utilisée pour |
 |---|---|
 | `provider_api_key_image` | toutes les générations d'images |
 | `provider_api_key_video` | les générations de vidéo **et** leur polling |
 | `provider_api_key_chat` | le chat IA et l'amélioration de prompts |
+| `provider_api_key_mistral` | **uniquement** les requêtes de chat envoyées à Mistral — **aucun repli** sur les clés ci-dessus (§2.28) |
 | `provider_api_key` | **clé partagée de secours** : outils dont la clé dédiée est vide, et le module Motion |
 
 **Résolution** (par requête, côté serveur uniquement) :
@@ -505,6 +510,11 @@ Trois clés **dédiées**, une par outil, saisies dans le back-office :
 ```
 clé dédiée de l'outil  →  clé partagée  →  secret serveur AGNES_API_KEY
 ```
+
+**Exception Mistral** : cette clé sort de la chaîne. Elle se résout en
+`provider_api_key_mistral` → secret serveur `MISTRAL_API_KEY`, **et rien
+d'autre** — jamais la clé du fournisseur principal. Sans elle, la requête
+échoue en 503 **avant** tout prélèvement de quota.
 
 **Intérêt.** Chaque outil a alors son propre **budget** et son propre
 **rate limit** chez le fournisseur : un lot de 50 images n'épuise **pas** la
@@ -1683,6 +1693,150 @@ recadrage, Ctrl+Z restaure l'état antérieur.
 
 ---
 
+### 2.28 Disponibilité vidéo, alternatives, Mistral, studio de scénarios — v3.17.0
+
+Cinq demandes menées ensemble. Chaque bloc dit ce qui a été ajouté, ce que les
+tests en vérifient, et — en fin de section — ce qui **reste à faire** côté
+configuration.
+
+#### 1. « File vidéo pleine » : un état affiché, pas une erreur muette
+
+Le signalement de départ : `503 video_queue_full` retourné au mauvais moment
+et traduit en message générique, sans que l'utilisateur sache si la panne est
+passagère, durable, ou seulement saturée.
+
+**Ajouts :**
+
+- **`GET /v1/video-availability`** (passerelle) : sonde `GET /v1/models` à
+  **coût 0** — aucun média n'est généré — avec cache 60 s et saturation
+  `video_queue_full` mémorisée 120 s pour ne pas marteler un amont déjà
+  saturé. Sept réponses distinctes : `ok`, `queue_full`, `amont_injoignable`,
+  `auth_error`, `amont_erreur`, `unknown` (plus le refus sans compte).
+- **Bandeau `#video-availability`** en tête de l'onglet Vidéo
+  (`VideoAvailabilityService`) : il affiche ce que la passerelle a **réellement
+  observé**, avec l'heure de la mesure — jamais une promesse de délai.
+- **Chaînage depuis l'application** : quand `AgnesProvider` reçoit lui-même un
+  `video_queue_full`, il appelle `markSaturated()` → le bandeau bascule en
+  « file pleine » sans nouvelle sonde inutile. À l'inverse, un échec **mesuré**
+  (délai dépassé, 500) ne l'y fait **pas** basculer : on ne prend pas une panne
+  pour une saturation.
+- **Quotas distincts** : le quota **web** de l'application et le quota **API**
+  du fournisseur ne sont jamais confondus. Aucune boucle de reprise cachée,
+  aucune promotion silencieuse d'un modèle de repli, et **aucun endpoint de
+  santé inventé** — le fournisseur n'en expose pas, la sonde `GET /v1/models`
+  est la seule chose à coût nul.
+
+**Vérifié par** `tests/gateway.test.mjs` §28 (20) et
+`tests/public.test.js` §11ter (20).
+
+#### 2. Centre « Alternatives vidéo » (onglet Vidéo)
+
+- Cinq centres gratuits : quota **annoncé sur la page officielle** indiquée
+  (champ `source`), vérification du **25 octobre 2026**, et champs
+  `i2v` / `filigrane` / `licence` bornés à `oui`, `non`, `non vérifié` —
+  **aucune valeur inventée** ; les services sans offre gratuite réelle sont
+  écartés (Pika, Luma, Veo) de même que Sora (service arrêté).
+- Panneau repliable avec la mention « Aucune donnée LSV.ai n'est envoyée » :
+  ce sont des **sites web** ouverts dans un nouvel onglet de son côté — l'app
+  n'appelle jamais leur API, n'ouvre aucun de leurs comptes.
+- Dépliage **automatique après un refus de génération vidéo réel**, **jamais**
+  après un échec de mesure, et **jamais** de refermeture automatique : l'état
+  reste lisible jusqu'à ce que l'utilisateur le ferme.
+
+**Vérifié par** `tests/public.test.js` §11quater (17).
+
+#### 3. Mistral dans le Chat IA
+
+- **Sélecteur dans l'en-tête du chat** (`#chat-model-select`) : modèle intégré
+  **et** Mistral Small 4 (`mistral-small-2603` pour l'API). La valeur de chaque
+  `<option>` est un **index** : aucun identifiant de modèle ne figure dans le
+  DOM public, le libellé affiché reste « Mistral Small 4 », et le choix est
+  persisté — une valeur retirée entre deux versions retombe sur le modèle
+  intégré au lieu d'être envoyée telle quelle.
+- **Routage côté passerelle** (`requestsMistral`) : `/v1/chat*` **et** un
+  modèle `mistral-*` → `https://api.mistral.ai`, sinon le fournisseur
+  habituel ; un corps illisible retombe sur ce dernier. La **base et la clé
+  changent ensemble**, jamais l'une sans l'autre. Le flux SSE est relais tel
+  quel.
+- **Clé dédiée sans repli** : `provider_api_key_mistral` (back-office) →
+  secret serveur `MISTRAL_API_KEY` — **jamais** la clé du fournisseur
+  principal. Sans elle : 503 **avant** tout prélèvement de quota, le compteur
+  de quota chat reste intact.
+- **`GET /v1/providers`** : réservé aux comptes (401 sinon, 404 sur POST),
+  renvoie `{chat:{agnes,mistral}}` = « clé configurée ou non » — **jamais** un
+  état de service, jamais une valeur. Côté client, l'option sans clé est
+  **grisée** avec la mention « non configuré » et le chat annonce le retour au
+  modèle intégré par un toast.
+- **Back-office** : carte « Clé Mistral (chat IA) » (`renderMistralKey` /
+  `initMistralKey`), refus sous 8 caractères, journal d'audit **sans la
+  valeur**, `••••4455` affiché.
+- **SQL** : `provider_api_key_mistral` ajouté à la contrainte
+  `app_settings_key_check` dans `supabase/schema.sql`, plus
+  **`supabase/upgrade-mistral.sql`** (drop/add idempotent) pour les bases déjà
+  en place. Sans cette migration, l'écriture échoue en base **même si**
+  l'interface envoie la clé.
+- **Passerelle** : `index.ts` relaie `MISTRAL_API_KEY` / `MISTRAL_API_BASE`
+  depuis `Deno.env` ; `.env.example` les documente en commentaire ; le
+  classement de quota reste `chat` quel que soit le fournisseur.
+- Les scénarios et l'amélioration de prompt (ci-dessous) passent par **le même
+  sélecteur** : avec Mistral choisi, ils voyagent aussi par Mistral.
+
+**Vérifié par** `tests/gateway.test.mjs` §29 (21),
+`tests/public.test.js` §15 (23) et `tests/admin.test.js` §L3 (21).
+
+#### 4. Studio de scénarios IA — 3 formats
+
+- Nouvel onglet **« Scénarios »** : une idée → un scénario tournable, dans
+  trois formats — **Format court** (synopsis + 3 à 5 scènes), **Format long**
+  (trois actes, arc narratif, 8 à 12 scènes) et **Storyboard** (champ,
+  mouvement de caméra, son ou dialogue).
+- **Sortie structurée** en JSON `{title, logline, scenes[]}` pour les trois
+  formats : le résultat est rendu champ par champ (titre, accroche, scènes,
+  prompt de scène) **sans jamais interpréter du texte libre** — c'est la même
+  raison pour laquelle l'Enhancer y a recours.
+- **« Ajouter au Storyboard »** : chaque scène devient une scène éditable du
+  projet courant (titre, description, prompt, statut `pending`). **Sans projet
+  actif, rien n'est écrit** : l'onglet Storyboard s'ouvre pour en créer un.
+- **Compte obligatoire** : comme toute génération — sans compte, aucune requête
+  ne quitte la page, la saisie est conservée et le message invite à se
+  connecter.
+- Le format choisi change la **consigne** envoyée (longueur, structure), pas
+  le contrat de sortie ni la route : tout passe par `/v1/chat/completions` et
+  le quota chat.
+
+**Vérifié par** `tests/public.test.js` §16 (35).
+
+#### 5. Améliorer un prompt existant (avant / après)
+
+- Nouvelle carte **« Améliorer un prompt existant »** dans l'onglet Enhancer :
+  deux panneaux **Avant** (le prompt collé, intact) et **Après** (la version
+  améliorée), puis copie, « Utiliser pour image » et « Utiliser pour vidéo ».
+- **L'Enhancer d'origine reste intact** : il part toujours d'une idée **brute**
+  pour produire un prompt structuré ; ce nouvel outil part d'un prompt
+  **existant** et ne réécrit rien de la saisie.
+- La consigne impose de renvoyer **le seul prompt** (sans titre, sans
+  commentaire, sans bloc markdown) — sinon on ne pourrait plus distinguer le
+  prompt de ses explications.
+
+**Vérifié par** `tests/public.test.js` §17 (17).
+
+**Nouveaux totaux : non-régression 78 · interface 353 · gateway 286 · admin 179
+· studio 218 · contact 154 · suite 1268.**
+
+> **Reste à faire — configuration, pas de code.** Aucune clé Mistral n'existe
+> dans ce dépôt ni dans Supabase. Avant d'utiliser l'option : exécuter
+> `supabase/upgrade-mistral.sql` (ou un `schema.sql` à jour) → redéployer la
+> passerelle → saisir la clé dans `/admin/` → Paramètres, ou injecter le secret
+> `MISTRAL_API_KEY`. Tant qu'elle est absente, l'option reste **grisée** et le
+> chat utilise le modèle intégré : un état affiché, **jamais une intégration
+> présentée comme terminée**.
+>
+> **Déploiement** : `supabase/functions/lsv-gateway/**` est à redéployer,
+> `supabase/**` à exécuter dans Supabase, le reste est statique → rafraîchir
+> le navigateur (v3.17.0).
+
+---
+
 ## 3. Installation locale
 
 ```bash
@@ -1719,7 +1873,7 @@ npm run serve      # http://localhost:4173
 2. Coller le contenu de `supabase/schema.sql` → **Run**.
    *(Base déjà créée ? exécuter, dans cet ordre : `upgrade-admin-whitelist.sql`,
    `upgrade-profiles.sql`, `upgrade-activity-logs.sql`, `upgrade-quotas.sql`,
-   `upgrade-multi-key.sql` — toutes idempotentes.)*
+   `upgrade-multi-key.sql`, `upgrade-mistral.sql` — toutes idempotentes.)*
 3. **Ajouter son e-mail administrateur** (décommenter la dernière ligne du
    script, ou SQL direct) :
 
@@ -2059,7 +2213,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 1094 assertions, 6 suites
+npm test                      # 1268 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -2094,6 +2248,11 @@ git grep -n "service_role" -- scripts shared analytics admin studio *.html
    `supabase/functions/lsv-gateway/` — §2.15 (image de référence depuis la
    bibliothèque) en fait partie : sans redéploiement, une URL de création
    transmise à l'amont reste une URL et n'est pas encodée.
+8. **Mistral dans le chat (optionnel)** : exécuter
+   `supabase/upgrade-mistral.sql` (§2.28), redéployer la Gateway, puis saisir
+   la clé dans `/admin/` → **Paramètres** → « Clé Mistral » — ou injecter le
+   secret `MISTRAL_API_KEY`. Sans clé, l'option Mistral reste **grisée** dans
+   le sélecteur : c'est un état affiché, pas une panne.
 
 **Note sur les chemins** : tous les liens sont **relatifs** (`./admin/`,
 `../shared/config.js`) → le site fonctionne aussi bien à la racine que dans
@@ -2109,6 +2268,7 @@ un sous-dossier GitHub Pages (`/lsv-ai/`).
 | `.env.example` | modèle commenté | ✅ oui |
 | `.env` | éventuel, hors dépôt | ❌ non (`.gitignore`) |
 | `AGNES_API_KEY` | **secret serveur de secours** de la Gateway (Supabase Secrets) | ❌ non |
+| `MISTRAL_API_KEY` / `MISTRAL_API_BASE` | secrets serveur **optionnels** de la Gateway : chat Mistral uniquement (§2.28) | ❌ non |
 | Clés du fournisseur | saisies dans `/admin` → Paramètres → table `app_settings` (RLS liste blanche) : une dédiée par outil + une clé partagée | ❌ non |
 | `EMAIL_PROVIDER` / `EMAIL_API_KEY` / `EMAIL_FROM` | fournisseur d'e-mail de `lsv-contact` (Brevo ou Resend) — la clé ne quitte jamais le serveur | ❌ non |
 | `CONTACT_AUTO_REPLY` / `CONTACT_RATE_PER_*` | réglages optionnels de `lsv-contact` | ❌ non |
@@ -2128,7 +2288,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 1094 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 1268 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (78 assertions, **90 avec `ORIG`**) — non-régression
@@ -2137,14 +2297,14 @@ npm test        # 1094 assertions (6 suites, hors ORIG=… voir plus bas)
   volontairement supprimés (clé API, console, infos fournisseur) **et hors
   section « Compte » + page de connexion ajoutées** —
   `ORIG=/chemin/index.original.html npm test` ;
-- navigation sur les 14 onglets sans exception ;
+- navigation sur les 15 onglets sans exception ;
 - génération d'image simulée **sans aucune clé** : succès + échec, requête
   envoyée à la Gateway, `Authorization` = JWT anon LSV, aucun `sk-` ;
 - génération de vidéo simulée (création de tâche + polling) : succès ;
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (241 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (353 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -2197,13 +2357,32 @@ npm test        # 1094 assertions (6 suites, hors ORIG=… voir plus bas)
   annoncé par toast, parcours fichier historique intact — et **aucun `fetch`
   de l'URL côté client**.
 - **architecture modulaire** : `index.html` réduit à un squelette HTML
-  (~1 230 lignes au lieu de ~7 000) ; CSS en 6 fichiers `styles/`, JS en 8
+  (~1 470 lignes au lieu de ~7 000) ; CSS en 6 fichiers `styles/`, JS en 8
   modules `scripts/` chargés dans un ordre fixe ; `window.LSV` et toute l'API
   publique inchangés ; scans de sécurité étendus à tout le bundle ; §12 de
   `public.test.js` verrouille la structure (pas de `<style>` ni de gros script
   inline, 14 modules présents et ordonnés).
+- **disponibilité vidéo** (§11ter) : bandeau d'état rendu sans aucune requête
+  au chargement, sept états servis distinctement, saturation venue du client
+  non prise pour une mesure, aucun état « inconnu » présenté comme une panne.
+- **centre « Alternatives vidéo »** (§11quater) : cinq entrées exactement,
+  champs `i2v` / `filigrane` / `licence` bornés à `oui`, `non`, `non vérifié`,
+  date de vérification affichée, note d'usage lu hors ligne, dépliage sur un
+  refus réel **et jamais sur un échec de mesure**.
+- **modèle de chat intégré / Mistral** (§15) : deux options dont la valeur est
+  un index (aucun identifiant de modèle dans le DOM), choix persisté, valeur
+  inconnue retombant sur le modèle intégré, requête vers la passerelle portant
+  le modèle choisi, `/v1/providers` sans compte → aucune décision, clé absente
+  → option grisée « non configuré » + repli annoncé.
+- **studio de scénarios** (§16) : trois formats annoncés, sortie masquée avant
+  génération, aucune requête sans compte, consigne variant avec le format,
+  corps en JSON vers la passerelle, scènes rendues puis transférées au
+  Storyboard (aucune écriture sans projet actif).
+- **amélioration de prompt** (§17) : panneaux Avant / Après, original intact
+  dans les deux sens (ni réécrit, ni remplacé), résultat envoyable vers
+  l'image ou la vidéo, Enhancer d'origine inchangé.
 
-**`tests/gateway.test.mjs`** (220 assertions) — passerelle
+**`tests/gateway.test.mjs`** (286 assertions) — passerelle
 
 - routage (y compris préfixe `/functions/v1/lsv-gateway`), injection de la clé
   serveur, rejet de l'authorization client ;
@@ -2233,8 +2412,19 @@ npm test        # 1094 assertions (6 suites, hors ORIG=… voir plus bas)
   l'unité **en mémoire** — l'endroit exact d'où elle vient ; même garantie pour
   un visiteur non connecté, et `refund_quota` en échec désormais journalisé
   (`refund-rpc-status`) au lieu d'échouer en silence.
+- **disponibilité vidéo** (§28) : `GET /v1/video-availability` — sonde
+  `GET /v1/models` à coût 0 (aucun média), cache 60 s, saturation
+  `video_queue_full` mémorisée 120 s, sept états renvoyés distinctement,
+  401 sans compte, aucun détail amont dans la réponse.
+- **routage Mistral** (§29) : `requestsMistral` ne déclenche que sur
+  `/v1/chat*` **et** un modèle `mistral-*` (corps illisible → fournisseur
+  principal), base **et** clé changent ensemble, clé absente → 503 **avant**
+  tout prélèvement de quota, `GET /v1/providers` réservé aux comptes (401
+  sinon, 404 sur POST) qui ne dit que ce qu'elle sait sans jamais renvoyer de
+  valeur de clé, flux SSE relais tel quel, erreur amont sanitisée en 502 avec
+  statut amont structuré.
 
-**`tests/admin.test.js`** (158 assertions)
+**`tests/admin.test.js`** (179 assertions)
 
 - configuration absente / non authentifié → dashboard inaccessible ;
 - mauvais identifiants → accès refusé ;
@@ -2251,6 +2441,13 @@ npm test        # 1094 assertions (6 suites, hors ORIG=… voir plus bas)
   enregistrement des 3 en une seule écriture, persistance `app_settings`,
   compteur `n / 3`, valeurs masquées, retrait global, et journal d'audit
   **sans** la valeur des clés ;
+- **clé Mistral** (§2.28) : carte « Clé Mistral (chat IA) » avec son statut,
+  refus d'une clé trop courte (< 8 caractères), enregistrement sous
+  `provider_api_key_mistral` **sans toucher à la clé partagée**, valeur
+  masquée `••••4455`, rappel de `upgrade-mistral.sql` en cas d'échec de la
+  contrainte, retrait → état initial, journal d'audit sans la valeur, et
+  contrainte `app_settings_key_check` vérifiée à la fois dans `schema.sql`
+  et dans `upgrade-mistral.sql` (16 clés admises) ;
 - **page Utilisateurs** : nav + titre + table des comptes (`profiles`) avec nom,
   e-mail, inscription, dernière connexion, KPI (comptes, avec nom, déjà
   connectés), aucun secret affiché, actualisation sans erreur ;

@@ -335,6 +335,200 @@ const EnhancerView = {
     }
 };
 
+/* STUDIO DE SCÉNARIOS IA : un mode → une consigne, un JSON → des scènes
+   éditables dans le Storyboard. Aucun texte n'est interprété à la volée :
+   tout ce qui s'affiche vient des champs normalisés par ScenarioService. */
+const ScenarioView = {
+    mode: 'court',
+    _last: null,
+    bind() {
+        document.getElementById('scenario-input').addEventListener('input', () => UI.updateButtons());
+        document.querySelectorAll('#scenario-mode-grid .mode-tile').forEach(t => {
+            t.addEventListener('click', () => {
+                document.querySelectorAll('#scenario-mode-grid .mode-tile').forEach(x => x.classList.remove('selected'));
+                t.classList.add('selected');
+                this.mode = t.dataset.mode;
+                const mode = SCENARIO_MODES.find(m => m.id === this.mode);
+                if (mode) document.getElementById('scenario-mode-label').textContent = mode.name;
+            });
+        });
+        document.getElementById('scenario-generate').addEventListener('click', () => this.generate());
+        document.getElementById('scenario-copy').addEventListener('click', () => this._copy());
+        document.getElementById('scenario-to-storyboard').addEventListener('click', () => this.toStoryboard());
+    },
+    async generate() {
+        const idea = document.getElementById('scenario-input').value.trim();
+        if (!idea) return;
+        const btn = document.getElementById('scenario-generate');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="ms">hourglass_top</span> Écriture en cours…';
+        UI.setStatus('Scénario en cours…');
+        try {
+            const scenario = await ScenarioService.generate(idea, this.mode);
+            this._last = scenario;
+            this._render(scenario);
+            UI.showToast('Scénario prêt ✓', 'success');
+            HistoryService.add('scenario.generate', scenario.title + ' · ' + scenario.scenes.length + ' scènes');
+            LSVAnalytics.track('scenario_generated', { status: 'success', mode: this.mode, scenes: scenario.scenes.length });
+        } catch (e) {
+            DebugService.log('error', 'SCENARIO', e.message);
+            LSVAnalytics.track('scenario_generated', { status: 'error', mode: this.mode });
+            UI.showToast(Utils.friendlyError(e), 'error', 4000);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="ms">auto_awesome</span> Générer le scénario';
+            UI.setStatus(null);
+            UI.updateButtons();
+        }
+    },
+    _render(s) {
+        const mode = SCENARIO_MODES.find(m => m.id === s.format) || SCENARIO_MODES[0];
+        document.getElementById('scenario-out-title').textContent = s.title;
+        document.getElementById('scenario-mode-label').textContent = mode.name;
+        document.getElementById('scenario-logline').textContent = s.logline || '';
+        document.getElementById('scenario-scenes').innerHTML = s.scenes.map(sc =>
+            '<div class="scenario-scene">' +
+                '<div class="scenario-scene-head">' +
+                    '<div class="scenario-scene-num">' + sc.number + '</div>' +
+                    '<div class="scenario-scene-title">' + Utils.escapeHtml(sc.title) + '</div>' +
+                    (sc.act ? '<span class="scenario-act">' + Utils.escapeHtml(sc.act) + '</span>' : '') +
+                '</div>' +
+                (sc.description ? '<div class="scenario-scene-desc">' + Utils.escapeHtml(sc.description) + '</div>' : '') +
+                (sc.prompt ? '<div class="scenario-scene-prompt">' + Utils.escapeHtml(sc.prompt) + '</div>' : '') +
+            '</div>'
+        ).join('');
+        document.getElementById('scenario-output').classList.remove('hidden');
+    },
+    _text(s) {
+        const lines = [s.title];
+        if (s.logline) lines.push('', s.logline);
+        s.scenes.forEach(sc => {
+            lines.push('', sc.number + '. ' + sc.title + (sc.act ? ' (' + sc.act + ')' : ''));
+            if (sc.description) lines.push(sc.description);
+            if (sc.prompt) lines.push('Prompt : ' + sc.prompt);
+        });
+        return lines.join('\n');
+    },
+    _copy() {
+        if (!this._last) return;
+        const text = this._text(this._last);
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text).then(() => UI.showToast('Copié ✓', 'success'));
+        } else {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            UI.showToast('Copié ✓', 'success');
+        }
+    },
+    /* Chaque scénario devient une scène du projet courant : titre,
+       description et prompt repartent tels quels dans les champs éditables
+       du Storyboard. Sans projet actif, rien n'est écrit — on ouvre
+       l'onglet Storyboard pour que l'utilisateur en crée un. */
+    toStoryboard() {
+        if (!this._last) return;
+        if (!Runtime.currentProjectId) {
+            UI.showToast('Choisis d\'abord un projet dans Storyboard', 'warn');
+            UI.switchTab('storyboard');
+            return;
+        }
+        const p = ProjectService.get(Runtime.currentProjectId);
+        if (!p) {
+            UI.showToast('Projet introuvable', 'error');
+            return;
+        }
+        p.scenes = p.scenes || [];
+        this._last.scenes.forEach(sc => {
+            p.scenes.push({
+                id: Utils.uid('scene'),
+                number: p.scenes.length + 1,
+                title: sc.title,
+                description: sc.description,
+                prompt: sc.prompt,
+                status: 'pending'
+            });
+        });
+        ProjectService.update(p.id, { scenes: p.scenes });
+        const added = this._last.scenes.length;
+        UI.switchTab('storyboard');
+        UI.showToast(added + ' scènes ajoutées ✓', 'success');
+        LSVAnalytics.track('scenario_used', { target: 'storyboard', scenes: added, mode: this._last.format });
+    }
+};
+
+/* AMÉLIORATION DE PROMPT : on affiche le prompt d'origine intact à côté de
+   sa version améliorée. Rien n'est remplacé tout seul — le bouton
+   « Copier » porte le résultat, l'utilisateur décide ensuite. */
+const ImproveView = {
+    _last: null,
+    bind() {
+        document.getElementById('improve-input').addEventListener('input', () => UI.updateButtons());
+        document.getElementById('improve-generate').addEventListener('click', () => this.generate());
+        document.getElementById('improve-copy').addEventListener('click', () => {
+            if (!this._last) return;
+            const text = this._last.after;
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(() => UI.showToast('Copié ✓', 'success'));
+            } else {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                UI.showToast('Copié ✓', 'success');
+            }
+        });
+        document.getElementById('improve-use-image').addEventListener('click', () => this._use('image'));
+        document.getElementById('improve-use-video').addEventListener('click', () => this._use('video'));
+    },
+    _use(target) {
+        if (!this._last) return;
+        const p = this._last.after;
+        if (target === 'image') {
+            UIState.imagePrompt = p;
+            document.getElementById('image-prompt').value = p;
+            UI.switchTab('image');
+        } else {
+            UIState.videoPrompt = p;
+            document.getElementById('video-prompt').value = p;
+            UI.switchTab('video');
+        }
+        UI.updateButtons();
+        UI.showToast(target === 'image' ? 'Utilisé pour image' : 'Utilisé pour vidéo', 'success');
+    },
+    async generate() {
+        const prompt = document.getElementById('improve-input').value.trim();
+        if (!prompt) return;
+        const btn = document.getElementById('improve-generate');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="ms">hourglass_top</span> Analyse en cours…';
+        UI.setStatus('Amélioration en cours…');
+        try {
+            const after = await PromptImproveService.improve(prompt);
+            this._last = { before: prompt, after: after };
+            document.getElementById('improve-before').textContent = prompt;
+            document.getElementById('improve-after').textContent = after;
+            document.getElementById('improve-output').classList.add('visible');
+            UI.showToast('Prompt amélioré ✓', 'success');
+            HistoryService.add('prompt.improve', 'Prompt amélioré (avant / après)');
+            LSVAnalytics.track('prompt_improved', { status: 'success' });
+        } catch (e) {
+            DebugService.log('error', 'IMPROVE', e.message);
+            LSVAnalytics.track('prompt_improved', { status: 'error' });
+            UI.showToast(Utils.friendlyError(e), 'error', 4000);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="ms">auto_fix_high</span> Améliorer ce prompt';
+            UI.setStatus(null);
+            UI.updateButtons();
+        }
+    }
+};
+
 const StoryboardView = {
     refresh() {
         const info = document.getElementById('storyboard-project-info');

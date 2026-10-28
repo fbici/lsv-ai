@@ -378,6 +378,33 @@
                     </div>
                 </div>
                 <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="ms">hub</span> Clé Mistral (chat IA)</div>
+                        <span class="badge" id="mistral-key-count">—</span>
+                    </div>
+                    <div class="info-block">
+                        Utilisée <strong>uniquement</strong> quand le modèle choisi dans le
+                        chat est un modèle Mistral : la passerelle part alors vers
+                        <strong>api.mistral.ai</strong> avec cette clé-là.
+                        <strong>Aucun repli</strong> sur la clé partagée ni sur la clé Agnes —
+                        les deux fournisseurs sont distincts. Sans clé, l'option Mistral est
+                        simplement grisée côté client.
+                        <br>Migration à exécuter une seule fois dans le SQL Editor :
+                        <strong>supabase/upgrade-mistral.sql</strong>. Stockée
+                        <strong>côté serveur</strong> uniquement, jamais renvoyée au
+                        navigateur ; effective sous ~30 s.
+                    </div>
+                    <div class="kv" id="mistral-key-status"></div>
+                    <label class="field" style="margin-top:1rem">
+                        <span class="field-label">Clé Mistral</span>
+                        <input type="password" id="mistral-key-input" autocomplete="off" spellcheck="false" placeholder="colle ta clé Mistral ici">
+                    </label>
+                    <div class="key-actions">
+                        <button class="btn btn-primary" id="mistral-key-save" type="button"><span class="ms">save</span> Enregistrer la clé</button>
+                        <button class="btn btn-ghost" id="mistral-key-clear" type="button"><span class="ms">delete</span> Retirer la clé</button>
+                    </div>
+                </div>
+                <div class="card">
                     <div class="card-header"><div class="card-title"><span class="ms">vpn_key</span> Clé partagée (secours)</div></div>
                     <div class="info-block">
                         Clé utilisée par <strong>tous les outils</strong> dont la clé dédiée est

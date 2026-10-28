@@ -142,6 +142,11 @@ const Handlers = {
         } catch (e) {
             DebugService.log('error', 'VIDÉO', e.message);
             LSVAnalytics.track('generation_error', { feature: 'video', detail: e.message });
+            /* Refus réel du fournisseur (503 file pleine) : le bandeau passe
+               en « saturée » immédiatement, sans attendre une sonde. Le
+               prompt et les images de référence ne sont PAS touchés — c'est
+               ce qui permet de réessayer sans tout ressaisir. */
+            if (e.code === 'video_queue_full') VideoAvailabilityService.markSaturated(120);
             UI.showToast(Utils.friendlyError(e), 'error', 4000);
             UI.setStatus('Erreur');
             await Utils.sleep(2500);
@@ -411,6 +416,13 @@ function init() {
     UI.applyTheme(StorageService.getTheme());
     UI.applySidebarState(StorageService.getSidebarCollapsed());
     UI.applyAutoDownload(StorageService.getAutoDownload());
+    /* Affiche DÉJÀ le dernier état connu du service vidéo (sans sonde) :
+       l'onglet Vidéo n'affiche donc jamais un écran vide en ouvrant. */
+    VideoAvailabilityService.render();
+    VideoAlternatives.render();
+    /* Sélecteur de modèle du chat + état des fournisseurs configurés
+       (grise une option sans clé, sans jamais parler de « panne »). */
+    ChatService.init();
 
     /* Délégation UNIQUE : les cartes de résultat sont reconstruites à chaque
        rafraîchissement, un écouteur posé élément par élément serait donc
@@ -592,6 +604,10 @@ function init() {
     // ENHANCER
     EnhancerView.bind();
 
+    // STUDIO DE SCÉNARIOS + AMÉLIORATION DE PROMPT
+    ScenarioView.bind();
+    ImproveView.bind();
+
     // PROJECTS
     document.getElementById('new-project-btn').addEventListener('click', () => Handlers.createNewProject());
 
@@ -654,6 +670,9 @@ window.LSV = {
     runtime: Runtime,
     uiState: UIState,
     ui: UI,
+    /* Centres de ressources affichés dans l'onglet Vidéo (liens externes). */
+    alternatives: VIDEO_ALTERNATIVES,
+    altChecked: ALT_CHECKED,
     services: {
         storage: StorageService,
         projects: ProjectService,
@@ -663,6 +682,8 @@ window.LSV = {
         chat: ChatService,
         locks: LockService,
         enhancer: EnhancerService,
+        scenarios: ScenarioService,
+        promptImprove: PromptImproveService,
         debug: DebugService,
         timing: TimingService,
         wakelock: WakeLockService,
@@ -672,6 +693,7 @@ window.LSV = {
         agnes: AgnesProvider,
         image: ImageService,
         video: VideoService,
+        availability: VideoAvailabilityService,
         file: FileService,
         prompt: PromptService
     },
@@ -685,6 +707,8 @@ window.LSV = {
         advanced: AdvancedView,
         rightPanel: RightPanel,
         enhancer: EnhancerView,
+        scenarios: ScenarioView,
+        improve: ImproveView,
         storyboard: StoryboardView,
         workflows: WorkflowsView,
         locks: LocksView,

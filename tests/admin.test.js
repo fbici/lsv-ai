@@ -34,6 +34,18 @@ const SETTINGS = {};
     SETTINGS[k] = { key: k, value: v, updated_at: new Date(Date.now() - 86400000).toISOString() };
 });
 
+/* Clés admises par la contrainte app_settings_key_check de supabase/schema.sql.
+   Le simulateur ci-dessous REFUSE toute clé non listée, comme le ferait
+   Postgres : une clé ajoutée côté code mais oubliée dans le schéma (donc
+   aussi dans la migration upgrade-*.sql) casse l'enregistrement en base. */
+const SCHEMA_KEYS = (() => {
+    try {
+        const sql = fs.readFileSync(path.join(PROJECT, 'supabase', 'schema.sql'), 'utf8');
+        const m = /constraint app_settings_key_check check \(key in \(([\s\S]*?)\)\)/.exec(sql);
+        return m ? (m[1].match(/'[^']+'/g) || []).map(s => s.slice(1, -1)) : [];
+    } catch (e) { return []; }
+})();
+
 // Table public.usage_counters (consommation du jour par compte)
 const USAGE = [
     { user_id: 'u1', kind: 'image', units: 5, updated_at: new Date(Date.now() - 600000).toISOString() },
@@ -169,9 +181,15 @@ async function login(dom, email, password) {
                         const store = window.__SETTINGS || {};
                         if (b._upsert) {
                             const rows = Array.isArray(b._upsert) ? b._upsert : [b._upsert];
-                            rows.forEach(r => { store[r.key] = r; });
-                            window.__SETTINGS = store;
-                            result = { data: rows, error: null };
+                            const keys = window.__SCHEMA_KEYS || [];
+                            const bad = rows.filter(r => keys.indexOf(r.key) === -1);
+                            if (bad.length) {
+                                result = { data: null, error: { message: 'new row for relation "app_settings" violates check constraint "app_settings_key_check"' } };
+                            } else {
+                                rows.forEach(r => { store[r.key] = r; });
+                                window.__SETTINGS = store;
+                                result = { data: rows, error: null };
+                            }
                         } else if (b._isDelete) {
                             if (b._eq && b._eq.k === 'key') delete store[b._eq.v];
                             window.__SETTINGS = store;
@@ -249,7 +267,8 @@ async function login(dom, email, password) {
                 ';window.__SETTINGS=' + JSON.stringify(SETTINGS) + ';window.__EVENTS=' + JSON.stringify(EVENTS) +
                 ';window.__PROFILES=' + JSON.stringify(PROFILES) +
                 ';window.__LOGS=' + JSON.stringify(LOGS) +
-                ';window.__USAGE=' + JSON.stringify(USAGE) + ';window.supabase=(' + fake.toString() + ')();</script>')
+                ';window.__USAGE=' + JSON.stringify(USAGE) +
+                ';window.__SCHEMA_KEYS=' + JSON.stringify(SCHEMA_KEYS) + ';window.supabase=(' + fake.toString() + ')();</script>')
             .replace('<script src="../shared/config.js"></script>', '<script>window.LSV_CONFIG=' + JSON.stringify(config) + ';</script>')
             .replace('<script src="./admin.js"></script>', '<script>' + fs.readFileSync(path.join(PROJECT, 'admin/admin.js'), 'utf8') + '</script>');
     }
@@ -512,6 +531,73 @@ async function login(dom, email, password) {
     check('3 lignes supprimées de la base',
         !wt.__SETTINGS.provider_api_key_image && !wt.__SETTINGS.provider_api_key_video && !wt.__SETTINGS.provider_api_key_chat);
     check('aucune erreur console (clés outils)', t.errors.length === 0, t.errors.join('|'));
+
+    console.log('\n=== L3. CLÉ MISTRAL (CHAT IA) ===');
+    /* Fournisseur distinct : la clé n'a AUCUN repli sur la clé partagée.
+       Elle exige aussi que la contrainte app_settings_key_check l'admette —
+       d'où supabase/upgrade-mistral.sql. */
+    t = await load(inject(src, CONFIG_OK));
+    const wm = t.dom.window;
+    await login(t, GOOD_EMAIL, GOOD_PASSWORD);
+    await sleep(500);
+    wm.document.querySelector('.nav-item[data-page="settings"]').dispatchEvent(new wm.Event('click', { bubbles: true }));
+    await sleep(350);
+    check('carte « Clé Mistral » présente', !!wm.document.getElementById('mistral-key-input'));
+    check('boutons enregistrer / retirer',
+        !!wm.document.getElementById('mistral-key-save') && !!wm.document.getElementById('mistral-key-clear'));
+    const mistralStatus = () => wm.document.getElementById('mistral-key-status').textContent.replace(/\s+/g, ' ');
+    const settingsText = () => wm.document.getElementById('page-settings').textContent.replace(/\s+/g, ' ');
+    check('statut initial : non configurée', /non configurée/i.test(mistralStatus()), mistralStatus().slice(0, 120));
+    check('effet annoncé : option grisée côté client', /grisée/.test(mistralStatus()), mistralStatus().slice(0, 160));
+    check('aucun repli annoncé sur la clé partagée', /Aucun repli/i.test(settingsText()), settingsText().slice(0, 200));
+    check('migration rappelée dans la carte', /upgrade-mistral\.sql/.test(settingsText()));
+
+    /* Les deux fichiers SQL doivent admettre la clé, sinon l'écriture échoue
+       en base (contrainte) même si l'interface l'envoie. */
+    const schemaSql = fs.readFileSync(path.join(PROJECT, 'supabase/schema.sql'), 'utf8');
+    const upgradeSql = fs.readFileSync(path.join(PROJECT, 'supabase/upgrade-mistral.sql'), 'utf8');
+    check('schéma neuf admet la clé Mistral', schemaSql.indexOf("'provider_api_key_mistral'") !== -1);
+    check('migration upgrade-mistral.sql fournie et idempotente',
+        upgradeSql.indexOf("'provider_api_key_mistral'") !== -1 &&
+        /drop constraint if exists app_settings_key_check/.test(upgradeSql) &&
+        /alter table public\.app_settings/.test(upgradeSql));
+    check('contrainte du schéma déjà enrichie (16 clés)', SCHEMA_KEYS.length === 16 &&
+        SCHEMA_KEYS.indexOf('provider_api_key_mistral') !== -1, SCHEMA_KEYS.length);
+
+    wm.document.getElementById('mistral-key-input').value = 'court';
+    wm.document.getElementById('mistral-key-save').dispatchEvent(new wm.Event('click', { bubbles: true }));
+    await sleep(120);
+    check('clé Mistral trop courte refusée', /8 caractères/.test(wm.document.getElementById('toast-text').textContent),
+        wm.document.getElementById('toast-text').textContent);
+    check('rien enregistré après refus', !wm.__SETTINGS.provider_api_key_mistral);
+
+    wm.document.getElementById('mistral-key-input').value = 'mistral-cle-001122334455';
+    wm.document.getElementById('mistral-key-save').dispatchEvent(new wm.Event('click', { bubbles: true }));
+    await sleep(300);
+    check('clé Mistral enregistrée (confirmation)',
+        /enregistrée/i.test(wm.document.getElementById('toast-text').textContent),
+        wm.document.getElementById('toast-text').textContent);
+    check('statut = configurée', /configurée/i.test(mistralStatus()), mistralStatus().slice(0, 140));
+    check('clé masquée dans le statut',
+        !/mistral-cle-001122334455/.test(mistralStatus()) && /••••/.test(mistralStatus()), mistralStatus().slice(0, 140));
+    check('badge de la carte à jour', wm.document.getElementById('mistral-key-count').textContent === 'configurée',
+        wm.document.getElementById('mistral-key-count').textContent);
+    check('persistance en base sous la clé dédiée',
+        !!(wm.__SETTINGS && wm.__SETTINGS.provider_api_key_mistral) &&
+        wm.__SETTINGS.provider_api_key_mistral.value === 'mistral-cle-001122334455',
+        Object.keys(wm.__SETTINGS || {}).join(','));
+    check('clé partagée NON touchée (aucun repli)',
+        !wm.__SETTINGS.provider_api_key, Object.keys(wm.__SETTINGS || {}).join(','));
+    check('journal sans la valeur de clé',
+        (wm.__LOGS || []).some(l => l.action === 'cle_mistral_modifiee') &&
+        JSON.stringify(wm.__LOGS || []).indexOf('mistral-cle-001122334455') === -1,
+        JSON.stringify((wm.__LOGS || [])[0] || {}).slice(0, 120));
+
+    wm.document.getElementById('mistral-key-clear').dispatchEvent(new wm.Event('click', { bubbles: true }));
+    await sleep(300);
+    check('clé retirée → statut initial', /non configurée/i.test(mistralStatus()), mistralStatus().slice(0, 140));
+    check('ligne supprimée de la base', !wm.__SETTINGS.provider_api_key_mistral);
+    check('aucune erreur console (clé Mistral)', t.errors.length === 0, t.errors.join('|'));
 
     console.log('\n=== M. PAGE UTILISATEURS ===');
     t = await load(inject(src, CONFIG_OK));

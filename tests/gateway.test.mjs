@@ -6,7 +6,7 @@
    sanitisation des erreurs amont, clé absente.
    Usage : node tests/gateway.test.mjs
    ═══════════════════════════════════════════════════════════════════════════ */
-import { createHandler, createMemoryStore, classifyRequest, subPath, imageUnits, requestUnits, tokenRole, resolveMediaRef, resolveVideoRefs, newRequestId, classifyValidation, mediaAllowed, mediaFilename } from '../supabase/functions/lsv-gateway/core.mjs';
+import { createHandler, createMemoryStore, classifyRequest, requestsMistral, subPath, imageUnits, requestUnits, tokenRole, resolveMediaRef, resolveVideoRefs, newRequestId, classifyValidation, mediaAllowed, mediaFilename } from '../supabase/functions/lsv-gateway/core.mjs';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -1256,6 +1256,280 @@ async function run() {
     });
     const mRedir = await hRedir(GETM(CDN_OK, { 'authorization': 'Bearer ' + ADA.jwt }));
     check('redirection hors liste blanche refusée = 400', mRedir.status === 400, mRedir.status);
+
+    console.log('\n=== 28. DISPONIBILITÉ DU SERVICE VIDÉO (/v1/video-availability) ===');
+    /* Agnes n'a AUCUN endpoint d'état : la passerelle sonde GET /v1/models
+       (0 unité) et croise avec la dernière saturation réellement observée
+       sur POST /v1/videos. On vérifie ici que la route dit la vérité —
+       et rien de plus — puis qu'elle ne consomme ni quota ni secret. */
+    let tAv = 1700000000000;
+    let avVideoFail = false;
+    const avModels = [];
+    const avEnv = {
+        AGNES_API_KEY: SECRET,
+        ALLOWED_ORIGINS: 'https://fbici.github.io',
+        RATE_LIMIT_PER_MIN: '1000',
+        IMAGE_LIMIT: '0', VIDEO_LIMIT: '0', CHAT_LIMIT: '0', MOTION_LIMIT: '0'
+    };
+    const handleAv = createHandler({
+        env: avEnv, store: createMemoryStore(), now: () => tAv, log: () => {},
+        fetchImpl: async (url, init) => {
+            const u = String(url);
+            const method = (init && init.method) || 'GET';
+            if (u.indexOf('/v1/models') !== -1) {
+                avModels.push({ url: u, init: init });
+                return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+            }
+            if (method === 'POST' && u.indexOf('/v1/videos') !== -1 && avVideoFail) {
+                return new Response(JSON.stringify({ code: 'video_queue_full', message: 'queue full' }),
+                    { status: 503, headers: { 'content-type': 'application/json' } });
+            }
+            return new Response(JSON.stringify({ video_id: 'v-test' }), { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+    });
+    const AVGET = () => makeReq(GW + '/v1/video-availability', { method: 'GET', headers: { 'origin': 'https://fbici.github.io' } });
+    const VPOST = () => makeReq(GW + '/v1/videos', {
+        method: 'POST',
+        headers: { 'origin': 'https://fbici.github.io', 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'agnes-video-2.5-flash', mode: 'text', prompt: 'un test' })
+    });
+
+    /* a) État normal : fournisseur joignable, aucune saturation observée. */
+    const av1r = await handleAv(AVGET());
+    const av1 = await av1r.json();
+    check('route accessible = 200', av1r.status === 200, av1r.status);
+    check('état « ok » seulement si joignable et non saturée', av1.available === true && av1.status === 'ok', av1.status);
+    check('sonde = catalogue modèles', av1.probe === 'models_ok' && av1.provider === 'agnes', av1.probe);
+    check('durée de vie du cache annoncée (60 s)', av1.ttl === 60, av1.ttl);
+    check('pas de retry_after tant que rien n est saturé', av1.retry_after === 0, av1.retry_after);
+    check('la sonde est GET /v1/models exactement', avModels.length === 1 && avModels[0].url === UP + '/v1/models' && avModels[0].init.method === 'GET',
+        avModels[0] && avModels[0].url);
+    check('la sonde porte la clé du serveur', avModels[0] && avModels[0].init.headers.Authorization === 'Bearer ' + SECRET,
+        avModels[0] && avModels[0].init.headers.Authorization);
+    check('aucune unité de quota prélevée par la sonde', av1r.headers.get('x-lsv-quota-image') === null, av1r.headers.get('x-lsv-quota-image'));
+    const av1Json = JSON.stringify(av1);
+    check('aucun secret ni hôte amont dans la réponse', !av1Json.includes(SECRET) && !/apihub|agnes-ai\.com/.test(av1Json));
+
+    /* b) Cache serveur : la sonde ne se répète pas à chaque affichage. */
+    const av2 = await (await handleAv(AVGET())).json();
+    check('seconde lecture servie du cache', av2.cached === true && avModels.length === 1, avModels.length);
+    tAv += 61000;
+    await handleAv(AVGET());
+    check('cache expiré après 60 s → nouvelle sonde', avModels.length === 2, avModels.length);
+
+    /* c) Saturation observée sur une VRAIE tentative de génération. */
+    avVideoFail = true;
+    const avQ503 = await handleAv(VPOST());
+    const avQ503Code = avQ503.headers.get('x-lsv-upstream-code');
+    check('refus vidéo relayé avec son code structuré', avQ503.status === 503 && avQ503Code === 'video_queue_full', avQ503.status + '/' + avQ503Code);
+    const avSat = await (await handleAv(AVGET())).json();
+    check('la saturation rend « queue_full » (pas « ok »)', avSat.status === 'queue_full' && avSat.available === false, avSat.status);
+    check('retry_after borné et exprimé en secondes', avSat.retry_after > 0 && avSat.retry_after <= 120, avSat.retry_after);
+
+    /* d) Un POST vidéo accepté efface la saturation mémorisée. */
+    avVideoFail = false;
+    await handleAv(VPOST());
+    const avBack = await (await handleAv(AVGET())).json();
+    check('POST accepté → retour à « ok »', avBack.status === 'ok' && avBack.available === true, avBack.status);
+
+    /* e) Diagnostic honnête quand la sonde elle-même échoue. */
+    const handleAv401 = createHandler({
+        env: avEnv, store: createMemoryStore(), now: () => tAv, log: () => {},
+        fetchImpl: async () => new Response('{}', { status: 401, headers: { 'content-type': 'application/json' } })
+    });
+    const av401 = await (await handleAv401(AVGET())).json();
+    check('clé refusée → auth_error, jamais « ok »', av401.status === 'auth_error' && av401.available === false && av401.probe === 'models_http_401', av401.status);
+    const handleAvNet28 = createHandler({
+        env: avEnv, store: createMemoryStore(), now: () => tAv, log: () => {},
+        fetchImpl: async () => { throw new Error('reseau'); }
+    });
+    const avNet = await (await handleAvNet28(AVGET())).json();
+    check('réseau en échec → amont_injoignable', avNet.status === 'amont_injoignable' && avNet.available === false && avNet.probe === 'reseau', avNet.status);
+    let noKeyCalls = 0;
+    const handleAvNoKey28 = createHandler({
+        env: { AGNES_API_KEY: '', ALLOWED_ORIGINS: 'https://fbici.github.io', RATE_LIMIT_PER_MIN: '1000' },
+        store: createMemoryStore(), now: () => tAv, log: () => {},
+        fetchImpl: async () => { noKeyCalls++; throw new Error('ne doit pas etre appele'); }
+    });
+    const avNoKey = await (await handleAvNoKey28(AVGET())).json();
+    check('sans clé : « unknown » + probe no_key (pas d incident inventé)',
+        avNoKey.status === 'unknown' && avNoKey.probe === 'no_key' && avNoKey.available === false, avNoKey.status + '/' + avNoKey.probe);
+    check('sans clé : aucune requête amont lancée', noKeyCalls === 0, noKeyCalls);
+
+    /* f) Une seule sonde à la fois : POST refusé sur la route d état. */
+    const avPost = await handleAv(makeReq(GW + '/v1/video-availability', {
+        method: 'POST', headers: { 'origin': 'https://fbici.github.io', 'content-type': 'application/json' }, body: '{}'
+    }));
+    check('POST sur la route d état = 404 (GET seul)', avPost.status === 404, avPost.status);
+
+    console.log('\n=== 29. ROUTAGE MISTRAL DU CHAT ===');
+    /* Le chat accepte un modèle Mistral : la passerelle change alors de base
+       ET de clé, toujours ensemble. Une clé envoyée chez le mauvais
+       fournisseur vaut 401 chez l'autre — indiagnosticable de l'extérieur. */
+
+    /* a) La décision porte sur le MODÈLE déclaré, jamais sur le chemin seul. */
+    check('modèle mistral sur /v1/chat → Mistral',
+        requestsMistral('/v1/chat/completions', JSON.stringify({ model: 'mistral-small-2603' })) === true);
+    check('modèle Agnes → jamais Mistral',
+        requestsMistral('/v1/chat/completions', JSON.stringify({ model: 'agnes-2.5-flash' })) === false);
+    check('chemin non-chat → jamais Mistral',
+        requestsMistral('/v1/videos', JSON.stringify({ model: 'mistral-small-2603' })) === false);
+    check('modèle sans tiret → jamais Mistral',
+        requestsMistral('/v1/chat/completions', JSON.stringify({ model: 'mistralx' })) === false);
+    check('corps vide ou illisible → Agnes (défaut historique)',
+        requestsMistral('/v1/chat/completions', '') === false &&
+        requestsMistral('/v1/chat/completions', 'pas-du-json') === false);
+
+    /* b) Relais effectif : base + clé changent ENSEMBLE. */
+    const MISTRAL_SECRET = 'mistral-secret-ABC';
+    const up29 = [];
+    let stream29 = false;
+    const handle29 = createHandler({
+        env: {
+            AGNES_API_KEY: SECRET, MISTRAL_API_KEY: MISTRAL_SECRET,
+            ALLOWED_ORIGINS: 'https://fbici.github.io', RATE_LIMIT_PER_MIN: '1000',
+            IMAGE_LIMIT: '0', VIDEO_LIMIT: '0', CHAT_LIMIT: '0', MOTION_LIMIT: '0'
+        },
+        store: createMemoryStore(), now: () => 1700000000000, log: () => {},
+        fetchImpl: async (url, init) => {
+            up29.push({ url: String(url), init });
+            return new Response(
+                stream29 ? 'data: {"choices":[{"delta":{"content":"salut"}}]}\n\ndata: [DONE]\n\n' : '{"choices":[]}',
+                { status: 200, headers: { 'content-type': stream29 ? 'text/event-stream' : 'application/json' } });
+        }
+    });
+    const CHAT = (model, jwt) => makeReq(GW + '/v1/chat/completions', {
+        method: 'POST',
+        headers: Object.assign({
+            'origin': 'https://fbici.github.io', 'content-type': 'application/json',
+            'accept': 'text/event-stream'
+        }, jwt ? { authorization: 'Bearer ' + jwt } : {}),
+        body: JSON.stringify({ model: model, messages: [{ role: 'user', content: 'bonjour' }], stream: true })
+    });
+
+    stream29 = true;
+    const m29 = await handle29(CHAT('mistral-small-2603'));
+    check('modèle Mistral relayé sur api.mistral.ai',
+        up29[0] && up29[0].url === 'https://api.mistral.ai/v1/chat/completions', up29[0] && up29[0].url);
+    check('la CLÉ Mistral part avec le modèle Mistral',
+        up29[0] && up29[0].init.headers.Authorization === 'Bearer ' + MISTRAL_SECRET,
+        up29[0] && up29[0].init.headers.Authorization);
+    check('corps transmis intact (modèle + messages + stream)',
+        JSON.parse(up29[0].init.body).model === 'mistral-small-2603' &&
+        JSON.parse(up29[0].init.body).stream === true &&
+        JSON.parse(up29[0].init.body).messages[0].content === 'bonjour', m29.status);
+    check('réponse SSE relais avec son content-type',
+        m29.status === 200 && m29.headers.get('content-type') === 'text/event-stream', m29.headers.get('content-type'));
+
+    const m29b = await handle29(CHAT('agnes-2.5-flash'));
+    check('modèle Agnes reste sur Agnes',
+        up29[1] && up29[1].url === UP + '/v1/chat/completions', up29[1] && up29[1].url);
+    check('clé Agnes Agnes / clé Mistral Mistral (jamais croisées)',
+        up29[1] && up29[1].init.headers.Authorization === 'Bearer ' + SECRET,
+        up29[1] && up29[1].init.headers.Authorization);
+
+    /* c) Sans clé Mistral configurée : 503 AVANT toute requête amont et
+           AVANT tout prélèvement de quota. */
+    const b6429 = o => Buffer.from(JSON.stringify(o)).toString('base64')
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const ADA29 = { id: '22222222-2222-4222-8222-222222222222', email: 'ada@lsv.ai' };
+    ADA29.jwt = 'hdr.' + b6429({ sub: ADA29.id, role: 'authenticated', email: ADA29.email }) + '.sig';
+    function harness29(settings) {
+        const db = makeDb(settings);
+        let up = 0, consume = 0;
+        let tt = 1700000000000;
+        const h = createHandler({
+            env: {
+                AGNES_API_KEY: SECRET, SUPABASE_URL: 'https://ref.supabase.co',
+                SUPABASE_SERVICE_ROLE_KEY: 'svc-key-0123456789',
+                ALLOWED_ORIGINS: 'https://fbici.github.io', RATE_LIMIT_PER_MIN: '1000',
+                IMAGE_LIMIT: '0', VIDEO_LIMIT: '0', CHAT_LIMIT: '5', MOTION_LIMIT: '0'
+            },
+            store: createMemoryStore(), now: () => tt, log: () => {},
+            fetchImpl: async (url, init) => {
+                const u = String(url);
+                if (u.includes('/rest/v1/app_settings')) {
+                    return new Response(JSON.stringify(Object.keys(db.settings).map(k => ({ key: k, value: db.settings[k] }))),
+                        { status: 200, headers: { 'content-type': 'application/json' } });
+                }
+                if (u.includes('/auth/v1/user')) {
+                    const auth = (init && init.headers && init.headers.Authorization) || '';
+                    if (auth === 'Bearer ' + ADA29.jwt) {
+                        return new Response(JSON.stringify({ id: ADA29.id, email: ADA29.email }),
+                            { status: 200, headers: { 'content-type': 'application/json' } });
+                    }
+                    return new Response('{"msg":"invalid token"}', { status: 401, headers: { 'content-type': 'application/json' } });
+                }
+                if (u.includes('/rest/v1/rpc/consume_quota')) {
+                    consume++;
+                    const b = JSON.parse(init.body);
+                    return new Response(JSON.stringify(db.consume(b.p_user, b.p_email, b.p_kind, b.p_units, b.p_global, tt)),
+                        { status: 200, headers: { 'content-type': 'application/json' } });
+                }
+                if (u.includes('/rest/v1/rpc/refund_quota')) {
+                    const b = JSON.parse(init.body);
+                    db.refund(b.p_user, b.p_kind, b.p_units, tt);
+                    return new Response('null', { status: 200, headers: { 'content-type': 'application/json' } });
+                }
+                if (u.includes('/rest/v1/rpc/get_quota')) {
+                    return new Response(JSON.stringify({ enabled: true, suspended: false, limits: {}, used: {}, remaining: {} }),
+                        { status: 200, headers: { 'content-type': 'application/json' } });
+                }
+                up++;
+                return new Response('{"choices":[]}', { status: 200, headers: { 'content-type': 'application/json' } });
+            }
+        });
+        return { handle: h, stats: () => ({ up, consume }), db, advance: ms => { tt += ms; } };
+    }
+
+    const noMk = harness29({ quota_chat_daily: '5' });
+    const nk29 = await noMk.handle(CHAT('mistral-small-2603', ADA29.jwt));
+    check('sans clé Mistral → 503 « service indisponible »',
+        nk29.status === 503 && /indisponible/.test((await nk29.json()).error.message), nk29.status);
+    check('aucune requête amont lancée sans clé', noMk.stats().up === 0, noMk.stats().up);
+    check('aucun quota prélevé pour un fournisseur injoignable',
+        noMk.stats().consume === 0 && Object.keys(noMk.db.counters).length === 0, noMk.stats().consume);
+
+    /* d) État des fournisseurs configurés (le front désactive Mistral s'il
+           manque) : présence de clé, JAMAIS santé du service. */
+    const provAnon = await noMk.handle(makeReq(GW + '/v1/providers', { method: 'GET', headers: { origin: 'https://fbici.github.io' } }));
+    check('/v1/providers sans compte = 401', provAnon.status === 401, provAnon.status);
+    const provPost = await noMk.handle(makeReq(GW + '/v1/providers', { method: 'POST', headers: { origin: 'https://fbici.github.io' } }));
+    check('/v1/providers en POST = 404 (GET seul)', provPost.status === 404, provPost.status);
+    const provNoMistral = await (await noMk.handle(makeReq(GW + '/v1/providers', {
+        method: 'GET', headers: { origin: 'https://fbici.github.io', authorization: 'Bearer ' + ADA29.jwt }
+    }))).json();
+    check('sans clé Mistral : mistral=false, agnes=true (non configuré, pas en panne)',
+        provNoMistral.chat && provNoMistral.chat.mistral === false && provNoMistral.chat.agnes === true,
+        JSON.stringify(provNoMistral.chat));
+
+    const withMk = harness29({ quota_chat_daily: '5', provider_api_key_mistral: 'mistral-cle-XYZ-en-base' });
+    const prov29 = await (await withMk.handle(makeReq(GW + '/v1/providers', {
+        method: 'GET', headers: { origin: 'https://fbici.github.io', authorization: 'Bearer ' + ADA29.jwt }
+    }))).json();
+    check('clé Mistral en base : mistral=true', prov29.chat && prov29.chat.mistral === true && prov29.chat.agnes === true,
+        JSON.stringify(prov29.chat));
+    check('aucune clé ne transite dans la réponse',
+        JSON.stringify(prov29).indexOf('XYZ-en-base') === -1 && JSON.stringify(prov29).indexOf(SECRET) === -1);
+
+    /* e) Une erreur amont Mistral reste sanitisée comme toutes les autres. */
+    const handleErr29 = createHandler({
+        env: {
+            AGNES_API_KEY: SECRET, MISTRAL_API_KEY: MISTRAL_SECRET,
+            ALLOWED_ORIGINS: 'https://fbici.github.io', RATE_LIMIT_PER_MIN: '1000',
+            IMAGE_LIMIT: '0', VIDEO_LIMIT: '0', CHAT_LIMIT: '0', MOTION_LIMIT: '0'
+        },
+        store: createMemoryStore(), now: () => 1700000000000, log: () => {},
+        fetchImpl: async () => new Response(JSON.stringify({ detail: 'Incorrect API key provided: mistral-secret-ABC' }),
+            { status: 401, headers: { 'content-type': 'application/json' } })
+    });
+    const er29 = await handleErr29(CHAT('mistral-small-2603'));
+    const er29b = await er29.json();
+    check('erreur amont Mistral → message générique (502)',
+        er29.status === 502 && /Impossible de g/.test(er29b.error.message) &&
+        !/mistral|API key|secret/i.test(er29b.error.message), er29b.error.message.slice(0, 60));
+    check('le vrai statut amont reste lisible côté client',
+        er29.headers.get('x-lsv-upstream-status') === '401', er29.headers.get('x-lsv-upstream-status'));
 
     const failed = results.filter(r => !r.ok);
     console.log('\n════════════════════════════════');

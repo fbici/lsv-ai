@@ -1,4 +1,78 @@
 const ChatService = {
+    /* ── Modèle utilisé ─────────────────────────────────────────────────────
+       Le choix vit dans le stockage local et retombe TOUJOURS sur le modèle
+       intégré : une valeur inconnue (modèle retiré entre deux versions) n'est
+       jamais envoyée telle quelle au fournisseur. Le modèle déclaré ici est
+       celui que la passerelle lit pour choisir sa destination. */
+    model() {
+        let saved = '';
+        try { saved = String(localStorage.getItem(STORAGE_KEYS.CHAT_MODEL) || ''); } catch (e) { saved = ''; }
+        const known = CONFIG.CHAT_MODELS.find(m => m.id === saved);
+        return known ? known.id : CONFIG.MODEL_CHAT;
+    },
+    setModel(id) {
+        const known = CONFIG.CHAT_MODELS.find(m => m.id === id);
+        if (!known) return this.model();
+        try { localStorage.setItem(STORAGE_KEYS.CHAT_MODEL, known.id); } catch (e) {}
+        return known.id;
+    },
+    /* Rend le sélecteur : la VALEUR d'une option est son INDEX dans la
+       liste — jamais l'identifiant du modèle, qui contiendrait le nom d'un
+       fournisseur dans le DOM public. L'identifiant n'existe qu'en mémoire
+       et dans le corps de la requête partie vers la passerelle.
+       Une option dont la clé manque côté serveur est grisée (« non
+       configuré »), jamais supprimée : on dit ce qu'on SAIT, pas une panne. */
+    _indexOf(id) {
+        const i = CONFIG.CHAT_MODELS.findIndex(m => m.id === id);
+        if (i !== -1) return i;
+        const d = CONFIG.CHAT_MODELS.findIndex(m => m.id === CONFIG.MODEL_CHAT);
+        return d !== -1 ? d : 0;
+    },
+    _renderModels(sel, flags) {
+        const currentIdx = this._indexOf(this.model());
+        sel.innerHTML = CONFIG.CHAT_MODELS.map((m, i) => {
+            const missing = flags && flags[m.provider] === false;
+            return '<option value="' + i + '"' +
+                (i === currentIdx ? ' selected' : '') +
+                (missing ? ' disabled' : '') + '>' +
+                Utils.escapeHtml(m.label) + (missing ? ' — non configuré' : '') + '</option>';
+        }).join('');
+        const opt = sel.options[sel.selectedIndex];
+        if (opt && opt.disabled) {
+            this.setModel(CONFIG.MODEL_CHAT);
+            sel.value = String(this._indexOf(CONFIG.MODEL_CHAT));
+            if (typeof UI !== 'undefined' && UI.showToast) {
+                UI.showToast('Modèle indisponible : retour au modèle intégré', 'warn');
+            }
+        }
+    },
+    init() {
+        const sel = document.getElementById('chat-model-select');
+        if (!sel) return;
+        this._renderModels(sel, {});
+        sel.addEventListener('change', () => {
+            const m = CONFIG.CHAT_MODELS[parseInt(sel.value, 10)];
+            if (!m) { sel.value = String(this._indexOf(this.model())); return; }
+            this.setModel(m.id);
+            sel.value = String(this._indexOf(m.id));
+            UI.showToast('Modèle : ' + m.label, 'success');
+        });
+        this.refreshAvailability();
+    },
+    /* GET /v1/providers : 200 = « clé configurée », 401 = compte non
+       connecté (aucune décision), erreur réseau = on ne décide de rien. */
+    async refreshAvailability() {
+        const sel = document.getElementById('chat-model-select');
+        if (!sel) return;
+        let data = null;
+        try {
+            const res = await fetch(CONFIG.API_BASE + '/providers',
+                Gateway.withHeaders({ headers: { 'Accept': 'application/json' } }));
+            if (res.status === 401 || !res.ok) return;
+            data = await res.json();
+        } catch (e) { return; }
+        this._renderModels(sel, (data && data.chat) || {});
+    },
     buildSystemPrompt(context = {}) {
         let base = [
             'Tu es LSV Director, l\'assistant créatif de LSV.ai.',
@@ -61,7 +135,7 @@ const ChatService = {
                 'Accept': 'text/event-stream'
             },
             body: JSON.stringify({
-                model: CONFIG.MODEL_CHAT,
+                model: this.model(),
                 messages,
                 temperature: CONFIG.CHAT_TEMPERATURE,
                 max_tokens: CONFIG.CHAT_MAX_TOKENS,
@@ -110,7 +184,7 @@ const ChatService = {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: CONFIG.MODEL_CHAT,
+                    model: this.model(),
                     messages,
                     temperature: CONFIG.CHAT_TEMPERATURE,
                     max_tokens: CONFIG.CHAT_MAX_TOKENS

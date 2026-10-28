@@ -40,6 +40,10 @@ const UI = {
         if (id === 'advanced') AdvancedView.refresh();
         if (id === 'storyboard') StoryboardView.refresh();
         if (id === 'locks') LocksView.refresh();
+        /* Onglet Vidéo : sonde de disponibilité (cache 60 s côté serveur,
+           donc un aller-retour inoffensif à chaque visite). Le service est
+           une constante de portée globale, PAS une propriété de window. */
+        if (id === 'video' && typeof VideoAvailabilityService !== 'undefined') VideoAvailabilityService.refresh();
     },
     updateButtons() {
         const hasKey = CONFIG.GATEWAY_READY;
@@ -60,6 +64,16 @@ const UI = {
         if (enhBtn) {
             const hasPrompt = document.getElementById('enhancer-input').value.trim().length > 3;
             enhBtn.disabled = !hasKey || !hasPrompt;
+        }
+        const scenBtn = document.getElementById('scenario-generate');
+        if (scenBtn) {
+            const hasIdea = document.getElementById('scenario-input').value.trim().length > 3;
+            scenBtn.disabled = !hasKey || !hasIdea || Runtime.isRunning;
+        }
+        const impBtn = document.getElementById('improve-generate');
+        if (impBtn) {
+            const hasPrompt = document.getElementById('improve-input').value.trim().length > 3;
+            impBtn.disabled = !hasKey || !hasPrompt;
         }
         const batchBtn = document.getElementById('batch-generate');
         if (batchBtn) {

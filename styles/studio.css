@@ -324,6 +324,35 @@ body.dark .dash-hero {
 }
 .chat-header-title .ms { color: var(--accent); }
 .chat-header-meta { display: flex; align-items: center; gap: 0.5rem; }
+/* Sélecteur de modèle (en-tête du chat) : volontairement discret, il ne
+   concurrence ni le titre ni le jeton de contexte. Une option sans clé
+   serveur est grisée, jamais supprimée — l'utilisateur voit qu'elle existe
+   mais qu'elle n'est pas configurée. */
+.chat-model {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.55rem;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.68rem;
+    color: var(--ink-2);
+    cursor: pointer;
+}
+.chat-model .ms { font-size: 14px; color: var(--ink-3); }
+.chat-model select {
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    outline: none;
+    cursor: pointer;
+    max-width: 12rem;
+}
+.chat-model select option { background: var(--bg-2); color: var(--ink); }
+.chat-model select option:disabled { color: var(--ink-4); }
+.chat-model:focus-within { border-color: var(--accent); }
 .chat-context-chip {
     display: inline-flex;
     align-items: center;
@@ -1247,6 +1276,78 @@ input:focus, textarea:focus, select:focus {
 .motion-chip.selected { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
 .motion-chip .ms { font-size: 15px; }
 
+/* DISPONIBILITÉ DU SERVICE VIDÉO — bandeau de l'onglet Vidéo.
+   La couleur ne dit que ce qui est mesuré : vert = joignable et non saturée
+   à l'instant de la sonde, orange = file saturée ou réseau, rouge = clé ou
+   fournisseur en erreur, gris = non mesuré (jamais présenté comme « en panne »). */
+.avail-card { border-left: 3px solid var(--border-3); }
+.avail-card.avail-ok { border-left-color: var(--green); }
+.avail-card.avail-warn { border-left-color: var(--orange); }
+.avail-card.avail-err { border-left-color: var(--red); }
+.avail-badge {
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    background: var(--bg-3);
+    color: var(--ink-3);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+}
+.avail-ok .avail-badge { background: var(--green-light); color: var(--green); border-color: var(--green); }
+.avail-warn .avail-badge { background: var(--orange-light); color: var(--orange); border-color: var(--orange); }
+.avail-err .avail-badge { background: var(--red-light); color: var(--red); border-color: var(--red); }
+.avail-body { display: flex; align-items: flex-start; gap: 0.8rem; }
+.avail-dot { font-size: 22px; line-height: 1; color: var(--ink-3); margin-top: 1px; flex-shrink: 0; }
+.avail-ok .avail-dot { color: var(--green); }
+.avail-warn .avail-dot { color: var(--orange); }
+.avail-err .avail-dot { color: var(--red); }
+.avail-text { flex: 1; min-width: 0; }
+.avail-title { font-size: 0.85rem; font-weight: 600; color: var(--ink); }
+.avail-hint { font-size: 0.72rem; color: var(--ink-3); line-height: 1.5; margin-top: 0.15rem; }
+.avail-recheck { flex-shrink: 0; }
+
+/* CENTRE « ALTERNATIVES VIDÉO » — liens sortants vers des sites vérifiés.
+   Chaque carte est un lien : clic = nouvel onglet, aucune requête LSV.ai. */
+.alt-toggle {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.25rem 0.7rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--ink-2);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    transition: border-color 0.15s, color 0.15s;
+}
+.alt-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.alt-toggle .ms { font-size: 16px; }
+.alt-panel { margin-top: 0.2rem; }
+.alt-intro { font-size: 0.75rem; color: var(--ink-3); line-height: 1.6; margin-bottom: 0.7rem; }
+.alt-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 0.6rem; }
+.alt-item {
+    display: block;
+    text-decoration: none;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.7rem 0.8rem;
+    transition: border-color 0.15s, background 0.15s;
+}
+.alt-item:hover { border-color: var(--accent); background: var(--accent-soft); }
+.alt-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.35rem; }
+.alt-name { font-size: 0.85rem; font-weight: 700; color: var(--ink); }
+.alt-free { font-size: 0.64rem; font-family: var(--font-mono); color: var(--accent); text-align: right; }
+.alt-meta { display: block; font-size: 0.7rem; color: var(--ink-3); line-height: 1.5; }
+.alt-note { display: block; font-size: 0.7rem; color: var(--ink-2); margin-top: 0.3rem; }
+.alt-src { display: block; font-size: 0.64rem; font-family: var(--font-mono); color: var(--ink-4); margin-top: 0.4rem; }
+
 /* QUEUE / RESULTS */
 .queue { margin-top: 1rem; display: none; }
 .queue.visible { display: block; }
@@ -1764,3 +1865,85 @@ body.sidebar-collapsed .debug { left: var(--sidebar-collapsed-w); }
 .result-media[data-preview] { cursor: zoom-in; }
 .lib-item-media[data-preview] { cursor: zoom-in; }
 
+
+
+/* ── Studio de scénarios IA ─────────────────────────────────────────────── */
+.scenario-logline {
+    margin-top: 0.2rem;
+    padding-left: 0.7rem;
+    border-left: 2px solid var(--accent);
+    font-size: 0.85rem;
+    font-style: italic;
+    color: var(--ink-2);
+    line-height: 1.5;
+}
+.scenario-logline:empty { display: none; }
+.scenario-scenes { display: flex; flex-direction: column; gap: 0.7rem; margin-top: 0.9rem; }
+.scenario-scene {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.8rem 0.9rem;
+}
+.scenario-scene-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.scenario-scene-num {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent); color: #ffffff;
+    font-size: 0.68rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.scenario-scene-title { font-size: 0.88rem; font-weight: 600; color: var(--ink); }
+.scenario-act {
+    font-family: var(--font-mono);
+    font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--accent);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    padding: 0.1rem 0.45rem;
+}
+.scenario-scene-desc { font-size: 0.82rem; color: var(--ink-2); line-height: 1.55; margin-top: 0.4rem; }
+.scenario-scene-prompt {
+    margin-top: 0.5rem;
+    padding: 0.55rem 0.65rem;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--ink-2);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* ── Amélioration de prompt : avant / après ─────────────────────────────── */
+.improve-output { display: none; margin-top: 1rem; }
+.improve-output.visible { display: block; animation: fadeIn 0.3s; }
+.improve-panes { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }
+@media (max-width: 768px) { .improve-panes { grid-template-columns: 1fr; } }
+.improve-pane {
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.8rem;
+}
+.improve-pane.after { border-color: var(--accent); }
+.improve-pane-label {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-3);
+    font-weight: 700;
+    margin-bottom: 0.45rem;
+}
+.improve-pane.after .improve-pane-label { color: var(--accent); }
+.improve-pane-text {
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: var(--ink-2);
+    white-space: pre-wrap;
+    word-break: break-word;
+    min-height: 3rem;
+}

@@ -1,8 +1,8 @@
 {
   "name": "lsv-ai",
-  "version": "3.16.16",
+  "version": "3.17.0",
   "private": true,
-  "description": "LSV.ai — Studio Viral : application créative (Images, Vidéos, Chat IA, Motion) + LSV Studio (montage vidéo local) + comptes Supabase Auth + Analytics + back-office admin sur liste blanche + page Contact automatisée.",
+  "description": "LSV.ai — Studio Viral : application créative (Images, Vidéos, Chat IA, Scénarios IA, Motion) + LSV Studio (montage vidéo local) + comptes Supabase Auth + Analytics + back-office admin sur liste blanche + page Contact automatisée.",
   "scripts": {
     "test": "node tests/nonreg.test.js && node tests/public.test.js && node tests/gateway.test.mjs && node tests/admin.test.js && node tests/studio.test.js && node tests/contact.test.mjs",
     "test:nonreg": "node tests/nonreg.test.js",

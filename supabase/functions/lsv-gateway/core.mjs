@@ -30,6 +30,9 @@ const MSG_MEDIA = 'Impossible de r\u00e9cup\u00e9rer l\u2019image de r\u00e9f\u0
 const MSG_DOWNLOAD = 'T\u00e9l\u00e9chargement indisponible pour le moment. Ouvre le fichier en aper\u00e7u et enregistre-le toi-m\u00eame.';
 
 const DEFAULT_AGNES_BASE = 'https://apihub.agnes-ai.com';
+/* Le chat peut aussi être servi par Mistral : la passerelle relaie alors
+   vers api.mistral.ai avec la CLÉ Mistral (jamais celle d'Agnes). */
+const DEFAULT_MISTRAL_BASE = 'https://api.mistral.ai';
 const FUNCTION_MOUNT = '/functions/v1/lsv-gateway';
 const SHORT_MOUNT = '/lsv-gateway';
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
@@ -265,6 +268,20 @@ export function requestUnits(type, bodyText) {
     return 1;
 }
 
+/** Le client demande-t-il un modèle Mistral ? La décision porte sur le
+    MODÈLE déclaré dans le corps (et sur le préfixe /v1/chat) : un chemin
+    seul ne suffit pas, et l'inverse — un modèle Agnes envoyé sur un autre
+    chemin — ne doit jamais partir chez Mistral. Corps illisible = Agnes,
+    choix par défaut historique. */
+export function requestsMistral(path, bodyText) {
+    if (!path.startsWith('/v1/chat')) return false;
+    try {
+        const body = JSON.parse(bodyText || '{}');
+        const model = String((body && body.model) || '');
+        return model.startsWith('mistral-');
+    } catch (e) { return false; }
+}
+
 /** Store mémoire (fenêtre glissante + compteurs journaliers).
     Réinitialisé à chaque froid de l'isolate — protections anti-abus de
     premier niveau. La vérité pour les quotas par compte est en base
@@ -333,6 +350,7 @@ export function createHandler(options = {}) {
     const log = options.log || ((...args) => console.error('[lsv-gateway]', ...args));
 
     const agnesBase = (env.AGNES_API_BASE || DEFAULT_AGNES_BASE).replace(/\/+$/, '');
+    const mistralBase = (env.MISTRAL_API_BASE || DEFAULT_MISTRAL_BASE).replace(/\/+$/, '');
     const allowedOrigins = (env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
     const ratePerMin = toInt(env.RATE_LIMIT_PER_MIN, 10);
     const maxConcurrent = toInt(env.MAX_CONCURRENT_PER_USER, 3);
@@ -364,10 +382,27 @@ export function createHandler(options = {}) {
     ];
     const SETTINGS_KEYS = [
         'provider_api_key', 'provider_api_key_image',
-        'provider_api_key_video', 'provider_api_key_chat'
+        'provider_api_key_video', 'provider_api_key_chat',
+        'provider_api_key_mistral'
     ].concat(QUOTA_KEYS);
     const SETTINGS_CACHE_MS = 30000;
     let settingsCache = { at: -1, map: null };
+
+    /* ── Disponibilité du service vidéo ────────────────────────────────────
+       Deux mémoires, toutes deux limitées à l'ISOLAT courant :
+         - `videoQueueUntil` : horodatage (ms) jusqu'auquel la file vidéo est
+           réputée saturée, positionné quand un POST /v1/videos revient en
+           503 `video_queue_full`, effacé au premier POST vidéo accepté.
+           Durée de vie 2 min : plus longtemps, et un état ancien mentirait ;
+           moins, et le front relancerait des sondes inutiles.
+         - `availCache` : réponse complète servie pendant 60 s. Sans ce
+           cache, chaque affichage de l'onglet Vidéo provoquerait une sonde
+           amont, c'est-à-dire exactement le type de trafic qui sature une
+           file déjà limitée à ~1 requête/min sur le plan gratuit. */
+    const AVAIL_CACHE_MS = 60000;
+    const VIDEO_QUEUE_MEMORY_MS = 120000;
+    let videoQueueUntil = 0;
+    let availCache = { at: -1, body: null };
 
     /** Lit un lot de clés de app_settings avec la clé de service du projet. */
     async function readSettings(keys) {
@@ -430,6 +465,18 @@ export function createHandler(options = {}) {
             if (dedicated) return dedicated;
         }
         return String(map.provider_api_key || '').trim() || envKey;
+    }
+
+    /* ── Clé Mistral ────────────────────────────────────────────────────────
+       Clé saisie dans le back-office (provider_api_key_mistral), sinon secret
+       serveur MISTRAL_API_KEY. AUCUN repli sur la clé Agnes : les deux
+       fournisseurs sont distincts, et envoyer la clé de l'un à l'autre
+       produirait un 401 que personne ne pourrait diagnostiquer. */
+    async function resolveMistralKey() {
+        const envKey = (env.MISTRAL_API_KEY || '').trim();
+        if (!supaUrl || !svcKey) return envKey;
+        const map = await allSettings();
+        return String(map.provider_api_key_mistral || '').trim() || envKey;
     }
 
     /** Limite effective pour un type donné (admin ou utilisateur standard). */
@@ -642,6 +689,109 @@ export function createHandler(options = {}) {
             return okJson(state, h);
         }
 
+        /* ── Fournisseurs de chat réellement configurés ─────────────────────
+           Dit SEULEMENT si une clé est en place pour chaque fournisseur —
+           jamais si le service est en ligne (personne ne peut le garantir
+           à froid). Le chat refuse un modèle dont la clé manque : sans cet
+           état, l'utilisateur choisirait Mistral puis découvrirait une
+           erreur générique. Compte connecté requis, comme l'envoi. */
+        if (path === '/v1/providers') {
+            if (request.method !== 'GET') return json(404, MSG_NOT_FOUND, h);
+            const provUser = await verifyUser(request);
+            if (!provUser) return json(401, MSG_FORBIDDEN, h);
+            const provAgnes = await resolveKey('chat');
+            const provMistral = await resolveMistralKey();
+            return okJson({
+                chat: { agnes: !!provAgnes, mistral: !!provMistral },
+                checked_at: now()
+            }, h);
+        }
+
+        /* ── Disponibilité du service vidéo ──────────────────────────────────
+           Agnes n'expose AUCUN endpoint d'état : la seule sonde à coût zéro
+           est GET /v1/models (classée `null` par classifyRequest, donc 0
+           unité de quota). Elle prouve que le fournisseur répond et que la
+           clé du serveur est valide — elle ne garantit JAMAIS qu'une
+           génération passera : aucune sonde ne peut le faire. On y associe
+           la dernière saturation observée sur POST /v1/videos (503
+           `video_queue_full`), gardée 2 min en mémoire.
+
+           Trois règles, pour ne jamais transformer une espérance en fait :
+             - `available: true` = « joignable et non saturée à l'instant de
+               la mesure », jamais « ta vidéo va passer » ;
+             - `probe` sépare l'absence de clé, le réseau, l'authentification
+               et le reste : un diagnostic honnête vaut mieux qu'un booléen ;
+             - la réponse est cachée 60 s (et l'appel borné à 5 s), parce
+               qu'interroger l'amont en boucle est ce qui vide une file. */
+        if (path === '/v1/video-availability') {
+            if (request.method !== 'GET') return json(404, MSG_NOT_FOUND, h);
+            const avKeys = [];
+            const avIp = clientIp(request);
+            const avVis = (request.headers.get('x-lsv-visitor') || '')
+                .replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40);
+            if (avIp) avKeys.push('ip:' + avIp);
+            if (avVis) avKeys.push('vis:' + avVis);
+            for (const avk of avKeys) {
+                const avr = store.allowWindow(avk, ratePerMin, 60000, now());
+                if (!avr.ok) {
+                    log('rate-limit', avk);
+                    return json(429, MSG_LIMIT, Object.assign({ 'Retry-After': String(avr.retryAfter) }, h));
+                }
+            }
+            const avNow = now();
+            if (availCache.body && avNow - availCache.at < AVAIL_CACHE_MS) {
+                return okJson(Object.assign({}, availCache.body, { cached: true }), h);
+            }
+            /* Clé dédiée aux vidéos d'abord, puis clé partagée / secret. */
+            const avKey = await resolveKey('video');
+            const saturated = videoQueueUntil > avNow;
+            let probe = 'no_key';
+            let status = 'unknown';
+            if (!avKey) {
+                /* Sans clé, la sonde n'a aucun sens : on le dit tel quel
+                   plutôt que de faire croire à un incident fournisseur. */
+                probe = 'no_key';
+                status = 'unknown';
+            } else {
+                let pr = null;
+                try {
+                    pr = await doFetch(agnesBase + '/v1/models', {
+                        method: 'GET',
+                        headers: { Authorization: 'Bearer ' + avKey, Accept: 'application/json' },
+                        signal: (typeof AbortSignal !== 'undefined' && AbortSignal.timeout)
+                            ? AbortSignal.timeout(5000) : undefined
+                    });
+                } catch (e) {
+                    probe = 'reseau';
+                    status = 'amont_injoignable';
+                }
+                if (pr) {
+                    if (pr.ok) {
+                        probe = 'models_ok';
+                        status = saturated ? 'queue_full' : 'ok';
+                    } else if (pr.status === 401 || pr.status === 403) {
+                        probe = 'models_http_' + pr.status;
+                        status = 'auth_error';
+                    } else {
+                        probe = 'models_http_' + pr.status;
+                        status = 'amont_erreur';
+                    }
+                }
+            }
+            const avBody = {
+                available: status === 'ok',
+                status: status,
+                probe: probe,
+                provider: 'agnes',
+                checked_at: avNow,
+                ttl: AVAIL_CACHE_MS / 1000,
+                retry_after: saturated ? Math.max(1, Math.ceil((videoQueueUntil - avNow) / 1000)) : 0
+            };
+            availCache = { at: avNow, body: avBody };
+            log('dispo-video', reqId, status, probe);
+            return okJson(avBody, h);
+        }
+
         /* ── Dépôt média : une IMAGE du CDN, récupérée puis servie ICI ─────
               Même diagnostic que le §6 « image de référence » plus bas :
               sans récupération serveur, le navigateur ne peut pas obtenir
@@ -724,14 +874,6 @@ export function createHandler(options = {}) {
         const isProxy = path === '/v1' || path.startsWith('/v1/') || path.startsWith('/agnesapi');
         if (!isProxy) return json(404, MSG_NOT_FOUND, h);
 
-        /* Clé dédiée à l'outil concerné (images / vidéos / chat), avec repli
-           sur la clé partagée puis sur le secret serveur. */
-        const agnesKey = await resolveKey(keyKind(path, request.method));
-        if (!agnesKey) {
-            log('clé du fournisseur absente (back-office ou secret serveur)', reqId);
-            return json(503, MSG_NO_KEY, h);
-        }
-
         const ip = clientIp(request);
         const visitor = (request.headers.get('x-lsv-visitor') || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40);
         const t = now();
@@ -775,6 +917,22 @@ export function createHandler(options = {}) {
 
         const type = classifyRequest(path, request.method);
         const units = type ? requestUnits(type, body) : 0;
+
+        /* ── 4bis. Fournisseur + clé correspondante ─────────────────────────
+              La clé est résolue APRÈS lecture du corps parce que c'est le
+              MODÈLE demandé qui décide de la destination. La clé injectée est
+              TOUJOURS celle du fournisseur réellement contacté : ni Agnes chez
+              Mistral, ni Mistral chez Agnes. Échec ici = 503 AVANT tout
+              prélèvement de quota : aucune unité n'est engagée pour un
+              fournisseur qu'on ne peut même pas joindre. */
+        const toMistral = requestsMistral(path, body);
+        const providerBase = toMistral ? mistralBase : agnesBase;
+        const providerKey = toMistral ? await resolveMistralKey() : await resolveKey(keyKind(path, request.method));
+        if (!providerKey) {
+            log('clé du fournisseur absente (back-office ou secret serveur)', reqId, toMistral ? 'mistral' : 'agnes');
+            return json(503, MSG_NO_KEY, h);
+        }
+        if (toMistral) log('routage-mistral', reqId);
 
         /* ── 5. Quotas journaliers par compte ────────────────────────────── */
         let quotaState = null;
@@ -884,16 +1042,16 @@ export function createHandler(options = {}) {
         }
 
         const fwdHeaders = {
-            /* La clé Agnes est injectée ICI, côté serveur. Aucune authorization
-               du client n'est transmise. */
-            'Authorization': 'Bearer ' + agnesKey,
+            /* La clé du fournisseur est injectée ICI, côté serveur. Aucune
+               authorization du client n'est transmise. */
+            'Authorization': 'Bearer ' + providerKey,
             'Content-Type': request.headers.get('content-type') || 'application/json',
             'Accept': request.headers.get('accept') || 'application/json'
         };
 
         let res;
         try {
-            res = await doFetch(agnesBase + path + url.search, {
+            res = await doFetch(providerBase + path + url.search, {
                 method: request.method,
                 headers: fwdHeaders,
                 body: body || undefined
@@ -909,6 +1067,13 @@ export function createHandler(options = {}) {
         if (user && type && enabled) store.leave('inflight:' + user.id);
 
         if (res.ok) {
+            /* Un POST vidéo accepté prouve que la file repart : on oublie la
+               saturation mémorisée pour que /v1/video-availability redevienne
+               « ok » sans attendre les 2 min. */
+            if (request.method === 'POST' && path.startsWith('/v1/videos') && videoQueueUntil) {
+                videoQueueUntil = 0;
+                availCache = { at: -1, body: null };
+            }
             const headers = Object.assign({}, h, quotaHeaders(quotaState));
             const ct = res.headers && res.headers.get && res.headers.get('content-type');
             if (ct) headers['Content-Type'] = ct;
@@ -950,6 +1115,15 @@ export function createHandler(options = {}) {
         if (isObj && (res.status === 400 || res.status === 429 || res.status === 503)) {
             const code = String(upstream.code || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
             if (code) h['x-lsv-upstream-code'] = code;
+        }
+        /* Saturation de la file vidéo : on la mémorise pour que l'onglet
+           Vidéo l'affiche immédiatement, sans nouvelle sonde — et on vide le
+           cache de disponibilité, sinon l'ancien « ok » survivait 60 s. */
+        if (request.method === 'POST' && path.startsWith('/v1/videos') &&
+            res.status === 503 && isObj && String(upstream.code || '') === 'video_queue_full') {
+            videoQueueUntil = now() + VIDEO_QUEUE_MEMORY_MS;
+            availCache = { at: -1, body: null };
+            log('file-video-saturee', reqId, Math.round(VIDEO_QUEUE_MEMORY_MS / 1000) + 's');
         }
         if (res.status === 400 && isObj) {
             const param = String((upstream.data && upstream.data.param) || upstream.param || '')

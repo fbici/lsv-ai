@@ -97,6 +97,12 @@ function normalizePublic(doc) {
     // Lien « Studio vidéo » (page séparée studio/, testée par studio.test) :
     // ajouté dans la sidebar, retiré ici pour garder l'égalité structurelle ORIG.
     drop('.nav-ext');
+    // Onglet « Studio de scénarios IA » + carte « Améliorer un prompt » :
+    // ajoutés par la mission « scénarios », testés par public.test, retirés
+    // ici pour garder l'égalité structurelle ORIG.
+    drop('#tab-scenarios');
+    drop('#improve-card');
+    drop('.nav-item[data-tab="scenarios"]');
     const w = doc.defaultView;
     if (w && w.LSV && w.LSV.services && w.LSV.services.account) delete w.LSV.services.account;
     const keyInput = doc.getElementById('api-input');
