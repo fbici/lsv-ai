@@ -687,8 +687,8 @@ async function load(html, url) {
        nouvel onglet : aucun appel API tiers, aucune donnée LSV.ai envoyée,
        et aucun champ inconnu présenté comme certain. */
     const alts = wb.LSV.alternatives;
-    check('catalogue d\'alternatives exposé (5 services)',
-        Array.isArray(alts) && alts.length === 5, alts && alts.length);
+    check('catalogue d\'alternatives exposé (6 services)',
+        Array.isArray(alts) && alts.length === 6, alts && alts.length);
     check('chaque fiche porte sa page source officielle',
         alts.every(a => /^https:\/\/[a-z]/i.test(a.source)), alts.map(a => a.source).join(' '));
     const known = v => v === 'oui' || v === 'non' || v === 'non vérifié';
@@ -698,11 +698,11 @@ async function load(html, url) {
         alts.every(a => typeof a.free === 'string' && a.free.length > 10));
     const altList = doc.getElementById('video-alt-list');
     const altLinks = altList ? altList.querySelectorAll('a.alt-item') : [];
-    check('5 cartes rendues', altLinks.length === 5, altLinks.length);
+    check('6 cartes rendues', altLinks.length === 6, altLinks.length);
     check('chaque lien ouvre un nouvel onglet sans échange',
         Array.from(altLinks).every(a => a.target === '_blank' && /noopener/.test(a.rel) && /^https:\/\//.test(a.href)));
     check('domaines officiels uniquement (aucun lien fabriqué)',
-        Array.from(altLinks).every(a => /app\.pixverse\.ai|www\.vidu\.com|hailuoai\.video|klingai\.com|runwayml\.com/.test(a.href)),
+        Array.from(altLinks).every(a => /flow\.google\.com|app\.pixverse\.ai|www\.vidu\.com|hailuoai\.video|klingai\.com|runwayml\.com/.test(a.href)),
         Array.from(altLinks).map(a => a.href).join(' '));
     const altText = doc.getElementById('video-alternatives').textContent;
     check('aucun nom de fournisseur ni terme technique interdit dans le centre',
@@ -754,6 +754,38 @@ async function load(html, url) {
         source.indexOf('./scripts/ui.js') < source.indexOf('./scripts/chat.js') &&
         source.indexOf('./scripts/chat.js') < source.indexOf('./scripts/views.js') &&
         source.indexOf('./scripts/views.js') < source.indexOf('./scripts/handlers.js'));
+    /* Une icône est une LIGATURE de la police Material Symbols : un nom
+       inexistant ne casse pas le code, il s'affiche en toutes lettres à
+       l'écran (bug vécu sur « view_storyboard », affiché texte brut dans la
+       tuile Storyboard). Liste de référence = noms présents dans le bundle,
+       chacun vérifié comme existant dans le dépôt officiel
+       google/material-design-icons et sur le chemin de production
+       fonts.gstatic.com (29 octobre 2026). Toute icône NOUVELLE doit être
+       ajoutée à cette liste après vérification. */
+    const MS_LIGATURES = [
+        '360', 'account_circle', 'account_tree', 'add', 'alt_route', 'apartment', 'arrow_forward',
+        'aspect_ratio', 'attach_file', 'auto_awesome', 'auto_fix_high', 'auto_stories', 'bolt', 'brush',
+        'burst_mode', 'category', 'check_circle', 'checkroom', 'close', 'cloud_upload', 'collections',
+        'content_copy', 'crop', 'crop_square', 'dashboard', 'data_usage', 'delete', 'delete_forever',
+        'description', 'diamond', 'difference', 'dns', 'download', 'east', 'edit',
+        'edit_note', 'emoji_emotions', 'expand_more', 'folder', 'folder_open', 'follow_the_signs', 'forest',
+        'forum', 'history', 'history_edu', 'hourglass_top', 'image', 'image_search', 'info',
+        'landscape', 'lightbulb', 'lock', 'mail', 'memory', 'menu', 'menu_book',
+        'monitor_heart', 'movie', 'movie_filter', 'nightlife', 'palette', 'pause', 'person',
+        'photo_camera', 'photo_library', 'play_circle', 'queue', 'refresh', 'rocket_launch', 'school',
+        'send', 'settings', 'shopping_bag', 'slow_motion_video', 'smart_toy', 'smartphone', 'speed',
+        'splitscreen', 'stop_circle', 'storage', 'storefront', 'straighten', 'theater_comedy', 'timer',
+        'trending_up', 'tune', 'video_library', 'videocam', 'view_in_ar', 'view_timeline', 'visibility_off',
+        'warning', 'west', 'zoom_in', 'zoom_out'
+    ];
+    const msUsed = [...new Set(
+        [...bundle.matchAll(/class="ms"[^>]*>([a-z0-9_]+)</g)].map(m => m[1])
+            .concat([...bundle.matchAll(/icon:\s*'([a-z0-9_]+)'/g)].map(m => m[1]))
+    )];
+    const msUnknown = msUsed.filter(n => MS_LIGATURES.indexOf(n) === -1);
+    check('icônes : ligatures Material Symbols réelles (jamais de texte brut à l\'écran)',
+        msUsed.length > 60 && msUnknown.length === 0,
+        msUnknown.join(', ') || msUsed.length + ' noms vérifiés');
 
     console.log('\n=== 13. SÉLECTEUR DE RATIO VISUEL ===');
     /* Remplace l'ancien <select> : chaque ratio est un rectangle aux

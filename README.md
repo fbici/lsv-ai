@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.17.0
+# LSV.ai — Studio Viral v3.17.1
 
 Application créative web : **Images · Vidéos · Chat IA · Scénarios IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -172,7 +172,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -1731,11 +1731,15 @@ passagère, durable, ou seulement saturée.
 
 #### 2. Centre « Alternatives vidéo » (onglet Vidéo)
 
-- Cinq centres gratuits : quota **annoncé sur la page officielle** indiquée
+- Six centres gratuits : quota **annoncé sur la page officielle** indiquée
   (champ `source`), vérification du **25 octobre 2026**, et champs
   `i2v` / `filigrane` / `licence` bornés à `oui`, `non`, `non vérifié` —
-  **aucune valeur inventée** ; les services sans offre gratuite réelle sont
-  écartés (Pika, Luma, Veo) de même que Sora (service arrêté).
+  **aucune valeur inventée**. **Google Flow** (Veo) est en tête : ses
+  « 50 crédits par jour, avec ou sans abonnement » sont écrits sur la page
+  officielle des crédits (`support.google.com/flow/answer/16526234`), avec la
+  restriction horaire des heures de pointe pour les non-abonnés. Les services
+  sans offre gratuite réelle restent écartés (Pika, Luma), de même que Sora
+  (service arrêté).
 - Panneau repliable avec la mention « Aucune donnée LSV.ai n'est envoyée » :
   ce sont des **sites web** ouverts dans un nouvel onglet de son côté — l'app
   n'appelle jamais leur API, n'ouvre aucun de leurs comptes.
@@ -1820,8 +1824,8 @@ passagère, durable, ou seulement saturée.
 
 **Vérifié par** `tests/public.test.js` §17 (17).
 
-**Nouveaux totaux : non-régression 78 · interface 353 · gateway 286 · admin 179
-· studio 218 · contact 154 · suite 1268.**
+**Nouveaux totaux : non-régression 78 · interface 354 · gateway 286 · admin 179
+· studio 218 · contact 154 · suite 1269.**
 
 > **Reste à faire — configuration, pas de code.** Aucune clé Mistral n'existe
 > dans ce dépôt ni dans Supabase. Avant d'utiliser l'option : exécuter
@@ -1834,6 +1838,42 @@ passagère, durable, ou seulement saturée.
 > **Déploiement** : `supabase/functions/lsv-gateway/**` est à redéployer,
 > `supabase/**` à exécuter dans Supabase, le reste est statique → rafraîchir
 > le navigateur (v3.17.0).
+
+### 2.29 Corrections d'affichage et Google Flow — v3.17.1
+
+Retours d'utilisation après v3.17.0 : trois corrections, aucun changement de
+promesse fonctionnelle — Agnes reste le modèle par défaut pour tout (chat,
+Scénarios, Améliorateur) et Mistral reste une option facultative, jamais
+requise.
+
+- **Icône « Storyboard » affichée en toutes lettres** : la ligature
+  `view_storyboard` n'existe pas dans Material Symbols — la troisième tuile
+  du Studio de scénarios affichait le nom de l'icône en texte brut, qui
+  débordait et cassait la mise en page de la tuile. Remplacée par
+  `splitscreen` (`index.html` et `SCENARIO_MODES`). **Garde ajoutée** : §12
+  de `public.test.js` refuse désormais toute icône absente de `MS_LIGATURES`
+  (95 noms, chacun vérifié dans le dépôt officiel `google/material-design-icons`
+  **et** sur le chemin de production `fonts.gstatic.com`) : un nom inventé
+  échoue les tests au lieu de s'afficher cassé chez l'utilisateur.
+- **Sélecteur de modèle et bouton d'envoi (onglet Chat)** : le sélecteur est
+  une pastille lisible — icône en couleur d'accent, chevron dessiné,
+  survol, texte en gras — et le bouton d'envoi un disque qui se relève au
+  survol, s'enfonce au clic et porte un anneau de focus clavier. Plus aucun
+  contrôle natif brut ; aucun libellé, aucune valeur d'index ni comportement
+  de choix modifié (tests §15 inchangés).
+- **Google Flow en tête du centre « Alternatives vidéo »** : 6ᵉ entrée, quota
+  lu sur la page officielle des crédits Google
+  (`support.google.com/flow/answer/16526234`) : « With or without a
+  subscription, you receive 50 Google Flow credits per day » — non reportés,
+  recharge au premier usage, vidéo sans abonnement indisponible aux heures de
+  pointe (14 h-17 h UTC), filigrane invisible SynthID toujours présent.
+  Meilleure qualité gratuite actuellement disponible (Veo) ; champs bornés
+  comme les autres (`i2v` et `licence` en « non vérifié »). §11quater passe
+  de 5 à 6 services, la page officielle des crédits remplace la mention
+  « Veo écarté » de §2.28.
+
+**Vérifié par** `tests/public.test.js` §12 (icônes), §11quater (6 services) ·
+**totaux : interface 354 · suite 1269.**
 
 ---
 
@@ -2213,7 +2253,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 1268 assertions, 6 suites
+npm test                      # 1269 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -2288,7 +2328,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 1268 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 1269 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (78 assertions, **90 avec `ORIG`**) — non-régression
@@ -2304,7 +2344,7 @@ npm test        # 1268 assertions (6 suites, hors ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (353 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (354 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -2361,11 +2401,12 @@ npm test        # 1268 assertions (6 suites, hors ORIG=… voir plus bas)
   modules `scripts/` chargés dans un ordre fixe ; `window.LSV` et toute l'API
   publique inchangés ; scans de sécurité étendus à tout le bundle ; §12 de
   `public.test.js` verrouille la structure (pas de `<style>` ni de gros script
-  inline, 14 modules présents et ordonnés).
+  inline, 14 modules présents et ordonnés, icônes = ligatures Material
+  Symbols réelles tirées d'une liste vérifiée de 95 noms).
 - **disponibilité vidéo** (§11ter) : bandeau d'état rendu sans aucune requête
   au chargement, sept états servis distinctement, saturation venue du client
   non prise pour une mesure, aucun état « inconnu » présenté comme une panne.
-- **centre « Alternatives vidéo »** (§11quater) : cinq entrées exactement,
+- **centre « Alternatives vidéo »** (§11quater) : six entrées exactement,
   champs `i2v` / `filigrane` / `licence` bornés à `oui`, `non`, `non vérifié`,
   date de vérification affichée, note d'usage lu hors ligne, dépliage sur un
   refus réel **et jamais sur un échec de mesure**.

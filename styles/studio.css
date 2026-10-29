@@ -324,35 +324,60 @@ body.dark .dash-hero {
 }
 .chat-header-title .ms { color: var(--accent); }
 .chat-header-meta { display: flex; align-items: center; gap: 0.5rem; }
-/* Sélecteur de modèle (en-tête du chat) : volontairement discret, il ne
-   concurrence ni le titre ni le jeton de contexte. Une option sans clé
-   serveur est grisée, jamais supprimée — l'utilisateur voit qu'elle existe
-   mais qu'elle n'est pas configurée. */
+/* Sélecteur de modèle (en-tête du chat) : une pastille lisible, avec icône
+   d'accent, chevron dessiné et état de survol — jamais un <select> brut.
+   Une option sans clé serveur est grisée, jamais supprimée : l'utilisateur
+   voit qu'elle existe mais qu'elle n'est pas configurée. */
 .chat-model {
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
-    padding: 0.25rem 0.55rem;
-    background: var(--bg-3);
+    gap: 0.35rem;
+    padding: 0.32rem 0.6rem 0.32rem 0.7rem;
+    background: var(--bg-2);
     border: 1px solid var(--border);
     border-radius: 999px;
-    font-size: 0.68rem;
+    font-size: 0.75rem;
+    font-weight: 600;
     color: var(--ink-2);
     cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
 }
-.chat-model .ms { font-size: 14px; color: var(--ink-3); }
+.chat-model:hover { border-color: var(--accent); background: var(--bg-3); }
+.chat-model:focus-within { border-color: var(--accent); }
+.chat-model .ms {
+    font-size: 15px;
+    color: var(--accent);
+    font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+}
 .chat-model select {
+    appearance: none;
+    -webkit-appearance: none;
     border: none;
     background: transparent;
     color: inherit;
     font: inherit;
+    font-weight: 600;
     outline: none;
     cursor: pointer;
-    max-width: 12rem;
+    max-width: 10.5rem;
+    padding: 0 0.1rem;
 }
-.chat-model select option { background: var(--bg-2); color: var(--ink); }
+.chat-model select option { background: var(--bg-2); color: var(--ink); font-weight: 500; }
 .chat-model select option:disabled { color: var(--ink-4); }
-.chat-model:focus-within { border-color: var(--accent); }
+.chat-model::after {
+    content: 'expand_more';
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    letter-spacing: normal;
+    text-transform: none;
+    font-size: 17px;
+    line-height: 1;
+    color: var(--ink-3);
+    font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+    pointer-events: none;
+    margin-left: -0.3rem;
+}
 .chat-context-chip {
     display: inline-flex;
     align-items: center;
@@ -552,9 +577,11 @@ body.dark .dash-hero {
     line-height: 1.5;
 }
 .chat-input::placeholder { color: var(--ink-4); }
+/* Bouton d'envoi : disque plein, légèrement relevé au survol, enfoncé au
+   clic et anneau de focus clavier — un contrôle d'action, pas un carré. */
 .chat-send-btn {
-    width: 36px; height: 36px;
-    border-radius: 10px;
+    width: 38px; height: 38px;
+    border-radius: 50%;
     background: var(--accent);
     color: #ffffff;
     border: none;
@@ -562,12 +589,19 @@ body.dark .dash-hero {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.15s;
+    transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
     flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
-.chat-send-btn:hover:not(:disabled) { background: var(--accent-hover); }
-.chat-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.chat-send-btn .ms { font-size: 18px; }
+.chat-send-btn:hover:not(:disabled) {
+    background: var(--accent-hover);
+    transform: translateY(-1px) scale(1.06);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
+}
+.chat-send-btn:active:not(:disabled) { transform: scale(0.93); }
+.chat-send-btn:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
+.chat-send-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chat-send-btn .ms { font-size: 19px; }
 .chat-input-hint {
     font-family: var(--font-mono);
     font-size: 0.62rem;

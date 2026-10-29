@@ -169,7 +169,7 @@ const SCENARIO_MODES = Object.freeze([
         brief: 'Format long : découpe en trois actes, un arc narratif clair (déclencheur, montée, résolution), 8 à 12 scènes détaillées, chaque scène portant son numéro d\'acte.'
     },
     {
-        id: 'storyboard', name: 'Storyboard', icon: 'view_storyboard',
+        id: 'storyboard', name: 'Storyboard', icon: 'splitscreen',
         desc: 'Plans : image, mouvement, dialogue',
         brief: 'Storyboard : chaque scène devient une série de plans précis — champ, mouvement de caméra, son ou dialogue — pour être dessinée image par image.'
     }
@@ -189,11 +189,25 @@ const SCENARIO_MODES = Object.freeze([
      - `checked`: date de la vérification.
    Le quota GRATUIT DU SITE n'a rien à voir avec le quota de l'API : c'est
    toujours le premier qui est annoncé ici. Aucun service n'est présenté
-   comme gratuit s'il ne l'est pas vérifié — Pika, Luma et Veo ont été
-   écartés (offre gratuite inexistante ou payante), tout comme Sora
-   (service arrêté en 2026). */
+   comme gratuit s'il ne l'est pas vérifié — Pika et Luma ont été écartés
+   (offre gratuite inexistante ou payante), de même que Sora (service
+   arrêté en 2026). Google Flow (Veo) fait exception : ses « 50 crédits par
+   jour, avec ou sans abonnement » sont écrits sur la page officielle des
+   crédits, ce qui le remet au catalogue en tête — meilleure qualité
+   gratuite actuellement disponible. */
+
 const ALT_CHECKED = '25 octobre 2026';
 const VIDEO_ALTERNATIVES = Object.freeze([
+    {
+        id: 'flow', name: 'Google Flow',
+        url: 'https://flow.google.com/',
+        source: 'https://support.google.com/flow/answer/16526234',
+        free: '50 crédits par jour, avec ou sans abonnement (non reportés, recharge au 1er usage)',
+        i2v: 'non vérifié',
+        watermark: 'oui', watermarkNote: 'SynthID invisible ; filigrane visible paramétrable',
+        license: 'non vérifié', licenseNote: 'selon les conditions du service',
+        note: 'Meilleure qualité gratuite actuelle (Veo) ; vidéo sans abonnement indisponible aux heures de pointe (14h-17h UTC).'
+    },
     {
         id: 'pixverse', name: 'PixVerse',
         url: 'https://app.pixverse.ai/',
