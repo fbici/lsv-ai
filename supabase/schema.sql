@@ -38,7 +38,8 @@ create table if not exists public.analytics_events (
                     'enhancer_used',
                     'batch_completed',
                     'account_created',
-                    'account_signed_in'
+                    'account_signed_in',
+                    'account_deleted'
                 )),
     props       jsonb not null default '{}'::jsonb,
     -- aucune donnée volumineuse : refuse les payloads > 4 Ko
@@ -545,3 +546,63 @@ on conflict (key) do nothing;
 --   ('demo_visitor_1', 'demo_session_1', 'image_generated', '{"model":"agnes-image-2.1-flash","ratio":"16:9"}'),
 --   ('demo_visitor_2', 'demo_session_2', 'video_generated', '{"model":"agnes-video-2.5-flash","mode":"text-to-video"}'),
 --   ('demo_visitor_2', 'demo_session_2', 'generation_error', '{"feature":"video","detail":"HTTP 500"}');
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- COMPTE SUPPRIMÉ — liste de refroidissement (30 jours)
+-- ───────────────────────────────────────────────────────────────────────────
+-- Après une suppression de compte, l'e-mail est conservé 30 jours pour
+-- empêcher la re-création immédiate (abus, contournement d'un blocage).
+-- La suppression effective est faite par la fonction d'environnement
+-- supabase/functions/delete-account (clé de service, jamais côté client).
+--
+-- Voir supabase/upgrade-delete-account.sql pour la version incrémentale.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create table if not exists public.deleted_emails (
+    email       text primary key check (char_length(email) between 3 and 254),
+    deleted_at  timestamptz not null default now()
+);
+alter table public.deleted_emails enable row level security;
+-- Aucune policy : ni anon ni authenticated ne lisent ni n'écrivent.
+-- Seul le service_role (clé serveur) touche à cette table.
+revoke all on public.deleted_emails from anon, authenticated;
+grant all on public.deleted_emails to service_role;
+
+-- Fin du refroidissement pour un e-mail (ISO) ou null si l'e-mail est libre.
+-- SECURITY DEFINER : la fonction lit deleted_emails en tant que propriétaire
+-- (la RLS interdirait la lecture au rôle anon). Exposée aux clients juste
+-- assez pour l'inscription — elle ne renvoie QUE la date, jamais qui l'a.
+create or replace function public.email_cooling_down(p_email text) returns text
+    language sql stable security definer
+    set search_path = public
+    as $$
+        select to_char(d.deleted_at + interval '30 days', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+        from public.deleted_emails d
+        where d.email = lower(trim(coalesce(p_email, '')))
+          and d.deleted_at > now() - interval '30 days'
+        limit 1;
+    $$;
+grant execute on function public.email_cooling_down(text) to anon, authenticated;
+
+-- Garde-fou serveur : GoTrue refuse l'inscription d'un e-mail en refroidissement,
+-- même si le client a été contourné. Le message est brut (l'application préfère
+-- le message poli qu'elle calcule elle-même avant l'inscription).
+create or replace function public.lsv_block_deleted_email() returns trigger
+    language plpgsql security definer
+    set search_path = public
+    as $$
+    begin
+        if exists (
+            select 1 from public.deleted_emails d
+            where d.email = lower(trim(coalesce(new.email, '')))
+              and d.deleted_at > now() - interval '30 days'
+        ) then
+            raise exception 'email_in_cooldown';
+        end if;
+        return new;
+    end;
+    $$;
+drop trigger if exists lsv_block_deleted_email on auth.users;
+create trigger lsv_block_deleted_email
+    before insert on auth.users
+    for each row execute function public.lsv_block_deleted_email();

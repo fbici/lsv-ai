@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.17.1
+# LSV.ai — Studio Viral v3.17.2
 
 Application créative web : **Images · Vidéos · Chat IA · Scénarios IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -143,15 +143,18 @@ lsv-ai/
 │   ├── upgrade-multi-key.sql  # Migration : clés du fournisseur par outil
 │   ├── upgrade-mistral.sql    # Migration : clé Mistral du chat (§2.28)
 │   ├── upgrade-contact.sql    # Migration : contact_messages + RPC submit_contact
+│   ├── upgrade-delete-account.sql  # Migration : refroidissement 30 jours (§2.30)
 │   ├── email-confirm-signup.html    # Modèle d'e-mail « confirme ton compte »
 │   ├── email-reset-password.html    # Modèle d'e-mail « mot de passe oublié »
 │   ├── functions/lsv-gateway/
 │   │   ├── index.ts           # Point d'entrée Edge Function (Deno)
 │   │   └── core.mjs           # Cœur de la passerelle (testable sous Node)
-│   └── functions/lsv-contact/
-│       ├── index.ts           # Point d'entrée (env + dépendances injectables)
-│       ├── core.mjs           # Validation, anti-spam, routage des 2 canaux
-│       └── templates.mjs      # Modèles d'e-mail (notification + accusé)
+│   ├── functions/lsv-contact/
+│   │   ├── index.ts           # Point d'entrée (env + dépendances injectables)
+│   │   ├── core.mjs           # Validation, anti-spam, routage des 2 canaux
+│   │   └── templates.mjs      # Modèles d'e-mail (notification + accusé)
+│   └── functions/delete-account/
+│       └── index.ts           # Suppression de compte (purge + refroidissement)
 │
 ├── tests/
 │   ├── nonreg.test.js         # Non-régression LSV.ai + unités Analytics
@@ -172,7 +175,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1, §2.30 = v3.17.2.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -1875,6 +1878,60 @@ requise.
 **Vérifié par** `tests/public.test.js` §12 (icônes), §11quater (6 services) ·
 **totaux : interface 354 · suite 1269.**
 
+### 2.30 Suppression de compte, refroidissement 30 jours, libellé du bouton — v3.17.2
+
+Retours d'utilisation après v3.17.1 : l'utilisateur n'avait **nulle part où
+supprimer son compte**, et après une inscription par e-mail non confirmé le
+bouton du formulaire restait figé sur « Créer le compte » alors que le
+formulaire était passé en connexion.
+
+- **Suppression de compte (panneau Compte)** : nouveau bouton « Supprimer mon
+  compte » sous « Se déconnecter ». Deux clics pour agir — le premier arme le
+  bouton (rouge franc) avec la mention explicite que compte **et** créations
+  locales sont effacés, le second exécute. La suppression passe par la
+  **fonction d'environnement `delete-account`** (jamais le navigateur, qui n'a
+  pas la clé de service) : elle inscrit l'e-mail dans `public.deleted_emails`,
+  purge les événements et compteurs du compte, puis supprime le compte via
+  l'API admin GoTrue (`auth.admin.deleteUser`). Le profil part en cascade
+  (clé étrangère → `auth.users`). Sur l'appareil, toutes les données locales
+  `lsv4_*` (projets, bibliothèque, historique, conversations) sont purgées et
+  l'écran d'accueil s'ouvre à nouveau.
+- **Refroidissement de 30 jours** : la table `public.deleted_emails` conserve
+  l'e-mail supprimé 30 jours. **Sans policy** : ni anon ni authenticated n'y
+  touchent — seule la fonction `delete-account` (clé de service) y écrit. La
+  fonction SQL `public.email_cooling_down()` (SECURITY DEFINER, exposée à anon
+  et authenticated) ne renvoie **que** la date de fin de refroidissement, ce
+  qui permet au formulaire d'afficher « Compte supprimé récemment : réessaie
+  après le 29 novembre 2026. » **avant** même d'appeler l'inscription — sans
+  requête inutile, sans fuite de qui a supprimé quoi. Garde-fou serveur en
+  bonus : un trigger `BEFORE INSERT` sur `auth.users` refuse la création d'un
+  e-mail en refroidissement, même si le client était contourné. Sans serveur
+  (projet non configuré), aucune décision n'est prise et l'inscription tente
+  sa chance.
+- **Libellé du bouton après inscription** : `submit()` restaurait dans son
+  `finally` le libellé capturé **avant** le basculement de mode (« Créer le
+  compte » restait affiché sur le formulaire de connexion). Le libellé est
+  désormais recalculé depuis le mode courant à chaque fin d'envoi.
+- **Événement analytics `account_deleted`** ajouté à la liste blanche
+  (`analytics_events`) : les suppressions restent visibles dans les
+  statistiques du back-office.
+
+**Déploiement** (obligatoire pour activer la suppression) :
+
+```bash
+# 1. Migration (idempotente) — Dashboard Supabase → SQL Editor → Run
+#    sur supabase/upgrade-delete-account.sql
+# 2. Fonction d'environnement
+npx supabase functions deploy delete-account
+```
+
+Le front suit le dépôt (GitHub Pages) : après le push, recharger la page.
+
+**Vérifié par** `tests/public.test.js` §7ter (fichiers SQL/fonction, armement
+en deux clics, jeton envoyé, purge locale, refroidissement avant inscription,
+libellé « Se connecter » après inscription non confirmée) ·
+**totaux : interface 384 · suite 1299.**
+
 ---
 
 ## 3. Installation locale
@@ -1913,7 +1970,8 @@ npm run serve      # http://localhost:4173
 2. Coller le contenu de `supabase/schema.sql` → **Run**.
    *(Base déjà créée ? exécuter, dans cet ordre : `upgrade-admin-whitelist.sql`,
    `upgrade-profiles.sql`, `upgrade-activity-logs.sql`, `upgrade-quotas.sql`,
-   `upgrade-multi-key.sql`, `upgrade-mistral.sql` — toutes idempotentes.)*
+   `upgrade-multi-key.sql`, `upgrade-mistral.sql`, `upgrade-delete-account.sql`
+   — toutes idempotentes.)*
 3. **Ajouter son e-mail administrateur** (décommenter la dernière ligne du
    script, ou SQL direct) :
 
@@ -2253,7 +2311,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 1269 assertions, 6 suites
+npm test                      # 1299 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -2328,7 +2386,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 1269 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 1299 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (78 assertions, **90 avec `ORIG`**) — non-régression
@@ -2344,7 +2402,7 @@ npm test        # 1269 assertions (6 suites, hors ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (354 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (384 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,

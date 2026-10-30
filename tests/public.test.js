@@ -397,6 +397,157 @@ async function load(html, url) {
     check('mot de passe jamais stocké', !/mot-de-passe-test/.test(wb.localStorage.getItem('lsv4_account') || ''));
     check('aucune erreur console (inscription app)', errors.length === 0, errors.join('|'));
 
+    console.log('\n=== 7ter. SUPPRESSION DE COMPTE & REFRIGÉRISSEMENT 30 JOURS ===');
+    const upgradeDel = fs.readFileSync(path.join(PROJECT, 'supabase/upgrade-delete-account.sql'), 'utf8');
+    const delFn = fs.readFileSync(path.join(PROJECT, 'supabase/functions/delete-account/index.ts'), 'utf8');
+    check('upgrade : table des e-mails supprimés', /create table if not exists public\.deleted_emails/.test(upgradeDel));
+    check('e-mail bloqué 30 jours', /interval '30 days'/.test(upgradeDel));
+    check('lecture du refroidissement en SECURITY DEFINER',
+        /email_cooling_down[\s\S]{0,200}security definer/.test(upgradeDel));
+    check('garde-fou serveur avant création sur auth\.users',
+        /lsv_block_deleted_email/.test(upgradeDel) && /before insert on auth\.users/.test(upgradeDel));
+    check('aucune policy sur la liste des e-mails supprimés',
+        !/create policy[\s\S]{0,80}deleted_emails/.test(upgradeDel));
+    check('fonction serveur : suppression via l API admin GoTrue', /auth\.admin\.deleteUser/.test(delFn));
+    check('fonction serveur : e-mail conservé avant la purge',
+        delFn.indexOf('deleted_emails') !== -1 &&
+        delFn.indexOf('deleted_emails') < delFn.indexOf('admin.deleteUser'));
+    check('événement account_deleted dans la liste blanche', /'account_deleted'/.test(schema));
+    check('bouton supprimer présent dans le panneau Compte', !!doc.getElementById('account-delete'));
+    check('friendly conserve le message de refroidissement (date comprise)',
+        /15 janvier 2099/.test(wb.LSV.services.account.friendly('Compte supprimé récemment : réessaie après le 15 janvier 2099.')),
+        wb.LSV.services.account.friendly('Compte supprimé récemment : réessaie après le 15 janvier 2099.'));
+
+    // Inscription sans e-mail confirmé : le mode bascule en connexion et le
+    // bouton doit suivre (il affichait encore « Créer le compte » avant).
+    const cool = await load(prepare());
+    const wc = cool.dom.window;
+    const dc = wc.document;
+    const aCalls = [];
+    wc.fetch = function (url) {
+        const u = String(url);
+        aCalls.push(u);
+        if (u.includes('/rest/v1/analytics_events')) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
+        if (u.includes('/rest/v1/rpc/email_cooling_down')) return Promise.resolve({ ok: true, status: 200, json: async () => null, text: async () => '' });
+        if (u.includes('/auth/v1/signup')) {
+            return Promise.resolve({
+                ok: true, status: 200,
+                json: async () => ({ user: { email: 'sans-confirmation@lsv.ai', user_metadata: {} } }),
+                text: async () => ''
+            });
+        }
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    dc.getElementById('account-open').click();
+    dc.getElementById('account-mode').click(); // → mode inscription
+    dc.getElementById('account-name').value = 'Camille Test';
+    dc.getElementById('account-email').value = 'sans-confirmation@lsv.ai';
+    dc.getElementById('account-password').value = 'mot-de-passe-test';
+    dc.getElementById('account-submit').click();
+    await new Promise(r => setTimeout(r, 350));
+    check('inscription non confirmée → mode connexion',
+        dc.getElementById('auth-heading').textContent === 'Se connecter', dc.getElementById('auth-heading').textContent);
+    check('bouton du formulaire recalcule « Se connecter »',
+        dc.getElementById('account-submit').textContent === 'Se connecter', dc.getElementById('account-submit').textContent);
+    check('invitation à confirmer son e-mail',
+        /confirme ton e-mail/i.test(dc.getElementById('account-status-text').textContent),
+        dc.getElementById('account-status-text').textContent);
+    check('aucune erreur console (inscription non confirmée)', cool.errors.length === 0, cool.errors.join('|'));
+
+    // E-mail en refroidissement : refus avant même d'appeler l'inscription.
+    const bCalls = [];
+    wc.fetch = function (url) {
+        const u = String(url);
+        bCalls.push(u);
+        if (u.includes('/rest/v1/analytics_events')) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
+        if (u.includes('/rest/v1/rpc/email_cooling_down')) {
+            return Promise.resolve({ ok: true, status: 200, json: async () => '2099-01-15T12:00:00Z', text: async () => '' });
+        }
+        if (u.includes('/auth/v1/signup')) {
+            return Promise.resolve({
+                ok: true, status: 200,
+                json: async () => ({ access_token: 'jwt-bloquee', refresh_token: 'rfr-bloquee', expires_in: 3600, user: { email: 'bloquee@lsv.ai' } }),
+                text: async () => ''
+            });
+        }
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    dc.getElementById('account-mode').click(); // → retour mode inscription
+    dc.getElementById('account-name').value = 'Camille Test';
+    dc.getElementById('account-email').value = 'bloquee@lsv.ai';
+    dc.getElementById('account-password').value = 'mot-de-passe-test';
+    dc.getElementById('account-submit').click();
+    await new Promise(r => setTimeout(r, 350));
+    const coolMsg = dc.getElementById('account-status-text').textContent;
+    check('refroidissement : aucune requête d inscription envoyée',
+        !bCalls.some(u => u.includes('/auth/v1/signup')), bCalls.join(','));
+    check('refroidissement : date de réessai affichée',
+        /réessaie après le 15 janvier 2099/i.test(coolMsg), coolMsg);
+    check('refroidissement : aucun détail technique',
+        !/HTTP|sk-|2099-01|T12/i.test(coolMsg), coolMsg);
+    check('toujours déconnecté après refus', dc.getElementById('account-user').classList.contains('hidden'));
+    check('aucune erreur console (refroidissement)', cool.errors.length === 0, cool.errors.join('|'));
+
+    // Suppression de compte : deux clics, purge locale, session vidée.
+    const del = await load(prepare());
+    const wd = del.dom.window;
+    const dd = wd.document;
+    const dCalls = [];
+    wd.fetch = function (url, options) {
+        const u = String(url);
+        dCalls.push({
+            url: u,
+            method: (options && options.method) || 'GET',
+            headers: (options && options.headers) || {}
+        });
+        if (u.includes('/rest/v1/analytics_events')) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
+        if (u.includes('/auth/v1/token')) {
+            return Promise.resolve({
+                ok: true, status: 200,
+                json: async () => ({ access_token: 'jwt-a-supprimer', refresh_token: 'rfr-a-supprimer', expires_in: 3600, user: { email: 'supprime@lsv.ai' } }),
+                text: async () => ''
+            });
+        }
+        if (u.includes('/rest/v1/rpc/is_admin')) return Promise.resolve({ ok: true, status: 200, json: async () => false, text: async () => '' });
+        if (u.includes('/functions/v1/delete-account')) return Promise.resolve({ ok: true, status: 200, json: async () => ({ ok: true }), text: async () => '' });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    dd.getElementById('account-open').click();
+    dd.getElementById('account-email').value = 'supprime@lsv.ai';
+    dd.getElementById('account-password').value = 'mot-de-passe-test';
+    dd.getElementById('account-submit').click();
+    await new Promise(r => setTimeout(r, 400));
+    check('bouton supprimer visible une fois connecté',
+        !dd.getElementById('account-user').classList.contains('hidden') &&
+        !dd.getElementById('account-delete').classList.contains('hidden'));
+    wd.localStorage.setItem('lsv4_projects', JSON.stringify([{ id: 'p1', name: 'Projet de test' }]));
+    wd.localStorage.setItem('lsv4_images', JSON.stringify(['img1']));
+    dd.getElementById('account-delete').click();
+    await new Promise(r => setTimeout(r, 60));
+    check('premier clic : aucune requête de suppression',
+        !dCalls.some(c => c.url.includes('/functions/v1/delete-account')));
+    check('premier clic : bouton en mode confirmation',
+        /Confirmer/.test(dd.getElementById('account-delete').textContent),
+        dd.getElementById('account-delete').textContent);
+    dd.getElementById('account-delete').click();
+    await new Promise(r => setTimeout(r, 400));
+    const delCall = dCalls.find(c => c.url.includes('/functions/v1/delete-account'));
+    check('second clic : requête de suppression envoyée', !!delCall && delCall.method === 'POST');
+    check('requête portée par le jeton du compte',
+        !!delCall && /Bearer jwt-a-supprimer/.test(String((delCall.headers && delCall.headers.Authorization) || '')),
+        delCall && delCall.headers && delCall.headers.Authorization);
+    check('session locale vidée', !wd.localStorage.getItem('lsv4_account'));
+    check('données locales purgées (projets et bibliothèque)',
+        !wd.localStorage.getItem('lsv4_projects') && !wd.localStorage.getItem('lsv4_images'));
+    check('panneau invité de retour',
+        dd.getElementById('account-user').classList.contains('hidden') &&
+        !dd.getElementById('account-guest').classList.contains('hidden'));
+    check('page d accueil réaffichée', !dd.getElementById('welcome').classList.contains('hidden'));
+    check('toast « Compte supprimé »',
+        /Compte supprimé/i.test(dd.getElementById('toast-text').textContent),
+        dd.getElementById('toast-text').textContent);
+    check('aucune erreur console (suppression)', del.errors.length === 0, del.errors.join('|'));
+
     console.log('\n=== 8. CRÉATION BLOQUÉE SANS COMPTE ===');
     const anon = await load(prepare());
     const wa = anon.dom.window;

@@ -123,6 +123,14 @@ const AccountService = {
 
     async signUp(email, password, name) {
         if (!this._configured()) throw new Error('configuration absente');
+        /* Refroidissement : un compte supprimé garde son e-mail 30 jours.
+           On demande la date au serveur AVANT l'inscription — sans serveur,
+           on ne décide de rien et l'inscription tente sa chance. */
+        const until = await this.emailCoolingDown(email);
+        if (until) {
+            throw new Error('Compte supprimé récemment : réessaie après le ' +
+                this._cooldownLabel(until) + '.');
+        }
         const body = { email: email, password: password };
         if (name) body.data = { full_name: name };
         const data = await this._post('/signup', body);
@@ -131,6 +139,47 @@ const AccountService = {
             return { confirmed: true };
         }
         return { confirmed: false };
+    },
+    /* Fin du refroidissement (ISO) pour cet e-mail, ou '' si l'e-mail est
+       libre / le serveur ne répond pas (la suite ne doit pas en décider). */
+    async emailCoolingDown(email) {
+        if (!this._configured()) return '';
+        try {
+            const res = await fetch(this._base() + '/rest/v1/rpc/email_cooling_down', {
+                method: 'POST',
+                headers: this._headers(null),
+                body: JSON.stringify({ p_email: email })
+            });
+            if (!res.ok) return '';
+            const v = await res.json();
+            return typeof v === 'string' && v ? v : '';
+        } catch (e) { return ''; }
+    },
+    /* Date « 29 novembre 2026 » sans dépendre du navigateur (même format
+       partout, y compris dans les tests). */
+    _cooldownLabel(iso) {
+        const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+        if (!m) return 'plus tard';
+        const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+            'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+        return Number(m[3]) + ' ' + (MOIS[Number(m[2]) - 1] || '') + ' ' + m[1];
+    },
+    /* Suppression définitive du compte (déléguée à la fonction d'environnement
+       delete-account : purge des données + refroidissement + GoTrue admin).
+       Le client n'a jamais la clé de service. */
+    async deleteAccount() {
+        const t = await this.token();
+        if (!t) throw new Error('connexion requise');
+        const res = await fetch(this._base() + '/functions/v1/delete-account', {
+            method: 'POST',
+            headers: this._headers(t)
+        });
+        let data = null;
+        try { data = await res.json(); } catch (e) {}
+        if (!res.ok) throw new Error((data && data.error) || 'suppression impossible');
+        this._save(null);
+        try { Gateway.setToken(null); } catch (e) {}
+        return true;
     },
     async signIn(email, password) {
         if (!this._configured()) throw new Error('configuration absente');
@@ -190,6 +239,9 @@ const AccountService = {
 
     friendly(message) {
         const m = String(message || '').toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+        /* Message déjà formulé en français par l'application (refroidissement
+           après suppression) : on le passe tel quel, date comprise. */
+        if (m.indexOf('compte supprim') !== -1) return String(message || 'Compte supprimé récemment.');
         if (m.indexOf('configuration') !== -1) return 'Compte indisponible : configuration absente.';
         if (m.indexOf('invalid login') !== -1 || m.indexOf('invalid credentials') !== -1 ||
             m.indexOf('user not found') !== -1 || m.indexOf('no user found') !== -1) return 'Identifiants incorrects.';
@@ -372,6 +424,7 @@ const QuotaService = {
 const AccountView = {
     mode: 'login',
     busy: false,
+    _delArmed: false,
 
     $(id) { return document.getElementById(id); },
 
@@ -386,6 +439,7 @@ const AccountView = {
             if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') this.submit(); });
         });
         this.$('account-logout').addEventListener('click', () => this.logout());
+        this.$('account-delete').addEventListener('click', () => this.deleteAccount());
         this.$('account-admin').addEventListener('click', () => { window.location.href = 'admin/'; });
         this.setMode(this.mode);
         const modal = this.$('auth-modal');
@@ -508,6 +562,13 @@ const AccountView = {
     renderGuest() {
         try { Gateway.setToken(null); } catch (e) {}
         if (window.QuotaService && QuotaService.clear) QuotaService.clear();
+        this._delArmed = false;
+        const del = this.$('account-delete');
+        if (del) {
+            if (del.classList) del.classList.remove('armed');
+            del.textContent = 'Supprimer mon compte';
+            del.disabled = false;
+        }
         this.$('account-user').classList.add('hidden');
         this.$('account-guest').classList.remove('hidden');
         const modal = this.$('auth-modal');
@@ -567,7 +628,6 @@ const AccountView = {
         if (!email || !password) { this.status('E-mail et mot de passe requis.', 'err'); return; }
         this.busy = true;
         const btn = this.$('account-submit');
-        const label = btn.textContent;
         btn.disabled = true;
         btn.textContent = 'Vérification…';
         try {
@@ -600,7 +660,11 @@ const AccountView = {
         } finally {
             this.busy = false;
             btn.disabled = false;
-            btn.textContent = label;
+            /* Le mode a pu basculer pendant la requête (inscription sans
+               confirmation → connexion) : on recalcule le libellé au lieu de
+               restaurer l'ancien (sinon « Créer le compte » restait affiché
+               sur le formulaire de connexion). */
+            btn.textContent = this.mode === 'signup' ? 'Créer le compte' : 'Se connecter';
         }
     },
     async logout() {
@@ -609,6 +673,54 @@ const AccountView = {
         this.status('Déconnecté.', 'ok');
         UI.showToast('Déconnecté de ton compte.', 'success', 2400);
         if (typeof WelcomeView !== 'undefined') WelcomeView.open();
+    },
+    /* ── Suppression définitive du compte ────────────────────────────────
+       Deux clics : le premier arme (le bouton devient rouge franc), le
+       second exécute. Le serveur garde l'e-mail 30 jours (refroidissement),
+       efface les données et supprime le compte ; l'appareil purge tout le
+       local (projets, bibliothèque, historique) pour repartir à zéro. */
+    async deleteAccount() {
+        if (this.busy) return;
+        const btn = this.$('account-delete');
+        if (!btn) return;
+        if (!this._delArmed) {
+            this._delArmed = true;
+            if (btn.classList) btn.classList.add('armed');
+            btn.textContent = 'Confirmer : supprimer définitivement';
+            this.status('Suppression définitive : compte et créations locales effacés, ' +
+                'e-mail bloqué 30 jours. Clique à nouveau pour confirmer.', 'err');
+            return;
+        }
+        this.busy = true;
+        btn.disabled = true;
+        btn.textContent = 'Suppression…';
+        try {
+            await AccountService.deleteAccount();
+            LSVAnalytics.track('account_deleted', {});
+            this._delArmed = false;
+            if (btn.classList) btn.classList.remove('armed');
+            btn.textContent = 'Supprimer mon compte';
+            /* Toute donnée locale du studio part avec le compte. */
+            try {
+                const doomed = [];
+                for (let i = localStorage.length - 1; i >= 0; i--) {
+                    const k = localStorage.key(i);
+                    if (k && k.indexOf('lsv4_') === 0) doomed.push(k);
+                }
+                doomed.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+            } catch (e) {}
+            this.renderGuest();
+            UI.showToast('Compte supprimé.', 'success', 3000);
+            if (typeof WelcomeView !== 'undefined') WelcomeView.open();
+        } catch (e) {
+            this._delArmed = false;
+            if (btn.classList) btn.classList.remove('armed');
+            btn.textContent = 'Supprimer mon compte';
+            this.status(AccountService.friendly(e && e.message), 'err');
+        } finally {
+            this.busy = false;
+            btn.disabled = false;
+        }
     }
 };
 

@@ -1596,6 +1596,25 @@ input:focus, textarea:focus, select:focus {
     cursor: pointer;
 }
 .account-switch:hover { color: var(--accent); }
+/* Suppression de compte : discrète au repos, rouge franc une fois armée —
+   le second clic confirme la destruction définitive. */
+.account-danger {
+    display: block;
+    margin-top: 0.45rem;
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--red);
+    font-family: var(--font);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    opacity: 0.75;
+}
+.account-danger:hover { opacity: 1; text-decoration: underline; }
+.account-danger.armed { font-weight: 700; opacity: 1; }
+.account-danger:disabled { opacity: 0.5; cursor: not-allowed; }
 .rp-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .rp-project-card {
