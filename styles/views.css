@@ -205,11 +205,12 @@
     border-top: 1px solid var(--border);
     padding: 0.4rem 0.5rem;
     z-index: 100;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 2px;
     box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05);
 }
-.mobile-nav .nav-mob {
+.mobile-nav .nav-mob,
+.mobile-nav .nav-settings {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -225,19 +226,27 @@
     transition: all 0.15s;
 }
 .mobile-nav .nav-mob.active { color: var(--accent); background: var(--accent-light); }
-.mobile-nav .nav-mob .ms { font-size: 20px; }
+.mobile-nav .nav-mob .ms,
+.mobile-nav .nav-settings .ms { font-size: 20px; }
+/* Bouton Paramètres : même look que les onglets, s'allume quand le
+   panneau est ouvert (voir body.panel-open plus bas). */
+body.panel-open .mobile-nav .nav-settings { color: var(--accent); background: var(--accent-light); }
 
 @media (max-width: 1100px) { :root { --panel-w: 300px; } }
 @media (max-width: 900px) {
     .app { grid-template-columns: 1fr !important; }
     .sidebar { display: none; }
+    /* Panneau Paramètres : masqué par défaut sur mobile, ouvert à la
+       demande par le bouton « Paramètres » de la barre du bas. */
     .right-panel {
+        display: none;
         position: static;
         height: auto;
         border-left: none;
         border-top: 1px solid var(--border);
         padding: 1.2rem 1rem 8rem;
     }
+    body.panel-open .right-panel { display: block; }
     .main { padding: 1rem 0.85rem 8rem; }
     .status-bar { left: 0 !important; right: 0 !important; bottom: 60px; }
     .debug { left: 0 !important; right: 0 !important; bottom: 60px; }

@@ -19,8 +19,21 @@
     const S = (window.LSVStudio = window.LSVStudio || {});
 
     /* Clé écrite par LSV.ai (scripts/constants.js → STORAGE_KEYS.ASSETS).
-       On la redéclare : le Studio ne charge PAS les modules de l'app. */
-    const ASSETS_KEY = 'lsv4_assets';
+       On la redéclare : le Studio ne charge PAS les modules de l'app.
+       Depuis v3.17.3, la bibliothèque est suffixée par le compte
+       (`lsv4_assets__u<uid>`) : on lit la clé du compte connecté, sinon
+       la clé nue (avant toute connexion). */
+    function assetsKey() {
+        try {
+            const a = JSON.parse(localStorage.getItem('lsv4_account') || 'null');
+            const uid = a && a.id ? String(a.id) : '';
+            if (uid) {
+                const scoped = 'lsv4_assets__u' + uid;
+                if (localStorage.getItem(scoped) !== null) return scoped;
+            }
+        } catch (e) {}
+        return 'lsv4_assets';
+    }
 
     const LibraryImport = {
         /* ── Lecture de la bibliothèque du site ─────────────────────────── */
@@ -29,7 +42,7 @@
         list() {
             let raw;
             try {
-                raw = localStorage.getItem(ASSETS_KEY);
+                raw = localStorage.getItem(assetsKey());
             } catch (e) {
                 return [];   // stockage désactivé
             }

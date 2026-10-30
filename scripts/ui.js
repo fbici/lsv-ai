@@ -30,6 +30,15 @@ const UI = {
         document.querySelectorAll('.nav-item').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
         document.querySelectorAll('.nav-mob').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
         document.querySelectorAll('.tab-content').forEach(p => p.classList.toggle('active', p.id === 'tab-' + id));
+        /* Sur mobile, la page défile avec la fenêtre : un changement d'onglet
+           doit revenir EN HAUT, sinon « Chat » ouvert depuis le bas de
+           l'accueil affiche un écran vide. Le panneau Paramètres se referme. */
+        document.body.classList.remove('panel-open');
+        try { window.scrollTo(0, 0); } catch (e) {}
+        try {
+            const main = document.querySelector('.main');
+            if (main && main.scrollTop) main.scrollTop = 0;
+        } catch (e) {}
         DebugService.log('info', 'TAB', 'Onglet : ' + id);
         LSVAnalytics.track('tab_view', { tab: id });
         if (id === 'dashboard') Dashboard.refresh();
@@ -44,6 +53,24 @@ const UI = {
            donc un aller-retour inoffensif à chaque visite). Le service est
            une constante de portée globale, PAS une propriété de window. */
         if (id === 'video' && typeof VideoAvailabilityService !== 'undefined') VideoAvailabilityService.refresh();
+    },
+    /* ── Panneau Paramètres (mobile) ───────────────────────────────────
+       Sur téléphone, le panneau de droite n'est plus poussé en bas de
+       chaque page : un bouton « Paramètres » dans la barre du bas
+       l'affiche ou le masque à la demande. */
+    toggleSettingsPanel(force) {
+        const open = force === undefined
+            ? !document.body.classList.contains('panel-open')
+            : !!force;
+        document.body.classList.toggle('panel-open', open);
+        const btn = document.getElementById('mobile-settings');
+        if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open) {
+            const panel = document.querySelector('.right-panel');
+            try { if (panel && panel.scrollIntoView) panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+            catch (e) {}
+        }
+        return open;
     },
     updateButtons() {
         const hasKey = CONFIG.GATEWAY_READY;

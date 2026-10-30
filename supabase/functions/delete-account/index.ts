@@ -19,7 +19,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const ALLOWED = (Deno.env.get('ALLOWED_ORIGINS') ||
-    'https://fbici.github.io,http://localhost:4173,http://127.0.0.1:4173')
+    'https://fbici.github.io,https://lsv-ai.lestudioviral.workers.dev,http://localhost:4173,http://127.0.0.1:4173')
     .split(',').map(s => s.trim()).filter(Boolean);
 
 function corsHeaders(origin) {

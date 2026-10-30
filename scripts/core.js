@@ -138,39 +138,99 @@ const Utils = {
 
 /* STORAGE */
 const StorageService = {
+    /* ── Clés par compte (isolement des données créatives) ──────────────
+       Projets, bibliothèque, historique, conversations, verrous, compteurs
+       et cache de timings sont suffixés par l'identifiant du compte
+       (`lsv4_projects__u<uid>`) : deux comptes sur le MÊME navigateur ne
+       partagent plus rien (aucune fuite de chats ni d'images entre comptes).
+       Les préférences d'appareil (thème, wakelock, auto-download, sidebar,
+       modèle de chat, disponibilité vidéo, page d'accueil vues) restent
+       globales — ce sont des réglages, pas des créations. */
+    _owner: '',
+    OWNER_KEY: 'lsv4_owner',
+    _SCOPED: ['lsv4_projects', 'lsv4_assets', 'lsv4_history',
+        'lsv4_conversations', 'lsv4_locks', 'lsv4_counters', 'lsv4_timing'],
+    _k(base) {
+        if (!this._owner) return base;
+        return base + '__u' + this._owner;
+    },
+    /* Appelé au démarrage et à chaque connexion/déconnexion. Migration :
+       les données créées AVANT tout compte (clés nues) sont adoptées par le
+       PREMIER compte connecté sur l'appareil, jamais par le suivant. */
+    setOwner(uid) {
+        const next = String(uid || '');
+        if (next === this._owner) return;
+        this._owner = next;
+        try {
+            if (next) localStorage.setItem(this.OWNER_KEY, next);
+            else localStorage.removeItem(this.OWNER_KEY);
+        } catch (e) {}
+        if (next) {
+            this._SCOPED.forEach(base => {
+                try {
+                    const scoped = base + '__u' + next;
+                    const legacy = localStorage.getItem(base);
+                    if (legacy !== null && localStorage.getItem(scoped) === null) {
+                        localStorage.setItem(scoped, legacy);
+                    }
+                    if (legacy !== null) localStorage.removeItem(base);
+                } catch (e) {}
+            });
+        }
+        this._invalidate();
+    },
+    /* Les services gardent leurs listes en mémoire : après un changement de
+       compte, on vide les caches et les compteurs pour que rien de l'ancien
+       utilisateur ne reste affiché. */
+    _invalidate() {
+        try {
+            [ProjectService, AssetService, HistoryService, ConversationService, LockService]
+                .forEach(s => { s._cache = null; });
+        } catch (e) {}
+        try {
+            if (typeof Runtime !== 'undefined') {
+                Runtime.currentProjectId = null;
+                Runtime.currentConversationId = null;
+            }
+            if (typeof Handlers !== 'undefined' && Handlers._loadCounters) Handlers._loadCounters();
+        } catch (e) {}
+        try {
+            const i = document.getElementById('sidebar-image-count');
+            const v = document.getElementById('sidebar-video-count');
+            if (i && typeof Runtime !== 'undefined') i.textContent = Runtime.imageCount;
+            if (v && typeof Runtime !== 'undefined') v.textContent = Runtime.videoCount;
+        } catch (e) {}
+    },
+    owner() { return this._owner; },
     _get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     _set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } },
     _remove(k) { try { localStorage.removeItem(k); return true; } catch (e) { return false; } },
-    getTimingCache() { try { return JSON.parse(this._get(STORAGE_KEYS.TIMING) || '{}'); } catch (e) { return {}; } },
-    setTimingCache(c) { return this._set(STORAGE_KEYS.TIMING, JSON.stringify(c)); },
+    getTimingCache() { try { return JSON.parse(this._get(this._k(STORAGE_KEYS.TIMING)) || '{}'); } catch (e) { return {}; } },
+    setTimingCache(c) { return this._set(this._k(STORAGE_KEYS.TIMING), JSON.stringify(c)); },
     getWakeLockPref() { return this._get(STORAGE_KEYS.WAKELOCK) === '1'; },
     setWakeLockPref(v) { return this._set(STORAGE_KEYS.WAKELOCK, v ? '1' : '0'); },
-    getCounters() { try { return JSON.parse(this._get(STORAGE_KEYS.COUNTERS) || '{}'); } catch (e) { return {}; } },
-    setCounters(c) { return this._set(STORAGE_KEYS.COUNTERS, JSON.stringify(c)); },
-    getProjects() { try { return JSON.parse(this._get(STORAGE_KEYS.PROJECTS) || '[]'); } catch (e) { return []; } },
-    setProjects(l) { return this._set(STORAGE_KEYS.PROJECTS, JSON.stringify(l)); },
-    getAssets() { try { return JSON.parse(this._get(STORAGE_KEYS.ASSETS) || '[]'); } catch (e) { return []; } },
-    setAssets(l) { return this._set(STORAGE_KEYS.ASSETS, JSON.stringify(l)); },
-    getHistory() { try { return JSON.parse(this._get(STORAGE_KEYS.HISTORY) || '[]'); } catch (e) { return []; } },
-    setHistory(l) { return this._set(STORAGE_KEYS.HISTORY, JSON.stringify(l)); },
-    getConversations() { try { return JSON.parse(this._get(STORAGE_KEYS.CONVERSATIONS) || '[]'); } catch (e) { return []; } },
-    setConversations(l) { return this._set(STORAGE_KEYS.CONVERSATIONS, JSON.stringify(l)); },
+    getCounters() { try { return JSON.parse(this._get(this._k(STORAGE_KEYS.COUNTERS)) || '{}'); } catch (e) { return {}; } },
+    setCounters(c) { return this._set(this._k(STORAGE_KEYS.COUNTERS), JSON.stringify(c)); },
+    getProjects() { try { return JSON.parse(this._get(this._k(STORAGE_KEYS.PROJECTS)) || '[]'); } catch (e) { return []; } },
+    setProjects(l) { return this._set(this._k(STORAGE_KEYS.PROJECTS), JSON.stringify(l)); },
+    getAssets() { try { return JSON.parse(this._get(this._k(STORAGE_KEYS.ASSETS)) || '[]'); } catch (e) { return []; } },
+    setAssets(l) { return this._set(this._k(STORAGE_KEYS.ASSETS), JSON.stringify(l)); },
+    getHistory() { try { return JSON.parse(this._get(this._k(STORAGE_KEYS.HISTORY)) || '[]'); } catch (e) { return []; } },
+    setHistory(l) { return this._set(this._k(STORAGE_KEYS.HISTORY), JSON.stringify(l)); },
+    getConversations() { try { return JSON.parse(this._get(this._k(STORAGE_KEYS.CONVERSATIONS)) || '[]'); } catch (e) { return []; } },
+    setConversations(l) { return this._set(this._k(STORAGE_KEYS.CONVERSATIONS), JSON.stringify(l)); },
     getTheme() { return this._get(STORAGE_KEYS.THEME) || 'light'; },
     setTheme(v) { return this._set(STORAGE_KEYS.THEME, v); },
-    getLocks() { try { return JSON.parse(this._get(STORAGE_KEYS.LOCKS) || '[]'); } catch (e) { return []; } },
-    setLocks(l) { return this._set(STORAGE_KEYS.LOCKS, JSON.stringify(l)); },
+    getLocks() { try { return JSON.parse(this._get(this._k(STORAGE_KEYS.LOCKS)) || '[]'); } catch (e) { return []; } },
+    setLocks(l) { return this._set(this._k(STORAGE_KEYS.LOCKS), JSON.stringify(l)); },
     getAutoDownload() { return this._get(STORAGE_KEYS.AUTODOWNLOAD) === '1'; },
     setAutoDownload(v) { return this._set(STORAGE_KEYS.AUTODOWNLOAD, v ? '1' : '0'); },
     getSidebarCollapsed() { return this._get(STORAGE_KEYS.SIDEBAR_COLLAPSED) === '1'; },
     setSidebarCollapsed(v) { return this._set(STORAGE_KEYS.SIDEBAR_COLLAPSED, v ? '1' : '0'); },
     resetAll() {
-        this._remove(STORAGE_KEYS.PROJECTS);
-        this._remove(STORAGE_KEYS.ASSETS);
-        this._remove(STORAGE_KEYS.HISTORY);
-        this._remove(STORAGE_KEYS.COUNTERS);
-        this._remove(STORAGE_KEYS.TIMING);
-        this._remove(STORAGE_KEYS.CONVERSATIONS);
-        this._remove(STORAGE_KEYS.LOCKS);
+        this._SCOPED.forEach(base => this._remove(this._k(base)));
+        /* Les clés nues (avant toute connexion) suivent aussi le reset. */
+        this._SCOPED.forEach(base => this._remove(base));
     },
     estimateStorageSize() {
         let total = 0;

@@ -33,7 +33,7 @@ const handle = createHandler({
     store: createMemoryStore(),
     allowOrigin: origin => {
         const allowed = (Deno.env.get('ALLOWED_ORIGINS') ||
-            'https://fbici.github.io,http://localhost:4173,http://127.0.0.1:4173')
+            'https://fbici.github.io,https://lsv-ai.lestudioviral.workers.dev,http://localhost:4173,http://127.0.0.1:4173')
             .split(',').map(s => s.trim()).filter(Boolean);
         if (!origin) return allowed[0] || '*';
         return allowed.includes(origin) ? origin : 'null';

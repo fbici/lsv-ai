@@ -168,4 +168,11 @@ a:hover { text-decoration: underline; }
     .ct-row { grid-template-columns: 1fr; }
     .site-footer .sf-grid { grid-template-columns: 1fr; }
     .ct-nav a { padding: 7px 9px; font-size: 13px; }
+    /* En-tête : les liens texte défilent sous la marque sur petit écran —
+       on les masque, la marque + le bouton « Ouvrir le studio » suffisent. */
+    .ct-topbar .wrap { height: 54px; }
+    .ct-nav a:not(.is-btn) { display: none; }
+    .ct-nav a.is-btn { padding: 8px 13px; font-size: 13px; }
+    .ct-hero { padding: 44px 0 28px; }
+    .ct-lead { font-size: 15.5px; }
 }

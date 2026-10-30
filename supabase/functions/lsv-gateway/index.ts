@@ -20,7 +20,7 @@ const handle = createHandler({
         SUPABASE_URL: Deno.env.get('SUPABASE_URL') ?? '',
         SUPABASE_SERVICE_ROLE_KEY: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
         SUPABASE_SECRET_KEYS: Deno.env.get('SUPABASE_SECRET_KEYS') ?? '',
-        ALLOWED_ORIGINS: Deno.env.get('ALLOWED_ORIGINS') ?? 'https://fbici.github.io,http://localhost:4173,http://127.0.0.1:4173',
+        ALLOWED_ORIGINS: Deno.env.get('ALLOWED_ORIGINS') ?? 'https://fbici.github.io,https://lsv-ai.lestudioviral.workers.dev,http://localhost:4173,http://127.0.0.1:4173',
         RATE_LIMIT_PER_MIN: Deno.env.get('RATE_LIMIT_PER_MIN') ?? '',
         MAX_CONCURRENT_PER_USER: Deno.env.get('MAX_CONCURRENT_PER_USER') ?? '',
         IMAGE_LIMIT: Deno.env.get('IMAGE_LIMIT') ?? '',

@@ -412,6 +412,9 @@ function restoreResultsFromLibrary() {
 /* INIT */
 function init() {
     DebugService.init();
+    /* Compte connecté (éventuel) : les clés de données créatives doivent
+       être résolues AVANT toute lecture (compteurs, projets, bibliothèque). */
+    StorageService.setOwner(AccountService.userId());
     Handlers._loadCounters();
     UI.applyTheme(StorageService.getTheme());
     UI.applySidebarState(StorageService.getSidebarCollapsed());
@@ -456,6 +459,7 @@ function init() {
     document.querySelectorAll('.nav-mob').forEach(t => {
         t.addEventListener('click', () => UI.switchTab(t.dataset.tab));
     });
+    document.getElementById('mobile-settings').addEventListener('click', () => UI.toggleSettingsPanel());
 
     document.getElementById('sidebar-toggle').addEventListener('click', () => Handlers.toggleSidebar());
 

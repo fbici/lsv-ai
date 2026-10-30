@@ -548,6 +548,118 @@ async function load(html, url) {
         dd.getElementById('toast-text').textContent);
     check('aucune erreur console (suppression)', del.errors.length === 0, del.errors.join('|'));
 
+    console.log('\n=== 7quater. ISOLEMENT DES COMPTES, CORS CLOUDFLARE, MOBILE ===');
+    const coreJs = fs.readFileSync(path.join(PROJECT, 'scripts/core.js'), 'utf8');
+    const libImport = fs.readFileSync(path.join(PROJECT, 'studio/core/library-import.js'), 'utf8');
+    const gwIndex = fs.readFileSync(path.join(PROJECT, 'supabase/functions/lsv-gateway/index.ts'), 'utf8');
+    const contactIndex = fs.readFileSync(path.join(PROJECT, 'supabase/functions/lsv-contact/index.ts'), 'utf8');
+    const delIndex = fs.readFileSync(path.join(PROJECT, 'supabase/functions/delete-account/index.ts'), 'utf8');
+    const WORKER = 'lsv-ai.lestudioviral.workers.dev';
+    check('données créatives suffixées par le compte (clé __u)',
+        /base \+ '__u' \+ this\._owner/.test(coreJs) && /_SCOPED/.test(coreJs));
+    check('préférences d appareil (thème, modèle) restent globales',
+        !/THEME.*_k\(|_k\(STORAGE_KEYS\.THEME\)/.test(coreJs));
+    check('Studio : bibliothèque lue sous la clé du compte connecté',
+        /lsv4_assets__u/.test(libImport) && /assetsKey/.test(libImport));
+    check('passerelle : origine Cloudflare autorisée (CORS)', gwIndex.indexOf(WORKER) !== -1);
+    check('contact : origine Cloudflare autorisée (CORS)', contactIndex.indexOf(WORKER) !== -1);
+    check('suppression de compte : origine Cloudflare autorisée (CORS)', delIndex.indexOf(WORKER) !== -1);
+    const googleFile = path.join(PROJECT, 'google830a692cd2d78a2e.html');
+    check('fichier de vérification Google présent',
+        fs.existsSync(googleFile) &&
+        fs.readFileSync(googleFile, 'utf8').trim() === 'google-site-verification: google830a692cd2d78a2e.html');
+
+    // Isolement fonctionnel : A crée, B ne voit rien, A retrouve ses données.
+    const iso = await load(prepare());
+    const wi = iso.dom.window;
+    const st = wi.LSV.services.storage;
+    st.setOwner('compte-a-uuid');
+    st.setProjects([{ id: 'p-a', name: 'Projet de A' }]);
+    st.setConversations([{ id: 'c-a', title: 'Chat de A', messages: [] }]);
+    check('compte A : données enregistrées sous clé suffixée',
+        !!wi.localStorage.getItem('lsv4_projects__ucompte-a-uuid') &&
+        wi.localStorage.getItem('lsv4_projects') === null);
+    st.setOwner('compte-b-uuid');
+    check('compte B : aucun projet ni conversation de A visible',
+        st.getProjects().length === 0 && st.getConversations().length === 0);
+    check('compte B : clé de A toujours presente mais non lue',
+        !!wi.localStorage.getItem('lsv4_projects__ucompte-a-uuid') && st.getProjects().length === 0);
+    st.setOwner('compte-a-uuid');
+    check('retour au compte A : projets et conversations retrouvés',
+        st.getProjects().length === 1 && st.getConversations().length === 1);
+
+    // Adoption : les données d'avant-compte passent au premier compte.
+    const legacy = await load(prepare());
+    const wl = legacy.dom.window;
+    wl.localStorage.setItem('lsv4_projects', JSON.stringify([{ id: 'p-legacy', name: 'Projet d avant' }]));
+    wl.LSV.services.storage.setOwner('premier-compte');
+    check('données d avant-compte adoptées par le premier compte',
+        !!wl.localStorage.getItem('lsv4_projects__upremier-compte') &&
+        wl.localStorage.getItem('lsv4_projects') === null);
+    check('adoption : contenu intact',
+        wl.LSV.services.storage.getProjects().length === 1 &&
+        wl.LSV.services.storage.getProjects()[0].id === 'p-legacy');
+    wl.LSV.services.storage.setOwner('autre-compte');
+    check('deuxième compte : rien de l adoption hérité',
+        wl.LSV.services.storage.getProjects().length === 0);
+
+    // Connexion réelle (formulaire) : clés écrites sous le suffixe du compte.
+    const live = await load(prepare());
+    const wv = live.dom.window;
+    const dv = wv.document;
+    wv.fetch = function (url) {
+        const u = String(url);
+        if (u.includes('/rest/v1/analytics_events')) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
+        if (u.includes('/auth/v1/token')) {
+            return Promise.resolve({
+                ok: true, status: 200,
+                json: async () => ({ access_token: 'jwt-iso', refresh_token: 'rfr-iso', expires_in: 3600, user: { email: 'iso@lsv.ai', id: 'compte-live-id' } }),
+                text: async () => ''
+            });
+        }
+        if (u.includes('/rest/v1/rpc/is_admin')) return Promise.resolve({ ok: true, status: 200, json: async () => false, text: async () => '' });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    dv.getElementById('account-open').click();
+    dv.getElementById('account-email').value = 'iso@lsv.ai';
+    dv.getElementById('account-password').value = 'mot-de-passe-test';
+    dv.getElementById('account-submit').click();
+    await new Promise(r => setTimeout(r, 400));
+    wv.LSV.services.storage.setAssets([{ id: 'asset-iso', type: 'image', url: 'u', name: 'n', metadata: {}, createdAt: 1 }]);
+    check('après connexion : bibliothèque sous la clé du compte',
+        !!wv.localStorage.getItem('lsv4_assets__ucompte-live-id') &&
+        wv.localStorage.getItem('lsv4_assets') === null);
+    check('propriétaire actif = identifiant du compte',
+        wv.LSV.services.storage.owner() === 'compte-live-id', wv.LSV.services.storage.owner());
+    dv.getElementById('account-logout').click();
+    await new Promise(r => setTimeout(r, 80));
+    check('après déconnexion : bibliothèque invisible (clés conservées)',
+        wv.LSV.services.storage.getAssets().length === 0 &&
+        !!wv.localStorage.getItem('lsv4_assets__ucompte-live-id'));
+    check('aucune erreur console (isolement)', iso.errors.length === 0 && legacy.errors.length === 0 && live.errors.length === 0,
+        iso.errors.concat(legacy.errors, live.errors).join('|'));
+
+    // Mobile : remontée en haut au changement d onglet + panneau Paramètres.
+    const mob = await load(prepare());
+    const wm = mob.dom.window;
+    const dm = wm.document;
+    let scrollSeen = null;
+    wm.scrollTo = function (x, y) { scrollSeen = [x, y]; };
+    dm.querySelector('.nav-mob[data-tab="chat"]').click();
+    check('clic Chat (mobile) : page remontée en haut', scrollSeen && scrollSeen[0] === 0 && scrollSeen[1] === 0, JSON.stringify(scrollSeen));
+    check('onglet Chat actif après clic', dm.getElementById('tab-chat').classList.contains('active'));
+    const setBtn = dm.getElementById('mobile-settings');
+    check('bouton Paramètres présent dans la barre mobile', !!setBtn);
+    setBtn.click();
+    check('clic Paramètres : panneau affiché', dm.body.classList.contains('panel-open') && setBtn.getAttribute('aria-expanded') === 'true');
+    dm.querySelector('.nav-mob[data-tab="image"]').click();
+    check('navigation : panneau Paramètres refermé automatiquement', !dm.body.classList.contains('panel-open'));
+    setBtn.click();
+    check('clic après navigation : panneau réaffiché', dm.body.classList.contains('panel-open') && setBtn.getAttribute('aria-expanded') === 'true');
+    setBtn.click();
+    check('second clic Paramètres : panneau masqué', !dm.body.classList.contains('panel-open') && setBtn.getAttribute('aria-expanded') === 'false');
+    check('aucune erreur console (mobile)', mob.errors.length === 0, mob.errors.join('|'));
+
     console.log('\n=== 8. CRÉATION BLOQUÉE SANS COMPTE ===');
     const anon = await load(prepare());
     const wa = anon.dom.window;

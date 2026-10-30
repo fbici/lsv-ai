@@ -73,6 +73,13 @@ const AccountService = {
             if (s) localStorage.setItem(this.KEY, JSON.stringify(s));
             else localStorage.removeItem(this.KEY);
         } catch (e) {}
+        /* Les données créatives suivent le compte : à chaque connexion ou
+           déconnexion, les clés localStorage sont re-suffisées (§ isolement). */
+        try {
+            if (typeof StorageService !== 'undefined' && StorageService.setOwner) {
+                StorageService.setOwner(s && s.id ? s.id : '');
+            }
+        } catch (e) {}
     },
     email() {
         const s = this.session();
@@ -733,7 +740,7 @@ const WelcomeView = {
     done() { try { return localStorage.getItem('lsv4_welcome') === 'done'; } catch (e) { return false; } },
     markDone() { try { localStorage.setItem('lsv4_welcome', 'done'); } catch (e) {} },
     isOpen() { const el = this.$('welcome'); return !!el && !el.classList.contains('hidden'); },
-    finish() { this.markDone(); this.hide(); },
+    finish() { this.markDone(); this.hide(); try { window.scrollTo(0, 0); } catch (e) {} },
     hide() { const el = this.$('welcome'); if (el) el.classList.add('hidden'); },
     open() { const el = this.$('welcome'); if (el) el.classList.remove('hidden'); this.loadGallery(); },
     init() {

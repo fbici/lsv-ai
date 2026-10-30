@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.17.2
+# LSV.ai — Studio Viral v3.17.3
 
 Application créative web : **Images · Vidéos · Chat IA · Scénarios IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -175,7 +175,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1, §2.30 = v3.17.2.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1, §2.30 = v3.17.2, §2.31 = v3.17.3.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -259,7 +259,7 @@ Variables d'environnement de la fonction (Supabase → **Edge Functions → Secr
 | *(table `app_settings`)* | **clé du fournisseur + quotas journaliers, saisis dans le back-office** — prioritaires, relus toutes les 30 s | voir §2.11 |
 | `AGNES_API_KEY` | **secret serveur de secours**, utilisé si la table est vide | — (recommandé) |
 | `AGNES_API_BASE` | base amont (secret de configuration) | valeur interne |
-| `ALLOWED_ORIGINS` | origines CORS autorisées | GitHub Pages + localhost |
+| `ALLOWED_ORIGINS` | origines CORS autorisées | GitHub Pages + Cloudflare Workers + localhost |
 | `RATE_LIMIT_PER_MIN` | requêtes / minute / IP + / visiteur | `10` |
 | `MAX_CONCURRENT_PER_USER` | générations **simultanées** max par compte | `3` |
 | `IMAGE_LIMIT` / `VIDEO_LIMIT` / `CHAT_LIMIT` / `MOTION_LIMIT` | **secours uniquement** si `app_settings` est injoignable — les quotas par compte de la base priment | `0` = illimité |
@@ -1932,6 +1932,60 @@ en deux clics, jeton envoyé, purge locale, refroidissement avant inscription,
 libellé « Se connecter » après inscription non confirmée) ·
 **totaux : interface 384 · suite 1299.**
 
+### 2.31 Isolement des comptes, CORS Cloudflare, mobile — v3.17.3
+
+Retours après v3.17.2, dont un **bug de sécurité** : deux comptes sur le même
+navigateur partageaient projets, bibliothèque, historique et conversations —
+toutes les données créatives vivaient sur des clés localStorage fixes.
+
+- **Isolement des données par compte (sécurité)** : les clés créatives
+  (`lsv4_projects`, `lsv4_assets`, `lsv4_history`, `lsv4_conversations`,
+  `lsv4_locks`, `lsv4_counters`, `lsv4_timing`) sont désormais suffixées par
+  l'identifiant du compte (`…__u<uid>`) via `StorageService.setOwner()`,
+  appelé au démarrage et à chaque connexion/déconnexion. Deux comptes sur le
+  même appareil ne partagent plus rien ; au retour du compte A, ses données
+  sont intactes. Les données créées **avant** toute connexion sont adoptées
+  par le **premier** compte connecté (jamais par le suivant). Les
+  préférences d'appareil (thème, auto-download, modèle de chat…) restent
+  globales. Les caches mémoire des services et les compteurs sont vidés à
+  chaque changement de compte. Le Studio (`library-import.js`) lit la
+  bibliothèque du compte connecté.
+- **CORS Cloudflare** : `https://lsv-ai.lestudioviral.workers.dev` rejoint la
+  liste des origines autorisées par défaut des trois fonctions
+  (`lsv-gateway`, `lsv-contact`, `delete-account`) — le second miroir du site
+  appelle donc désormais les API comme GitHub Pages. **Redéployer les trois
+  fonctions** ; si `ALLOWED_ORIGINS` est défini comme secret dans Supabase,
+  y ajouter le domaine workers.dev.
+- **Mobile — bouton Paramètres** : sur téléphone, le panneau de droite
+  (réglages, compte, conseils) n'est plus empilé en bas de chaque page : un
+  sixième bouton « Paramètres » dans la barre de navigation du bas
+  l'affiche ou le masque à la demande (état `panel-open`, refermeture
+  automatique au changement d'onglet).
+- **Mobile — remontée en haut** : `switchTab()` remet la page en haut
+  (fenêtre + conteneur principal) : cliquer « Chat » depuis le bas de
+  l'accueil affiche bien le haut de la page Chat, plus un écran vide.
+- **Responsive des pages statiques** : en-têtes de `/a-propos/` et
+  `/contact/` adaptés aux petits écrans (liens texte masqués, marque +
+  bouton studio conservés, héros resserré).
+- **Fichier de vérification Google** `google830a692cd2d78a2e.html` ajouté au
+  dépôt (Search Console).
+
+**Déploiement** :
+
+```bash
+npx supabase functions deploy lsv-gateway --no-verify-jwt
+npx supabase functions deploy lsv-contact
+npx supabase functions deploy delete-account
+```
+
+Le front suit le dépôt (GitHub Pages **et** Cloudflare Workers) : recharger
+les deux sites après le push.
+
+**Vérifié par** `tests/public.test.js` §7quater (suffixe `__u`, adoption,
+invisible pour un autre compte, CORS des trois fonctions, bouton Paramètres,
+remontée en haut, fichier Google) ·
+**totaux : interface 410 · suite 1325.**
+
 ---
 
 ## 3. Installation locale
@@ -2311,7 +2365,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 1299 assertions, 6 suites
+npm test                      # 1325 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -2386,7 +2440,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 1299 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 1325 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (78 assertions, **90 avec `ORIG`**) — non-régression
@@ -2402,7 +2456,7 @@ npm test        # 1299 assertions (6 suites, hors ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (384 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (410 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
