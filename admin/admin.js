@@ -1136,7 +1136,7 @@
                     if (cnt) cnt.textContent = 'vide';
                     el.innerHTML = kvHTML([
                         ['Statut', '<span class="badge">non configurée</span>'],
-                        ['Effet', 'option Mistral grisée dans le chat'],
+                        ['Effet', 'requêtes Mistral refusées (503) — le chat reste sur le standard'],
                         ['Source utilisée', 'secret serveur MISTRAL_API_KEY (si présent)']
                     ]);
                     return;
@@ -1194,7 +1194,7 @@
                 .eq('key', 'provider_api_key_mistral')
                 .then(function (res) {
                     if (res && res.error) { toast('Retrait impossible : ' + friendlyAuthError(res.error.message), 'error'); return; }
-                    toast('Clé Mistral retirée : l\'option est grisée dans le chat.', 'success');
+                    toast('Clé Mistral retirée : les requêtes vers Mistral seront refusées (503).', 'success');
                     logAdmin('cle_mistral_retiree', 'provider_api_key_mistral', {});
                     renderMistralKey();
                 })

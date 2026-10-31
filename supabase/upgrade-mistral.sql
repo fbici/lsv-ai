@@ -16,8 +16,8 @@
 -- Ce qu'elle ne change PAS :
 --   - Aucune clé Agnes n'est touchée, aucun quota n'est modifié ;
 --   - SANS clé Mistral, tout continue de fonctionner : le chat reste sur le
---     modèle intégré et l'option Mistral est simplement grisée côté client
---     (état lu via GET /v1/providers) ;
+--     modèle intégré et toute requête vers un modèle Mistral est refusée
+--     proprement (503 « service indisponible ») ;
 --   - La clé Mistral n'a AUCUN repli sur la clé partagée : les deux
 --     fournisseurs sont distincts.
 --

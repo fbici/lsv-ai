@@ -588,6 +588,22 @@ async function load(html, url) {
     check('retour au compte A : projets et conversations retrouvés',
         st.getProjects().length === 1 && st.getConversations().length === 1);
 
+    // Les grilles de résultats (bas des onglets Image/Vidéo) suivent le
+    // compte : elles sont relues à CHAQUE changement de propriétaire, pour
+    // qu'aucune carte de l'ancien compte ne survive (v3.17.5).
+    st.setAssets([{ id: 'img-a', type: 'image', url: 'https://cdn.test/a.png', name: 'Image', metadata: { size: '1024x1024', style: 'photoreal' }, createdAt: 1 }]);
+    st.setOwner('compte-b-uuid');
+    st.setOwner('compte-a-uuid');
+    check('retour au compte A : résultat Image restauré en bas de l onglet',
+        wi.document.querySelectorAll('#image-results-grid .result-card').length === 1 &&
+        wi.document.getElementById('image-results').classList.contains('visible'),
+        wi.document.querySelectorAll('#image-results-grid .result-card').length);
+    st.setOwner('compte-b-uuid');
+    check('changement de compte : grilles de résultats vidées (rien de l autre compte)',
+        wi.document.querySelectorAll('#image-results-grid .result-card').length === 0 &&
+        !wi.document.getElementById('image-results').classList.contains('visible'),
+        wi.document.querySelectorAll('#image-results-grid .result-card').length);
+
     // Adoption : les données d'avant-compte passent au premier compte.
     const legacy = await load(prepare());
     const wl = legacy.dom.window;
@@ -1197,53 +1213,36 @@ async function load(html, url) {
     check('aucun fetch de l\'URL côté client',
         wb.eval('JSON.stringify(UIState.videoRefs)').indexOf('fetch') === -1);
 
-    console.log('\n=== 15. MODÈLE DE CHAT : INTÉGRÉ / MISTRAL ===');
-    /* Le sélecteur choisit un MODÈLE déclaré ; c'est la passerelle qui
-       décide ensuite de la destination. Le navigateur ne connaît ni clé, ni
-       URL de fournisseur : la valeur d'une option est un index, pas un
-       identifiant qui révélerait un fournisseur dans le DOM public. */
-    const sel15 = wb.document.getElementById('chat-model-select');
-    check('sélecteur de modèle présent dans l\'en-tête du chat', !!sel15);
-    check('deux modèles proposés', !!sel15 && sel15.options.length === 2, sel15 && sel15.options.length);
-    check('valeurs = index (aucun identifiant de modèle dans le DOM)',
-        !!sel15 && sel15.options[0].value === '0' && sel15.options[1].value === '1',
-        sel15 && sel15.options[0].value + '/' + sel15.options[1].value);
-    check('libellés sans clé, URL ni jeton',
-        !!sel15 && !/agnes|apihub|sk-|Bearer|https?:/i.test(sel15.innerHTML), sel15 && sel15.innerHTML);
-    check('modèle par défaut = modèle intégré',
+    console.log('\n=== 15. MODÈLE DE CHAT : STANDARD UNIQUE ===');
+    /* Le sélecteur de modèle a été RETIRÉ côté client (v3.17.5) : une option
+       qui ne fonctionnait pas n'est pas présentée comme marchante. Le chat
+       n'offre plus qu'un seul modèle, le standard intégré — sa destination
+       se décide à la passerelle, jamais dans le navigateur. Aucun identifiant
+       de modèle ni aucune mention de fournisseur n'apparaît dans l'en-tête. */
+    check('aucun sélecteur de modèle dans l\'en-tête du chat',
+        !wb.document.getElementById('chat-model-select'));
+    const header15 = wb.document.querySelector('#tab-chat .chat-header');
+    check('en-tête du chat sans identifiant de modèle ni mention de fournisseur',
+        !!header15 && !/mistral|agnes|apihub|chat-model|dns|sk-|Bearer|https?:\/\//i.test(header15.innerHTML),
+        header15 && header15.innerHTML.replace(/\s+/g, ' ').slice(0, 200));
+    check('modèle unique = modèle intégré',
         wb.eval('LSV.services.chat.model()') === wb.eval('LSV.config.MODEL_CHAT'),
         wb.eval('LSV.services.chat.model()'));
-    check('deux modèles distincts exposés',
-        wb.eval('LSV.config.CHAT_MODELS.length') === 2 &&
-        wb.eval('LSV.config.CHAT_MODELS[0].id') !== wb.eval('LSV.config.CHAT_MODELS[1].id'));
-
-    /* Choix de l'option Mistral : événement normal du sélecteur. Le choix
-       vit pour la SESSION seulement — jamais en stockage : au chargement
-       suivant, le modèle intégré redevient le défaut. */
-    sel15.value = '1';
-    sel15.dispatchEvent(new wb.Event('change', { bubbles: true }));
-    check('choix Mistral enregistré pour la session', wb.eval('LSV.services.chat.model()') === 'mistral-small-2603',
-        wb.eval('LSV.services.chat.model()'));
-    check('choix NON persisté : rien écrit en stockage',
+    check('aucun choix de modèle écrit en stockage',
         wb.localStorage.getItem('lsv4_chat_model') === null,
         String(wb.localStorage.getItem('lsv4_chat_model')));
-    check('choix annoncé en clair à l\'utilisateur',
-        doc.getElementById('toast-text').textContent.indexOf('Mistral') !== -1,
-        doc.getElementById('toast-text').textContent);
+    check('code de choix et de disponibilité retiré du client',
+        wb.eval('typeof LSV.services.chat.setModel') === 'undefined' &&
+        wb.eval('typeof LSV.services.chat.refreshAvailability') === 'undefined' &&
+        wb.eval('typeof LSV.services.chat.init') === 'undefined');
+    check('aucun second modèle exposé en configuration',
+        wb.eval('typeof LSV.config.CHAT_MODELS') === 'undefined');
 
-    /* Une valeur inconnue (modèle retiré entre deux versions) est refusée :
-       elle n'est jamais envoyée telle quelle au fournisseur. */
-    check('setModel d\'un modèle inconnu ignoré (modèle inchangé)',
-        wb.eval('LSV.services.chat.setModel("modele-inconnu"); LSV.services.chat.model()') === 'mistral-small-2603',
-        wb.eval('LSV.services.chat.model()'));
-
-    /* Envoi réel : le corps porte le modèle CHOISI, la requête part vers la
+    /* Envoi réel : le corps porte le modèle standard, la requête part vers la
        passerelle — jamais vers un fournisseur. */
     wb.eval('AccountService._save({access_token:"jwt-de-test", refresh_token:"refresh-de-test", ' +
         'expires_at:' + (Math.floor(Date.now() / 1000) + 3600) + ', ' +
         'email:"test@lsv.ai", name:"Test", id:"11111111-1111-4111-8111-111111111111"})');
-    sel15.value = '1';
-    sel15.dispatchEvent(new wb.Event('change', { bubbles: true }));
     const chatCalls15 = [];
     wb.fetch = function (url, options) {
         const u = String(url);
@@ -1266,9 +1265,6 @@ async function load(html, url) {
                 }
             });
         }
-        if (u.indexOf('/v1/providers') !== -1) {
-            return Promise.resolve({ ok: true, status: 200, json: async () => ({ chat: { agnes: true, mistral: true } }) });
-        }
         if (u.indexOf('/rest/v1/analytics_events') !== -1) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
         return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
     };
@@ -1281,8 +1277,8 @@ async function load(html, url) {
         chatReq15.url.indexOf('mistral.ai') === -1 &&
         chatReq15.url.indexOf('/functions/v1/lsv-gateway/v1/chat/completions') !== -1,
         chatReq15 && chatReq15.url);
-    check('le corps porte le modèle choisi', !!chatReq15 &&
-        JSON.parse(chatReq15.options.body).model === 'mistral-small-2603',
+    check('le corps porte le modèle standard intégré', !!chatReq15 &&
+        JSON.parse(chatReq15.options.body).model === wb.eval('LSV.config.MODEL_CHAT'),
         chatReq15 && JSON.parse(chatReq15.options.body).model);
     check('aucune clé de fournisseur dans la requête', !!chatReq15 &&
         JSON.stringify(chatReq15.options.headers || {}).indexOf('sk-') === -1,
@@ -1291,47 +1287,8 @@ async function load(html, url) {
         wb.eval('ConversationService.get("' + conv15 + '").messages.length') === 2,
         wb.eval('ConversationService.get("' + conv15 + '").messages.length'));
 
-    /* État des fournisseurs : la passerelle dit ce qu'elle SAIT (clé
-       configurée ou non), jamais si un service est en ligne. */
-    const sel15b = wb.document.getElementById('chat-model-select');
-    wb.fetch = function (url) {
-        if (String(url).indexOf('/v1/providers') !== -1) {
-            return Promise.resolve({ ok: false, status: 401, json: async () => ({}) });
-        }
-        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
-    };
-    await wb.LSV.services.chat.refreshAvailability();
-    check('compte non connecté (401) : aucune décision prise', sel15b.options[1].disabled === false);
-
-    wb.fetch = function (url) {
-        if (String(url).indexOf('/v1/providers') !== -1) {
-            return Promise.resolve({ ok: true, status: 200, json: async () => ({ chat: { agnes: true, mistral: false } }) });
-        }
-        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
-    };
-    await wb.LSV.services.chat.refreshAvailability();
-    check('clé Mistral absente → option grisée', sel15b.options[1].disabled === true);
-    check('grisée = « non configuré », jamais une panne',
-        /non configuré/.test(sel15b.options[1].textContent), sel15b.options[1].textContent);
-    check('modèle intégré toujours utilisable', sel15b.options[0].disabled === false);
-    check('choix devenu indisponible → retour au modèle intégré',
-        wb.eval('LSV.services.chat.model()') === wb.eval('LSV.config.MODEL_CHAT'),
-        wb.eval('LSV.services.chat.model()'));
-    check('aucun nom de clé ni URL dans le sélecteur',
-        !/sk-|https?:|Bearer/i.test(sel15b.innerHTML), sel15b.innerHTML);
-
-    wb.fetch = function (url) {
-        if (String(url).indexOf('/v1/providers') !== -1) {
-            return Promise.resolve({ ok: true, status: 200, json: async () => ({ chat: { agnes: true, mistral: true } }) });
-        }
-        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
-    };
-    await wb.LSV.services.chat.refreshAvailability();
-    check('clé à nouveau configurée → option rétablie', sel15b.options[1].disabled === false);
-
     /* Nettoyage : aucune session de test ne doit survivre à la section. */
     wb.eval('AccountService._save(null)');
-    wb.eval('LSV.services.chat.setModel(LSV.config.MODEL_CHAT)');
     check('aucune erreur console (modèle de chat)', errors.length === 0, errors.join('|'));
 
     console.log('\n=== 15bis. CHAT : DÉFAUT STANDARD, ÉCHEC RAPIDE, COPIE ===');

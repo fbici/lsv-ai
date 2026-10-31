@@ -324,60 +324,6 @@ body.dark .dash-hero {
 }
 .chat-header-title .ms { color: var(--accent); }
 .chat-header-meta { display: flex; align-items: center; gap: 0.5rem; }
-/* Sélecteur de modèle (en-tête du chat) : une pastille lisible, avec icône
-   d'accent, chevron dessiné et état de survol — jamais un <select> brut.
-   Une option sans clé serveur est grisée, jamais supprimée : l'utilisateur
-   voit qu'elle existe mais qu'elle n'est pas configurée. */
-.chat-model {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.32rem 0.6rem 0.32rem 0.7rem;
-    background: var(--bg-2);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--ink-2);
-    cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
-}
-.chat-model:hover { border-color: var(--accent); background: var(--bg-3); }
-.chat-model:focus-within { border-color: var(--accent); }
-.chat-model .ms {
-    font-size: 15px;
-    color: var(--accent);
-    font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
-}
-.chat-model select {
-    appearance: none;
-    -webkit-appearance: none;
-    border: none;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    font-weight: 600;
-    outline: none;
-    cursor: pointer;
-    max-width: 10.5rem;
-    padding: 0 0.1rem;
-}
-.chat-model select option { background: var(--bg-2); color: var(--ink); font-weight: 500; }
-.chat-model select option:disabled { color: var(--ink-4); }
-.chat-model::after {
-    content: 'expand_more';
-    font-family: 'Material Symbols Outlined';
-    font-weight: normal;
-    font-style: normal;
-    letter-spacing: normal;
-    text-transform: none;
-    font-size: 17px;
-    line-height: 1;
-    color: var(--ink-3);
-    font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
-    pointer-events: none;
-    margin-left: -0.3rem;
-}
 .chat-context-chip {
     display: inline-flex;
     align-items: center;

@@ -346,66 +346,67 @@ const Handlers = {
     }
 };
 
-/* ═══ RESTAURATION DES RÉSULTATS AU DÉMARRAGE ═══ */
+/* ═══ RESTAURATION DES RÉSULTATS AU DÉMARRAGE ═══
+   Rechargée aussi à CHAQUE changement de compte (StorageService._invalidate)
+   : les grilles sont toujours vidées avant, pour qu'aucun résultat de
+   l'ancien compte ne survive — même quand le nouveau n'a rien. */
 function restoreResultsFromLibrary() {
     const assets = AssetService.all();
 
     const imageAssets = assets.filter(a => a.type === 'image');
-    if (imageAssets.length > 0) {
-        const section = document.getElementById('image-results');
-        const grid = document.getElementById('image-results-grid');
-        if (section && grid) {
-            section.classList.add('visible');
-            grid.innerHTML = '';
-            imageAssets.forEach(asset => {
-                const card = document.createElement('div');
-                card.className = 'result-card';
-                const style = Utils.getStyleById(asset.metadata.style) || { name: 'Image' };
-                const safe = Utils.escapeHtml(asset.url);
-                card.innerHTML =
-                    '<div class="result-media" data-preview="' + safe + '" data-preview-type="image" title="Aperçu"><img src="' + safe + '" alt="" loading="lazy"></div>' +
-                    '<div class="result-meta">' +
-                        '<div class="res-name">' + Utils.escapeHtml(style.name) + '</div>' +
-                        '<div class="res-details">' + Utils.escapeHtml(asset.metadata.size || '') + '</div>' +
-                    '</div>' +
-                    '<div class="result-actions">' +
-                        '<button type="button" class="res-action" data-preview="' + safe + '" data-preview-type="image"><span class="ms">zoom_in</span> Ouvrir</button>' +
-                        '<button type="button" class="res-action" data-download="' + safe + '" data-download-name="lsv-' + asset.id + '.png"><span class="ms">download</span> Télécharger</button>' +
-                    '</div>';
-                grid.appendChild(card);
-            });
-            const countEl = document.getElementById('image-results-count');
-            if (countEl) countEl.textContent = imageAssets.length;
-        }
+    const imageSection = document.getElementById('image-results');
+    const imageGrid = document.getElementById('image-results-grid');
+    if (imageSection && imageGrid) {
+        imageGrid.innerHTML = '';
+        imageAssets.forEach(asset => {
+            const card = document.createElement('div');
+            card.className = 'result-card';
+            const style = Utils.getStyleById(asset.metadata.style) || { name: 'Image' };
+            const safe = Utils.escapeHtml(asset.url);
+            card.innerHTML =
+                '<div class="result-media" data-preview="' + safe + '" data-preview-type="image" title="Aperçu"><img src="' + safe + '" alt="" loading="lazy"></div>' +
+                '<div class="result-meta">' +
+                    '<div class="res-name">' + Utils.escapeHtml(style.name) + '</div>' +
+                    '<div class="res-details">' + Utils.escapeHtml(asset.metadata.size || '') + '</div>' +
+                '</div>' +
+                '<div class="result-actions">' +
+                    '<button type="button" class="res-action" data-preview="' + safe + '" data-preview-type="image"><span class="ms">zoom_in</span> Ouvrir</button>' +
+                    '<button type="button" class="res-action" data-download="' + safe + '" data-download-name="lsv-' + asset.id + '.png"><span class="ms">download</span> Télécharger</button>' +
+                '</div>';
+            imageGrid.appendChild(card);
+        });
+        const countEl = document.getElementById('image-results-count');
+        if (countEl) countEl.textContent = imageAssets.length;
+        if (imageAssets.length) imageSection.classList.add('visible');
+        else imageSection.classList.remove('visible');
     }
 
     const videoAssets = assets.filter(a => a.type === 'video');
-    if (videoAssets.length > 0) {
-        const section = document.getElementById('video-results');
-        const grid = document.getElementById('video-results-grid');
-        if (section && grid) {
-            section.classList.add('visible');
-            grid.innerHTML = '';
-            videoAssets.forEach(asset => {
-                const card = document.createElement('div');
-                card.className = 'result-card';
-                const style = Utils.getStyleById(asset.metadata.style) || { name: 'Vidéo' };
-                const safe = Utils.escapeHtml(asset.url);
-                card.innerHTML =
-                    '<div class="result-media"><video src="' + safe + '" controls playsinline preload="metadata"></video></div>' +
-                    '<div class="result-meta">' +
-                        '<div class="res-name">' + Utils.escapeHtml(style.name) + '</div>' +
-                        '<div class="res-details">' + Utils.escapeHtml((asset.metadata.duration || '') + 's') + '</div>' +
-                    '</div>' +
-                    '<div class="result-actions">' +
-                        '<button type="button" class="res-action" data-preview="' + safe + '" data-preview-type="video"><span class="ms">zoom_in</span> Ouvrir</button>' +
-                        '<button type="button" class="res-action" data-download="' + safe + '" data-download-name="lsv-' + asset.id + '.mp4"><span class="ms">download</span> Télécharger</button>' +
-                    '</div>';
-                grid.appendChild(card);
-            });
-            const countEl = document.getElementById('video-results-count');
-            if (countEl) countEl.textContent = videoAssets.length;
-        }
+    const videoSection = document.getElementById('video-results');
+    const videoGrid = document.getElementById('video-results-grid');
+    if (videoSection && videoGrid) {
+        videoGrid.innerHTML = '';
+        videoAssets.forEach(asset => {
+            const card = document.createElement('div');
+            card.className = 'result-card';
+            const style = Utils.getStyleById(asset.metadata.style) || { name: 'Vidéo' };
+            const safe = Utils.escapeHtml(asset.url);
+            card.innerHTML =
+                '<div class="result-media"><video src="' + safe + '" controls playsinline preload="metadata"></video></div>' +
+                '<div class="result-meta">' +
+                    '<div class="res-name">' + Utils.escapeHtml(style.name) + '</div>' +
+                    '<div class="res-details">' + Utils.escapeHtml((asset.metadata.duration || '') + 's') + '</div>' +
+                '</div>' +
+                '<div class="result-actions">' +
+                    '<button type="button" class="res-action" data-preview="' + safe + '" data-preview-type="video"><span class="ms">zoom_in</span> Ouvrir</button>' +
+                    '<button type="button" class="res-action" data-download="' + safe + '" data-download-name="lsv-' + asset.id + '.mp4"><span class="ms">download</span> Télécharger</button>' +
+                '</div>';
+            videoGrid.appendChild(card);
+        });
+        const countEl = document.getElementById('video-results-count');
+        if (countEl) countEl.textContent = videoAssets.length;
+        if (videoAssets.length) videoSection.classList.add('visible');
+        else videoSection.classList.remove('visible');
     }
 }
 
@@ -423,9 +424,6 @@ function init() {
        l'onglet Vidéo n'affiche donc jamais un écran vide en ouvrant. */
     VideoAvailabilityService.render();
     VideoAlternatives.render();
-    /* Sélecteur de modèle du chat + état des fournisseurs configurés
-       (grise une option sans clé, sans jamais parler de « panne »). */
-    ChatService.init();
 
     /* Délégation UNIQUE : les cartes de résultat sont reconstruites à chaque
        rafraîchissement, un écouteur posé élément par élément serait donc

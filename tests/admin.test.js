@@ -548,7 +548,8 @@ async function login(dom, email, password) {
     const mistralStatus = () => wm.document.getElementById('mistral-key-status').textContent.replace(/\s+/g, ' ');
     const settingsText = () => wm.document.getElementById('page-settings').textContent.replace(/\s+/g, ' ');
     check('statut initial : non configurée', /non configurée/i.test(mistralStatus()), mistralStatus().slice(0, 120));
-    check('effet annoncé : option grisée côté client', /grisée/.test(mistralStatus()), mistralStatus().slice(0, 160));
+    check('effet annoncé : requêtes Mistral refusées (503)',
+        /refusées \(503\)/.test(mistralStatus()), mistralStatus().slice(0, 160));
     check('aucun repli annoncé sur la clé partagée', /Aucun repli/i.test(settingsText()), settingsText().slice(0, 200));
     check('migration rappelée dans la carte', /upgrade-mistral\.sql/.test(settingsText()));
 

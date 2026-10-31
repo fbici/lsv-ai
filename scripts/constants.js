@@ -30,16 +30,6 @@ const CONFIG = Object.freeze({
     VIDEO_MODE_TEXT: 'text',
     VIDEO_MODE_KEYFRAME: 'keyframe',
     MODEL_CHAT: 'agnes-2.5-flash',
-    /* Modèles proposés dans le sélecteur du chat.
-       `id` = modèle DÉCLARÉ dans le corps de la requête ; c'est lui qui
-       décide de la destination côté passerelle (« mistral-* » → api.mistral.ai,
-       sinon Agnes). `provider` n'est qu'un libellé affiché.
-       Aucune clé ni URL de fournisseur n'apparaît ici : tout se règle côté
-       serveur (back-office), jamais dans le navigateur. */
-    CHAT_MODELS: Object.freeze([
-        { id: 'agnes-2.5-flash', label: 'Standard (intégré)', provider: 'agnes' },
-        { id: 'mistral-small-2603', label: 'Mistral Small 4', provider: 'mistral' }
-    ]),
     MAX_IMAGE_DIMENSION: 4096,
     MAX_IMAGE_SIZE: 12 * 1024 * 1024,
     VIDEO_INTERVAL_MIN: 62000,

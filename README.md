@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.17.4
+# LSV.ai — Studio Viral v3.17.5
 
 Application créative web : **Images · Vidéos · Chat IA · Scénarios IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -175,7 +175,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1, §2.30 = v3.17.2, §2.31 = v3.17.3, §2.32 = v3.17.4.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1, §2.30 = v3.17.2, §2.31 = v3.17.3, §2.32 = v3.17.4, §2.33 = v3.17.5.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -1831,11 +1831,14 @@ passagère, durable, ou seulement saturée.
 · studio 218 · contact 154 · suite 1269.**
 
 > **Reste à faire — configuration, pas de code.** Aucune clé Mistral n'existe
-> dans ce dépôt ni dans Supabase. Avant d'utiliser l'option : exécuter
+> dans ce dépôt ni dans Supabase. Avant d'utiliser le routage Mistral :
+> exécuter
 > `supabase/upgrade-mistral.sql` (ou un `schema.sql` à jour) → redéployer la
 > passerelle → saisir la clé dans `/admin/` → Paramètres, ou injecter le secret
-> `MISTRAL_API_KEY`. Tant qu'elle est absente, l'option reste **grisée** et le
-> chat utilise le modèle intégré : un état affiché, **jamais une intégration
+> `MISTRAL_API_KEY`. Tant qu'elle est absente, toute requête vers un modèle
+> Mistral est refusée (503) et le chat reste sur le modèle intégré — le
+> sélecteur du chat ayant été retiré en v3.17.5 (§2.33), plus aucun écran
+> n'envoie une telle demande : un état affiché, **jamais une intégration
 > présentée comme terminée**.
 >
 > **Déploiement** : `supabase/functions/lsv-gateway/**` est à redéployer,
@@ -2018,6 +2021,38 @@ persistance) et §15bis (13 : défaut standard au chargement, deux essais
 maximum sur 429, aucune mention « Génération en cours », échec en moins de
 3 s, listes structurées, copie des deux blocs) ·
 **totaux : interface 423 · suite 1338.**
+
+### 2.33 Résultats d'images par compte, sélecteur Mistral retiré — v3.17.5
+
+Retours après v3.17.4, deux corrections :
+
+- **Résultats d'images suivent le compte** : les cartes affichées en bas de
+  l'onglet Image (et Vidéo) n'étaient rechargées qu'au démarrage de la page —
+  après un changement de compte (connexion, déconnexion) dans la même session,
+  les résultats du compte précédent restaient affichés alors que la
+  bibliothèque, elle, était déjà isolée. Les grilles sont désormais **toujours
+  vidées puis relues à chaque changement de propriétaire**
+  (`StorageService._invalidate` → `restoreResultsFromLibrary`) : un compte ne
+  voit **jamais** les résultats d'un autre, même quand il n'a rien.
+- **Sélecteur de modèle retiré du chat** : l'option Mistral (choix de session
+  en mémoire depuis v3.17.4) ne fonctionnait pas — un choix qui ne marche pas
+  n'est pas présenté comme marchant. Le chat n'offre plus qu'**un seul
+  modèle, le standard intégré** ; `#chat-model-select`, `CHAT_MODELS`,
+  `setModel` / `refreshAvailability` disparaissent du front, ainsi que leur
+  pastille CSS. **Rien côté serveur** : le routage `requestsMistral` de la
+  passerelle et la clé du back-office sont conservés (aucun redéploiement),
+  mais plus aucun écran n'envoie de demande Mistral. Le back-office annonçait
+  une « option grisée côté client » : il annonce désormais honnêtement
+  « requêtes Mistral refusées (503) », ce qui est réel.
+
+**Déploiement** : front uniquement — GitHub Pages et Cloudflare Workers ;
+aucune fonction Edge ni migration.
+
+**Vérifié par** `tests/public.test.js` §15 (12 : sélecteur absent, en-tête
+sans identifiant de fournisseur, modèle unique, code de choix retiré, requête
+vers la passerelle portant le modèle standard) et §7quater (+2 : grilles de
+résultats restaurées puis vidées au changement de compte) ·
+**totaux : interface 414 · suite 1329.**
 
 ---
 
@@ -2398,7 +2433,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 1338 assertions, 6 suites
+npm test                      # 1329 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -2433,11 +2468,12 @@ git grep -n "service_role" -- scripts shared analytics admin studio *.html
    `supabase/functions/lsv-gateway/` — §2.15 (image de référence depuis la
    bibliothèque) en fait partie : sans redéploiement, une URL de création
    transmise à l'amont reste une URL et n'est pas encodée.
-8. **Mistral dans le chat (optionnel)** : exécuter
+8. **Mistral côté serveur (optionnel)** : exécuter
    `supabase/upgrade-mistral.sql` (§2.28), redéployer la Gateway, puis saisir
    la clé dans `/admin/` → **Paramètres** → « Clé Mistral » — ou injecter le
-   secret `MISTRAL_API_KEY`. Sans clé, l'option Mistral reste **grisée** dans
-   le sélecteur : c'est un état affiché, pas une panne.
+   secret `MISTRAL_API_KEY`. Le sélecteur du chat ayant été retiré (§2.33),
+   cette clé ne sert plus qu'aux requêtes API portant un modèle `mistral-*` ;
+   sans clé, ces requêtes sont refusées (503) : un état affiché, pas une panne.
 
 **Note sur les chemins** : tous les liens sont **relatifs** (`./admin/`,
 `../shared/config.js`) → le site fonctionne aussi bien à la racine que dans
@@ -2473,7 +2509,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 1338 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 1329 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (78 assertions, **90 avec `ORIG`**) — non-régression
@@ -2489,7 +2525,7 @@ npm test        # 1338 assertions (6 suites, hors ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (423 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (414 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -2502,7 +2538,9 @@ npm test        # 1338 assertions (6 suites, hors ORIG=… voir plus bas)
   sans aucun droit pour `anon` ;
 - comptes : section fermée par défaut, échec de connexion → message générique,
   connexion OK → e-mail affiché, back-office masqué hors liste blanche,
-  aucune donnée secrète en `localStorage` ;
+  aucune donnée secrète en `localStorage`, grilles de résultats (bas des
+  onglets Image/Vidéo) restaurées puis vidées à chaque changement de
+  compte ;
 - **inscription avec nom complet** : champ masqué en mode connexion, visible
   en inscription, refus sans nom (zéro requête), `full_name` bien transmis,
   nom affiché avec l'e-mail ;
@@ -2555,11 +2593,12 @@ npm test        # 1338 assertions (6 suites, hors ORIG=… voir plus bas)
   champs `i2v` / `filigrane` / `licence` bornés à `oui`, `non`, `non vérifié`,
   date de vérification affichée, note d'usage lu hors ligne, dépliage sur un
   refus réel **et jamais sur un échec de mesure**.
-- **modèle de chat intégré / Mistral** (§15) : deux options dont la valeur est
-  un index (aucun identifiant de modèle dans le DOM), choix persisté, valeur
-  inconnue retombant sur le modèle intégré, requête vers la passerelle portant
-  le modèle choisi, `/v1/providers` sans compte → aucune décision, clé absente
-  → option grisée « non configuré » + repli annoncé.
+- **modèle de chat : standard unique** (§15) : aucun sélecteur de modèle dans
+  le DOM, en-tête sans identifiant de modèle ni mention de fournisseur,
+  modèle = standard intégré, rien en stockage, code de choix et de
+  disponibilité retirés (`setModel` / `refreshAvailability` / `CHAT_MODELS`
+  inexistants), requête vers la passerelle portant le modèle standard et
+  aucune clé.
 - **studio de scénarios** (§16) : trois formats annoncés, sortie masquée avant
   génération, aucune requête sans compte, consigne variant avec le format,
   corps en JSON vers la passerelle, scènes rendues puis transférées au

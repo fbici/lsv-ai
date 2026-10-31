@@ -243,6 +243,12 @@ const StorageService = {
             if (i && typeof Runtime !== 'undefined') i.textContent = Runtime.imageCount;
             if (v && typeof Runtime !== 'undefined') v.textContent = Runtime.videoCount;
         } catch (e) {}
+        /* Les grilles de résultats (bas des onglets Image/Vidéo) affichent
+           le contenu de l'ancien compte tant que personne ne les redessine :
+           on les recharge depuis la bibliothèque du NOUVEAU propriétaire. */
+        try {
+            if (typeof restoreResultsFromLibrary === 'function') restoreResultsFromLibrary();
+        } catch (e) {}
     },
     owner() { return this._owner; },
     _get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },

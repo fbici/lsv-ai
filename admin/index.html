@@ -387,8 +387,9 @@
                         chat est un modèle Mistral : la passerelle part alors vers
                         <strong>api.mistral.ai</strong> avec cette clé-là.
                         <strong>Aucun repli</strong> sur la clé partagée ni sur la clé Agnes —
-                        les deux fournisseurs sont distincts. Sans clé, l'option Mistral est
-                        simplement grisée côté client.
+                        les deux fournisseurs sont distincts. Sans clé, les requêtes vers
+                        Mistral sont refusées proprement (503) : le chat reste sur le
+                        modèle standard.
                         <br>Migration à exécuter une seule fois dans le SQL Editor :
                         <strong>supabase/upgrade-mistral.sql</strong>. Stockée
                         <strong>côté serveur</strong> uniquement, jamais renvoyée au
