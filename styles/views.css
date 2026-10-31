@@ -94,7 +94,10 @@
 }
 .lib-filter:hover { border-color: var(--border-2); }
 .lib-filter.active { background: var(--accent); color: #ffffff; border-color: var(--accent); }
-.library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.75rem; }
+/* Mosaïque en colonnes : chaque vignette garde la hauteur de SON format
+   (portrait 9/16, carré, paysage 16/9…) au lieu d'être alignée dans des
+   rangées qui pousseraient toutes les tuiles à la même hauteur. */
+.library-grid { columns: 190px; column-gap: 0.75rem; }
 .lib-item {
     background: var(--bg-2);
     border: 1px solid var(--border);
@@ -102,10 +105,17 @@
     overflow: hidden;
     transition: all 0.15s;
     position: relative;
+    display: inline-block;
+    width: 100%;
+    break-inside: avoid;
+    margin-bottom: 0.75rem;
 }
 .lib-item:hover { border-color: var(--accent); box-shadow: var(--shadow-md); transform: translateY(-2px); }
-.lib-item-media { aspect-ratio: 9/16; background: var(--bg-3); position: relative; }
+.lib-item-media { background: var(--bg-3); position: relative; }
 .lib-item-media img, .lib-item-media video { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Image sans métadonnée : la boîte épouse le fichier (aucun recadrage). */
+.lib-item-media.natural { aspect-ratio: auto; }
+.lib-item-media.natural img, .lib-item-media.natural video { height: auto; object-fit: contain; }
 .lib-item-badge {
     position: absolute;
     top: 0.5rem; left: 0.5rem;
@@ -261,6 +271,6 @@ body.panel-open .mobile-nav .nav-settings { color: var(--accent); background: va
     .chat-main { min-height: 500px; height: calc(100vh - 200px); }
     .results-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
     .projects-grid { grid-template-columns: 1fr; }
-    .library-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+    .library-grid { columns: 140px; }
     .chat-msg { max-width: 100%; }
 }

@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.17.6
+# LSV.ai — Studio Viral v3.17.7
 
 Application créative web : **Images · Vidéos · Chat IA · Scénarios IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -175,7 +175,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1, §2.30 = v3.17.2, §2.31 = v3.17.3, §2.32 = v3.17.4, §2.33 = v3.17.5, §2.34 = v3.17.6.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1, §2.30 = v3.17.2, §2.31 = v3.17.3, §2.32 = v3.17.4, §2.33 = v3.17.5, §2.34 = v3.17.6, §2.35 = v3.17.7.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -2098,6 +2098,41 @@ préservés, 400 avant l'amont, aucune fuite) ·
 
 ---
 
+### 2.35 Bibliothèque : format réel de chaque création - v3.17.7
+
+**Constat** : toutes les vignettes de la bibliothèque étaient forcées
+dans un cadre unique `aspect-ratio: 9/16` avec `object-fit: cover` —
+un paysage 3:2 était recadré en portrait et toutes les créations
+s'affichaient sous la même forme, quel que soit leur format réel.
+
+**Ce qui change** :
+
+- `LibraryView._item` pose un `aspect-ratio` **inline calculé à partir
+  des métadonnées** de l'asset : `metadata.size` (« 1536x1024 ») d'abord,
+  puis `metadata.ratio` (« 16:9 » — la voie des vidéos, dont
+  `metadata.size` porte une définition comme « 1080P »). Sans
+  métadonnée, l'image reçoit la classe `natural` : la boîte épouse le
+  fichier, **aucun recadrage imposé** ; une vidéo sans ratio déclaré
+  garde le portrait historique 9/16.
+- `.library-grid` passe en **mosaïque en colonnes** (`columns: 190px`,
+  `break-inside: avoid`, `margin-bottom` par tuile) : les rangées
+  n'alignent plus toutes les tuiles à la même hauteur, chaque
+  vignette garde la sienne ; la requête mobile passe à `columns: 140px`.
+- Le cadre unique 9/16 disparaît de `.lib-item-media` ; le mode naturel
+  (`.natural`, `height: auto`, `object-fit: contain`) est verrouillé
+  par les tests.
+
+**Déploiement** : fronts uniquement — rafraîchir GitHub Pages **et**
+Cloudflare Workers ; **aucun redéploiement de Gateway** (aucun fichier
+serveur modifié).
+
+**Vérifié par** `tests/public.test.js` §14ter (12 : ratio exact par
+vignette, mode naturel sans métadonnée, vidéo 16:9, mosaïque, tuiles
+entières entre colonnes, aperçu/actions/badge conservés) ·
+**totaux : interface 448 · suite 1381.**
+
+---
+
 ## 3. Installation locale
 
 ```bash
@@ -2475,7 +2510,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 1369 assertions, 6 suites
+npm test                      # 1381 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -2551,7 +2586,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 1369 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 1381 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (78 assertions, **90 avec `ORIG`**) — non-régression
@@ -2567,7 +2602,7 @@ npm test        # 1369 assertions (6 suites, hors ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (436 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (448 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -2628,6 +2663,12 @@ npm test        # 1369 assertions (6 suites, hors ORIG=… voir plus bas)
   telles quelles dans la requête, **corps strictement inchangé sans
   référence** (aucun `extra_body`, `response_format` et `n` intacts), et
   retour au parcours fichier intact.
+- **format réel en bibliothèque** (§14ter, v3.17.7) : `aspect-ratio`
+  inline tiré de `metadata.size` puis `metadata.ratio` pour chaque
+  vignette, classe `natural` sans métadonnée (la boîte épouse le fichier,
+  aucun recadrage), mosaïque en colonnes (`columns: 190px`,
+  `break-inside: avoid`), **plus de cadre 9/16 unique**, aperçu /
+  actions / badge intacts.
 - **architecture modulaire** : `index.html` réduit à un squelette HTML
   (~1 470 lignes au lieu de ~7 000) ; CSS en 6 fichiers `styles/`, JS en 8
   modules `scripts/` chargés dans un ordre fixe ; `window.LSV` et toute l'API

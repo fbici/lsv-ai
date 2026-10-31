@@ -151,8 +151,17 @@ const LibraryView = {
            Auparavant, seul un bouton de téléchargement existait — et il
            ouvrait l'URL distante dans un nouvel onglet. */
         const safe = Utils.escapeHtml(a.url);
+        /* Format réel : chaque création s'affiche dans SON ratio
+           (`metadata.size` « 1536x1024 » puis `metadata.ratio` « 3:2 »)
+           au lieu d'être recadrée dans un cadre unique 9/16. Sans
+           métadonnée, une image suit le fichier lui-même (classe
+           `natural`) ; une vidéo sans ratio déclaré garde le portrait
+           historique. (v3.17.7) */
+        const ratio = this._ratio(a);
         return '<div class="lib-item">' +
-            '<div class="lib-item-media" data-preview="' + safe + '" data-preview-type="' + a.type + '" title="Aperçu">' +
+            '<div class="lib-item-media' + (ratio ? '' : ' natural') + '"' +
+                (ratio ? ' style="aspect-ratio:' + ratio + '"' : '') +
+                ' data-preview="' + safe + '" data-preview-type="' + a.type + '" title="Aperçu">' +
                 (isVideo ? '<video src="' + safe + '" muted playsinline preload="metadata"></video>' : '<img src="' + safe + '" alt="" loading="lazy">') +
                 '<span class="lib-item-badge ' + (isVideo ? 'video' : '') + '">' + a.type + '</span>' +
                 '<div class="lib-item-actions">' +
@@ -165,6 +174,21 @@ const LibraryView = {
                 '<div class="lib-info">' + Utils.formatDate(a.createdAt) + '</div>' +
             '</div>' +
         '</div>';
+    },
+    /* Ratio d'affichage d'une vignette : dimensions générées d'abord
+       (« 1024x1024 »), ratio déclaré ensuite (« 16:9 » — c'est la voie
+       des vidéos, dont `metadata.size` porte une définition comme
+       « 1080P » et non des dimensions). Chaîne vide = format naturel. */
+    _ratio(a) {
+        const md = a.metadata || {};
+        if (typeof md.size === 'string' && /^\d{2,5}x\d{2,5}$/.test(md.size)) {
+            const parts = md.size.split('x');
+            return parts[0] + ' / ' + parts[1];
+        }
+        if (typeof md.ratio === 'string' && /^\d{1,3}:\d{1,3}$/.test(md.ratio)) {
+            return md.ratio.replace(':', ' / ');
+        }
+        return a.type === 'video' ? '9 / 16' : '';
     }
 };
 

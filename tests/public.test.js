@@ -1323,6 +1323,63 @@ async function load(html, url) {
     check('aucune erreur console (référence image)',
         ref14b.errors.length === 0, ref14b.errors.join('|'));
 
+    console.log('\n=== 14ter. BIBLIOTHÈQUE : CHAQUE CRÉATION DANS SON PROPRE FORMAT ===');
+    /* Historiquement `.lib-item-media` imposait `aspect-ratio: 9/16` +
+       `object-fit: cover` à TOUTES les vignettes : un paysage 3:2 était
+       recadré en portrait et toutes les créations avaient la même forme.
+       La bibliothèque affiche désormais le ratio réel de chaque création
+       (`metadata.size` puis `metadata.ratio`), en mosaïque en colonnes
+       pour que les rangées ne poussent plus les tuiles à la même
+       hauteur. Sans métadonnée, l'image suit son fichier. (v3.17.7) */
+    const lib14c = await load(prepare());
+    const wc14 = lib14c.dom.window;
+    const dc14 = wc14.document;
+    /* AssetService.unshift : le dernier ajout est le premier rendu.
+       On ajoute donc dans l'ordre inverse de l'ordre attendu. */
+    wc14.eval('AssetService.add({type:"video", url:"https://cdn.test/paysage.mp4", name:"Vidéo 16:9", metadata:{size:"1080P", ratio:"16:9", duration:5}});' +
+        'AssetService.add({type:"image", url:"data:image/png;base64,iVBORw0KGgo", name:"Sans métadonnée"});' +
+        'AssetService.add({type:"image", url:"https://cdn.test/carre.png", name:"Carré", metadata:{size:"1024x1024", ratio:"1:1"}});' +
+        'AssetService.add({type:"image", url:"https://cdn.test/paysage.png", name:"Paysage", metadata:{size:"1536x1024", ratio:"3:2"}});');
+    wc14.eval('LibraryView.refresh()');
+    const items14t = Array.prototype.slice.call(
+        dc14.getElementById('library-content').querySelectorAll('.lib-item'));
+    check('les 4 créations sont rendues', items14t.length === 4, items14t.length);
+    const media14t = items14t.map(el => el.querySelector('.lib-item-media'));
+    const ratio14t = el => (el.getAttribute('style') || '').replace(/\s/g, '');
+    check('paysage 1536x1024 : boîte dans SON ratio exact (aucun recadrage)',
+        ratio14t(media14t[0]) === 'aspect-ratio:1536/1024', media14t[0].getAttribute('style'));
+    check('carré 1024x1024 : boîte 1/1',
+        ratio14t(media14t[1]) === 'aspect-ratio:1024/1024', media14t[1].getAttribute('style'));
+    check('image sans métadonnée : format naturel du fichier, aucun cadre imposé',
+        media14t[2].classList.contains('natural') && !media14t[2].getAttribute('style'),
+        media14t[2].className + ' | ' + media14t[2].getAttribute('style'));
+    check('vidéo 16:9 : ratio déclaré, plus de portrait imposé',
+        ratio14t(media14t[3]) === 'aspect-ratio:16/9', media14t[3].getAttribute('style'));
+    check('vignette cliquable (aperçu) et actions conservées',
+        !!media14t[0].getAttribute('data-preview') &&
+        !!media14t[0].getAttribute('data-preview-type') &&
+        !!items14t[0].querySelector('[data-asset-download]') &&
+        !!items14t[0].querySelector('[data-asset-delete]'));
+    check('badge de type et métadonnées conservés',
+        !!items14t[0].querySelector('.lib-item-badge') &&
+        !!items14t[0].querySelector('.lib-name') &&
+        !!items14t[0].querySelector('.lib-info'));
+
+    /* Le fichier CSS réel (les feuilles sont retirées du DOM de test) :
+       mosaïque en colonnes et plus aucun cadre 9/16 unique. */
+    const viewsCss14 = fs.readFileSync(path.join(PROJECT, 'styles/views.css'), 'utf8');
+    check('grille en colonnes (mosaïque) : les rangées n\'alignent plus les tuiles',
+        /\.library-grid\s*\{[^}]*columns:\s*190px/.test(viewsCss14));
+    check('cadre unique 9/16 supprimé des vignettes de la bibliothèque',
+        !/\.lib-item-media\s*\{[^}]*aspect-ratio/.test(viewsCss14));
+    check('mode naturel : hauteur du fichier, sans recadrage',
+        /\.lib-item-media\.natural\s*\{[^}]*aspect-ratio:\s*auto/.test(viewsCss14) &&
+        /\.lib-item-media\.natural\s+img[^{]*\{[^}]*height:\s*auto/.test(viewsCss14));
+    check('les tuiles ne se coupent pas entre colonnes',
+        /\.lib-item\s*\{[^}]*break-inside:\s*avoid/.test(viewsCss14));
+    check('aucune erreur console (bibliothèque, format réel)',
+        lib14c.errors.length === 0, lib14c.errors.join('|'));
+
     console.log('\n=== 15. MODÈLE DE CHAT : STANDARD UNIQUE ===');
     /* Le sélecteur de modèle a été RETIRÉ côté client (v3.17.5) : une option
        qui ne fonctionnait pas n'est pas présentée comme marchante. Le chat
