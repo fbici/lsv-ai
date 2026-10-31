@@ -58,18 +58,61 @@ const Utils = {
         html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
         html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
         html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        /* Listes à puces et numérotées : le modèle répond souvent en listes,
+           rendues jusqu'ici en paragraphes sans structure. */
         const lines = html.split('\n');
         const out = [];
         let buffer = [];
+        let listType = null;
+        const closeList = () => { if (listType) { out.push('</' + listType + '>'); listType = null; } };
+        const flush = () => { if (buffer.length) { out.push('<p>' + buffer.join('<br>') + '</p>'); buffer = []; } };
         for (const line of lines) {
-            if (line.trim() === '') {
-                if (buffer.length) { out.push('<p>' + buffer.join('<br>') + '</p>'); buffer = []; }
+            const ul = /^[-*]\s+(.*)$/.exec(line);
+            const ol = /^\d+[.)]\s+(.*)$/.exec(line);
+            if (ul || ol) {
+                flush();
+                const want = ul ? 'ul' : 'ol';
+                if (listType !== want) { closeList(); out.push('<' + want + '>'); listType = want; }
+                out.push('<li>' + (ul || ol)[1] + '</li>');
             } else {
-                buffer.push(line);
+                closeList();
+                if (line.trim() === '') flush();
+                else buffer.push(line);
             }
         }
-        if (buffer.length) out.push('<p>' + buffer.join('<br>') + '</p>');
+        flush();
+        closeList();
         return out.join('');
+    },
+    /* Copie dans le presse-papiers, toast à l'appui. Un navigateur sans
+       presse-papiers (permission refusée, contexte non sécurisé) reçoit un
+       avertissement honnête — jamais un faux succès. */
+    copyText: async (text) => {
+        const value = String(text == null ? '' : text);
+        const done = () => {
+            if (typeof UI !== 'undefined' && UI.showToast) UI.showToast('Copié dans le presse-papiers', 'success');
+            return true;
+        };
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(value);
+                return done();
+            }
+        } catch (e) { /* repli ci-dessous */ }
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = value;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            const ok = typeof document.execCommand === 'function' && document.execCommand('copy');
+            document.body.removeChild(ta);
+            if (ok) return done();
+        } catch (e) { /* rien */ }
+        if (typeof UI !== 'undefined' && UI.showToast) UI.showToast('Copie impossible sur cet appareil', 'warn');
+        return false;
     },
     /* Téléchargement AUTOMATIQUE vers l'appareil.
        L'attribut `download` d'une ancre n'est respecté que sur une même

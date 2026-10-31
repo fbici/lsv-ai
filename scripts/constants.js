@@ -73,8 +73,7 @@ const STORAGE_KEYS = Object.freeze({
     /* Dernier état du service vidéo (bandeau de l'onglet Vidéo) : conservé
        pour afficher un état juste immédiatement au chargement, avant la
        première sonde. */
-    VIDEO_AVAIL: 'lsv4_video_avail',
-    CHAT_MODEL: 'lsv4_chat_model'
+    VIDEO_AVAIL: 'lsv4_video_avail'
 });
 
 const STYLES = Object.freeze([

@@ -504,6 +504,12 @@ body.dark .dash-hero {
 }
 .chat-msg-bubble p { margin-bottom: 0.6rem; }
 .chat-msg-bubble p:last-child { margin-bottom: 0; }
+.chat-msg-bubble ul, .chat-msg-bubble ol {
+    margin: 0.3rem 0 0.6rem;
+    padding-left: 1.3rem;
+}
+.chat-msg-bubble li { margin-bottom: 0.25rem; }
+.chat-msg-bubble li:last-child { margin-bottom: 0; }
 .chat-msg-bubble strong { font-weight: 600; }
 .chat-msg-bubble code {
     font-family: var(--font-mono);
@@ -544,6 +550,31 @@ body.dark .dash-hero {
     0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
     30% { transform: translateY(-5px); opacity: 1; }
 }
+/* Petite icône de copie en bas de chaque bloc (question ou réponse). */
+.chat-msg-foot {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.5rem;
+}
+.chat-msg-copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    color: var(--ink-4);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.chat-msg-copy:hover { color: var(--accent); background: var(--bg-4); }
+.chat-msg-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.chat-msg.user .chat-msg-copy { color: rgba(255, 255, 255, 0.75); }
+.chat-msg.user .chat-msg-copy:hover { color: #ffffff; background: rgba(255, 255, 255, 0.15); }
+.chat-msg-copy .ms { font-size: 15px; }
 .chat-input-area {
     padding: 1rem 1.2rem 1.2rem;
     border-top: 1px solid var(--border);

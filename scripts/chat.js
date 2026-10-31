@@ -1,19 +1,21 @@
 const ChatService = {
     /* ── Modèle utilisé ─────────────────────────────────────────────────────
-       Le choix vit dans le stockage local et retombe TOUJOURS sur le modèle
-       intégré : une valeur inconnue (modèle retiré entre deux versions) n'est
-       jamais envoyée telle quelle au fournisseur. Le modèle déclaré ici est
-       celui que la passerelle lit pour choisir sa destination. */
+       Le choix vit EN MÉMOIRE pour la session : au chargement de la page,
+       le modèle est TOUJOURS le modèle intégré (« Standard »). Rien n'est
+       persisté — un modèle défaillant ne doit pas survivre à la session qui
+       l'a révélé, et le standard reste la valeur par défaut. Une valeur
+       inconnue (modèle retiré entre deux versions) n'est jamais envoyée
+       telle quelle au fournisseur. Le modèle déclaré ici est celui que la
+       passerelle lit pour choisir sa destination. */
+    _model: null,
     model() {
-        let saved = '';
-        try { saved = String(localStorage.getItem(STORAGE_KEYS.CHAT_MODEL) || ''); } catch (e) { saved = ''; }
-        const known = CONFIG.CHAT_MODELS.find(m => m.id === saved);
-        return known ? known.id : CONFIG.MODEL_CHAT;
+        if (this._model && CONFIG.CHAT_MODELS.some(m => m.id === this._model)) return this._model;
+        return CONFIG.MODEL_CHAT;
     },
     setModel(id) {
         const known = CONFIG.CHAT_MODELS.find(m => m.id === id);
         if (!known) return this.model();
-        try { localStorage.setItem(STORAGE_KEYS.CHAT_MODEL, known.id); } catch (e) {}
+        this._model = known.id;
         return known.id;
     },
     /* Rend le sélecteur : la VALEUR d'une option est son INDEX dans la
@@ -174,24 +176,26 @@ const ChatService = {
         ConversationService.addMessage(conv.id, 'assistant', fullContent);
         return fullContent;
     },
+    /* Repli NON fluide : une seule tentative, sans boucle de rejeu ni
+       bandeau « Génération en cours ». Cette boucle, conçue pour les
+       générations image/vidéo, laissait un chat en 429 bloqué plusieurs
+       minutes sur ses points de suspension — avec un compteur de génération
+       sans rapport avec la demande. Le chat rate vite et explique vite. */
     async _fallbackSend(conv, context) {
         const messages = this.buildMessages(conv, context);
-        const res = await AgnesProvider.fetch(
-            CONFIG.API_BASE + '/chat/completions',
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    model: this.model(),
-                    messages,
-                    temperature: CONFIG.CHAT_TEMPERATURE,
-                    max_tokens: CONFIG.CHAT_MAX_TOKENS
-                })
+        const res = await fetch(CONFIG.API_BASE + '/chat/completions', Gateway.withHeaders({
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
             },
-            'Chat'
-        );
+            body: JSON.stringify({
+                model: this.model(),
+                messages,
+                temperature: CONFIG.CHAT_TEMPERATURE,
+                max_tokens: CONFIG.CHAT_MAX_TOKENS
+            })
+        }));
         if (!res.ok) throw await AgnesProvider.fail(res);
         const data = await res.json();
         const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
@@ -360,7 +364,7 @@ const ChatView = {
         const conv = ConversationService.get(Runtime.currentConversationId);
         if (!conv || !conv.messages.length) { container.innerHTML = this._emptyState(); this._bindSuggestions(); return; }
         const lastAssistantIdx = [...conv.messages].map((m, i) => m.role === 'assistant' ? i : -1).filter(i => i >= 0).pop();
-        container.innerHTML = conv.messages.map((m, i) => this._messageHtml(m, i === lastAssistantIdx)).join('');
+        container.innerHTML = conv.messages.map((m, i) => this._messageHtml(m, i === lastAssistantIdx, i)).join('');
         this._bindMessageActions(conv, container);
         container.scrollTop = container.scrollHeight;
     },
@@ -387,7 +391,7 @@ const ChatView = {
             });
         });
     },
-    _messageHtml(m, showActions) {
+    _messageHtml(m, showActions, idx) {
         const isUser = m.role === 'user';
         const avatar = isUser ? '<span class="ms">person</span>' : '<span class="ms">auto_awesome</span>';
         const contentHtml = isUser ? Utils.escapeHtml(m.content).replace(/\n/g, '<br>') : Utils.renderMarkdown(m.content);
@@ -400,9 +404,16 @@ const ChatView = {
                 '</div>';
             }
         }
+        /* Chaque bloc — question ou réponse — porte sa petite icône de copie
+           en bas, comme les chatbots grand public : un clic copie le texte
+           brut du message (prompts Markdown compris). */
+        const footHtml = '<div class="chat-msg-foot">' +
+            '<button type="button" class="chat-msg-copy" data-copy-msg="' + (idx == null ? '' : idx) + '" ' +
+            'title="Copier" aria-label="Copier ce message"><span class="ms">content_copy</span></button>' +
+        '</div>';
         return '<div class="chat-msg ' + (isUser ? 'user' : 'assistant') + '">' +
             '<div class="chat-msg-avatar">' + avatar + '</div>' +
-            '<div class="chat-msg-bubble">' + contentHtml + actionsHtml + '</div>' +
+            '<div class="chat-msg-bubble">' + contentHtml + actionsHtml + footHtml + '</div>' +
         '</div>';
     },
     _bindMessageActions(conv, container) {
@@ -410,6 +421,13 @@ const ChatView = {
             btn.addEventListener('click', () => {
                 const lastAssistant = [...conv.messages].reverse().find(m => m.role === 'assistant');
                 ChatActions.execute(btn.dataset.chatAction, lastAssistant ? lastAssistant.content : '');
+            });
+        });
+        container.querySelectorAll('[data-copy-msg]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.dataset.copyMsg, 10);
+                const m = conv.messages[idx];
+                if (m) Utils.copyText(m.content);
             });
         });
     },
@@ -477,8 +495,8 @@ const ChatView = {
         input.style.height = 'auto';
         UI.updateButtons();
         const convBefore = ConversationService.get(Runtime.currentConversationId);
-        const optimisticHtml = convBefore.messages.map((m, i) => this._messageHtml(m, false)).join('') +
-            this._messageHtml({ role: 'user', content: text }, false) +
+        const optimisticHtml = convBefore.messages.map((m, i) => this._messageHtml(m, false, i)).join('') +
+            this._messageHtml({ role: 'user', content: text }, false, convBefore.messages.length) +
             '<div class="chat-msg assistant" id="chat-typing-msg">' +
                 '<div class="chat-msg-avatar"><span class="ms">auto_awesome</span></div>' +
                 '<div class="chat-msg-bubble"><div class="chat-typing"><span></span><span></span><span></span></div></div>' +

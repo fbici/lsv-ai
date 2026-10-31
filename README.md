@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.17.3
+# LSV.ai — Studio Viral v3.17.4
 
 Application créative web : **Images · Vidéos · Chat IA · Scénarios IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -175,7 +175,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1, §2.30 = v3.17.2, §2.31 = v3.17.3.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1, §2.30 = v3.17.2, §2.31 = v3.17.3, §2.32 = v3.17.4.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -1986,6 +1986,39 @@ invisible pour un autre compte, CORS des trois fonctions, bouton Paramètres,
 remontée en haut, fichier Google) ·
 **totaux : interface 410 · suite 1325.**
 
+### 2.32 Chat : standard par défaut, échec rapide, réponses copiables — v3.17.4
+
+Retours après v3.17.3 sur le chat IA.
+
+- **Standard par défaut, à chaque chargement** : le choix de modèle
+  (Standard / Mistral Small 4) vit désormais **en mémoire pour la session** —
+  plus rien n'est écrit en stockage local. À chaque ouverture de l'app, le
+  modèle est **Standard (intégré)** : un modèle défaillant ne survit pas à la
+  session qui l'a révélé. Une valeur inconnue reste refusée et le sélecteur
+  annonce toujours le modèle actif.
+- **Échec rapide, plus de faux compteur** : le repli du chat réutilisait la
+  file de rejeu des générations image/vidéo — en cas de 429, l'écran restait
+  bloqué plusieurs minutes sur ses points de suspension pendant que le bandeau
+  d'état affichait « Génération en cours… », sans rapport avec une demande de
+  chat, et aucune réponse n'arrivait. Le chat tente désormais **stream + un
+  seul repli non fluide**, échoue en moins d'une seconde, affiche un toast
+  honnête (jamais de détail technique), retire l'indicateur de saisie et
+  libère le flux. Le bandeau d'état n'est **plus jamais** touché par le chat.
+- **Réponses façon chatbot** : chaque bloc — question **et** réponse — porte
+  sa petite icône de copie en bas (presse-papiers + toast de confirmation ;
+  avertissement honnête si la copie est impossible). Les listes à puces et
+  numérotées de la réponse sont rendues en vraies listes HTML, en plus du
+  gras, de l'italique et du code déjà soutenus.
+
+**Déploiement** : front uniquement — aucune fonction Edge ni migration.
+Recharger GitHub Pages **et** Cloudflare Workers.
+
+**Vérifié par** `tests/public.test.js` §15 (23, choix de session sans
+persistance) et §15bis (13 : défaut standard au chargement, deux essais
+maximum sur 429, aucune mention « Génération en cours », échec en moins de
+3 s, listes structurées, copie des deux blocs) ·
+**totaux : interface 423 · suite 1338.**
+
 ---
 
 ## 3. Installation locale
@@ -2365,7 +2398,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 1325 assertions, 6 suites
+npm test                      # 1338 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -2440,7 +2473,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 1325 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 1338 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (78 assertions, **90 avec `ORIG`**) — non-régression
@@ -2456,7 +2489,7 @@ npm test        # 1325 assertions (6 suites, hors ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (410 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (423 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,

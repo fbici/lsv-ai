@@ -1217,25 +1217,25 @@ async function load(html, url) {
         wb.eval('LSV.config.CHAT_MODELS.length') === 2 &&
         wb.eval('LSV.config.CHAT_MODELS[0].id') !== wb.eval('LSV.config.CHAT_MODELS[1].id'));
 
-    /* Choix de l'option Mistral : événement normal du sélecteur. */
+    /* Choix de l'option Mistral : événement normal du sélecteur. Le choix
+       vit pour la SESSION seulement — jamais en stockage : au chargement
+       suivant, le modèle intégré redevient le défaut. */
     sel15.value = '1';
     sel15.dispatchEvent(new wb.Event('change', { bubbles: true }));
-    check('choix Mistral enregistré', wb.eval('LSV.services.chat.model()') === 'mistral-small-2603',
+    check('choix Mistral enregistré pour la session', wb.eval('LSV.services.chat.model()') === 'mistral-small-2603',
         wb.eval('LSV.services.chat.model()'));
-    check('choix persisté pour la prochaine session',
-        wb.localStorage.getItem('lsv4_chat_model') === 'mistral-small-2603',
-        wb.localStorage.getItem('lsv4_chat_model'));
+    check('choix NON persisté : rien écrit en stockage',
+        wb.localStorage.getItem('lsv4_chat_model') === null,
+        String(wb.localStorage.getItem('lsv4_chat_model')));
     check('choix annoncé en clair à l\'utilisateur',
         doc.getElementById('toast-text').textContent.indexOf('Mistral') !== -1,
         doc.getElementById('toast-text').textContent);
 
-    /* Une valeur inconnue (modèle retiré entre deux versions) retombe sur le
-       modèle intégré : elle n'est jamais envoyée telle quelle. */
-    wb.localStorage.setItem('lsv4_chat_model', 'modele-inconnu');
-    check('valeur inconnue en stockage → modèle intégré',
-        wb.eval('LSV.services.chat.model()') === wb.eval('LSV.config.MODEL_CHAT'),
+    /* Une valeur inconnue (modèle retiré entre deux versions) est refusée :
+       elle n'est jamais envoyée telle quelle au fournisseur. */
+    check('setModel d\'un modèle inconnu ignoré (modèle inchangé)',
+        wb.eval('LSV.services.chat.setModel("modele-inconnu"); LSV.services.chat.model()') === 'mistral-small-2603',
         wb.eval('LSV.services.chat.model()'));
-    wb.localStorage.removeItem('lsv4_chat_model');
 
     /* Envoi réel : le corps porte le modèle CHOISI, la requête part vers la
        passerelle — jamais vers un fournisseur. */
@@ -1331,8 +1331,112 @@ async function load(html, url) {
 
     /* Nettoyage : aucune session de test ne doit survivre à la section. */
     wb.eval('AccountService._save(null)');
-    wb.localStorage.removeItem('lsv4_chat_model');
+    wb.eval('LSV.services.chat.setModel(LSV.config.MODEL_CHAT)');
     check('aucune erreur console (modèle de chat)', errors.length === 0, errors.join('|'));
+
+    console.log('\n=== 15bis. CHAT : DÉFAUT STANDARD, ÉCHEC RAPIDE, COPIE ===');
+    /* Le standard redevient le défaut à CHAQUE chargement de page : un
+       modèle défaillant ne survit pas à la session qui l'a révélé. */
+    const fresh15 = await load(prepare());
+    const wf15 = fresh15.dom.window;
+    const df15 = wf15.document;
+    check('au chargement : modèle par défaut = Standard (intégré)',
+        wf15.eval('LSV.services.chat.model()') === wf15.eval('LSV.config.MODEL_CHAT'),
+        wf15.eval('LSV.services.chat.model()'));
+    check('aucune trace d\'un choix précédent en stockage',
+        wf15.localStorage.getItem('lsv4_chat_model') === null);
+
+    /* Un chat en échec (429) doit échouer VITE : stream + un seul repli non
+       fluide, sans bandeau « Génération en cours » ni boucle de rejeu de
+       plusieurs minutes (l'ancien repli utilisait la file des générations). */
+    wf15.eval('AccountService._save({access_token:"jwt-de-test", refresh_token:"refresh-de-test", ' +
+        'expires_at:' + (Math.floor(Date.now() / 1000) + 3600) + ', ' +
+        'email:"test@lsv.ai", name:"Test", id:"22222222-2222-4222-8222-222222222222"})');
+    const failCalls15 = [];
+    wf15.fetch = function (url, options) {
+        const u = String(url);
+        failCalls15.push({ url: u, options: options || {} });
+        if (u.indexOf('/chat/completions') !== -1) {
+            return Promise.resolve({
+                ok: false, status: 429,
+                json: async () => ({ error: { message: 'limite de débit' } }),
+                text: async () => 'limite de débit',
+                headers: { get: () => null }
+            });
+        }
+        if (u.indexOf('/rest/v1/analytics_events') !== -1) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x', headers: { get: () => null } });
+    };
+    const t015 = Date.now();
+    df15.getElementById('chat-input').value = 'Une idée sous tension';
+    await wf15.eval('ChatView.sendMessage()');
+    const dt15 = Date.now() - t015;
+    const chatFails15 = failCalls15.filter(c => c.url.indexOf('/chat/completions') !== -1);
+    check('429 : deux essais maximum (stream + repli non fluide)',
+        chatFails15.length === 2, chatFails15.length);
+    check('429 : le repli n\'enchaîne pas les rejeux',
+        !!chatFails15[1] && JSON.parse(chatFails15[1].options.body).stream === undefined,
+        chatFails15[1] && String(JSON.parse(chatFails15[1].options.body).stream));
+    check('429 : aucun bandeau « Génération en cours »',
+        df15.getElementById('status-text').textContent.indexOf('Génération en cours') === -1,
+        df15.getElementById('status-text').textContent);
+    check('429 : réponse rapide (moins de 3 s)', dt15 < 3000, dt15 + 'ms');
+    check('429 : message utilisateur honnête, sans détail technique',
+        /Impossible|réessayer|limite/i.test(df15.getElementById('toast-text').textContent) &&
+        !/sk-|HTTP|apihub|mistral|agnes/i.test(df15.getElementById('toast-text').textContent),
+        df15.getElementById('toast-text').textContent);
+    check('429 : indicateur de saisie retiré et flux libéré',
+        !df15.getElementById('chat-typing-msg') && wf15.eval('Runtime.chatStreaming') === false);
+
+    /* Rendu façon chatbot : blocs séparés, listes structurées, icône de
+       copie en bas de chaque bloc (question ET réponse). */
+    wf15.fetch = function (url, options) {
+        const u = String(url);
+        if (u.indexOf('/chat/completions') !== -1) {
+            return Promise.resolve({
+                ok: true, status: 200,
+                body: {
+                    getReader() {
+                        let n = 0;
+                        const chunks = ['data: {"choices":[{"delta":{"content":"**Concept** : une id\\u00e9e\\n\\n- piste une\\n- piste deux"}}]}\n\ndata: [DONE]\n\n'];
+                        return {
+                            read() {
+                                if (n >= chunks.length) return Promise.resolve({ done: true, value: undefined });
+                                return Promise.resolve({ done: false, value: new TextEncoder().encode(chunks[n++]) });
+                            },
+                            releaseLock() {}
+                        };
+                    }
+                }
+            });
+        }
+        if (u.indexOf('/rest/v1/analytics_events') !== -1) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    let copied15 = null;
+    Object.defineProperty(wf15.navigator, 'clipboard', {
+        value: { writeText: async (t) => { copied15 = t; } },
+        configurable: true
+    });
+    wf15.eval('ChatView.newConversation()');
+    df15.getElementById('chat-input').value = 'Ma question créative';
+    await wf15.eval('ChatView.sendMessage()');
+    check('blocs séparés : icône de copie sur la question ET sur la réponse',
+        df15.querySelectorAll('.chat-msg.user .chat-msg-copy').length >= 1 &&
+        df15.querySelectorAll('.chat-msg.assistant .chat-msg-copy').length >= 1);
+    check('réponse rendue avec gras et liste structurée',
+        /<strong>Concept<\/strong>/.test(df15.getElementById('chat-messages').innerHTML) &&
+        /<ul><li>piste une<\/li><li>piste deux<\/li><\/ul>/.test(df15.getElementById('chat-messages').innerHTML),
+        df15.getElementById('chat-messages').innerHTML.slice(0, 200));
+    df15.querySelector('.chat-msg.assistant .chat-msg-copy').click();
+    check('clic sur l\'icône : réponse copiée en clair',
+        copied15 === '**Concept** : une idée\n\n- piste une\n- piste deux', JSON.stringify(copied15));
+    copied15 = null;
+    df15.querySelector('.chat-msg.user .chat-msg-copy').click();
+    check('clic sur l\'icône : question copiée en clair',
+        copied15 === 'Ma question créative', JSON.stringify(copied15));
+    check('aucune erreur console (chat rapide + copie)',
+        fresh15.errors.length === 0, fresh15.errors.join('|'));
 
     console.log('\n=== 16. STUDIO DE SCÉNARIOS IA (3 MODES) ===');
     /* Trois formats, un seul contrat de sortie : le texte affiché vient de
