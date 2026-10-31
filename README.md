@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.17.5
+# LSV.ai — Studio Viral v3.17.6
 
 Application créative web : **Images · Vidéos · Chat IA · Scénarios IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -175,7 +175,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1, §2.30 = v3.17.2, §2.31 = v3.17.3, §2.32 = v3.17.4, §2.33 = v3.17.5.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1, §2.30 = v3.17.2, §2.31 = v3.17.3, §2.32 = v3.17.4, §2.33 = v3.17.5, §2.34 = v3.17.6.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -2054,6 +2054,48 @@ vers la passerelle portant le modèle standard) et §7quater (+2 : grilles de
 résultats restaurées puis vidées au changement de compte) ·
 **totaux : interface 414 · suite 1329.**
 
+### 2.34 Référence d'image réellement envoyée + bibliothèque en Image — v3.17.6
+
+Retours après v3.17.5, deux défauts sur l'onglet Image :
+
+- **La référence n'était jamais prise en compte** : la carte « Image de
+  référence » collectait les fichiers dans `UIState.imageRefs`, mais
+  `ImageService.generate` ne recevait que `(prompt, size)` — le corps de la
+  requête ne contenait strictement aucun champ d'image : la génération
+  « Image + Prompt » envoyait donc le prompt seul. Le client envoie
+  désormais les références dans `extra_body.image` (contrat documenté
+  Agnes Image 2.1 Flash : tableau d'URLs publiques ou de data-URIs), et
+  **aucun champ n'est ajouté** sans référence — le corps de la génération
+  simple reste strictement inchangé.
+- **Bibliothèque en Image, comme en Vidéo** : l'onglet Image ne proposait
+  que « Mon appareil ». La carte a désormais les mêmes deux onglets que la
+  vidéo (appareil / bibliothèque) : on réutilise une création déjà
+  générée (jusqu'à 4 — le fournisseur accepte la composition
+  multi-images), avec doublon refusé, compteur d'usage et vignette ; la
+  nouvelle image générée apparaît immédiatement dans la grille de
+  référence.
+- **Passerelle : `extra_body.image` résolu côté serveur** (nouveau
+  `resolveImageRefs`) — mêmes garanties que la vidéo : URL de
+  bibliothèque téléchargée ici puis encodée (le navigateur ne peut pas :
+  CORS), data-URI d'appareil transmis **tel quel**, URL morte ou réponse
+  non-image → 400 **avant** tout appel au fournisseur, avec remboursement
+  du quota et aucun détail technique dans la réponse. Le reste du corps
+  (prompt, taille, `response_format`) est préservé à l'identique.
+
+**Déploiement** : **redéployer la Gateway** — `core.mjs` a changé :
+`npx supabase functions deploy lsv-gateway --no-verify-jwt` — puis
+rafraîchir GitHub Pages **et** Cloudflare Workers. Tant que l'ancienne
+version tourne, les URLs de bibliothèque partent vers l'amont telles
+quelles, sans borne ni vérification : le correctif complet (bornes,
+400 propre, remboursement) exige le redéploiement.
+
+**Vérifié par** `tests/public.test.js` §14bis (22 : onglets, sélection
+depuis la bibliothèque, doublon, `extra_body.image` portant les URLs,
+corps sans référence inchangé, aucun fetch côté client) et
+`tests/gateway.test.mjs` §23bis (18 : data: intact, URL encodée, champs
+préservés, 400 avant l'amont, aucune fuite) ·
+**totaux : interface 436 · suite 1369.**
+
 ---
 
 ## 3. Installation locale
@@ -2433,7 +2475,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 1329 assertions, 6 suites
+npm test                      # 1369 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -2509,7 +2551,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 1329 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 1369 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (78 assertions, **90 avec `ORIG`**) — non-régression
@@ -2525,7 +2567,7 @@ npm test        # 1329 assertions (6 suites, hors ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (414 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (436 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -2579,6 +2621,13 @@ npm test        # 1329 assertions (6 suites, hors ORIG=… voir plus bas)
   sélection unique en Image→Vidéo et double en Keyframes, dédup, refus
   annoncé par toast, parcours fichier historique intact — et **aucun `fetch`
   de l'URL côté client**.
+- **référence de génération d'image** (§14bis, v3.17.6) : mêmes deux
+  onglets sur l'onglet Image (appareil / bibliothèque, 4 images max),
+  carte affichée seulement en mode « Image + Prompt », sélection depuis la
+  bibliothèque avec dédup et compteur, `extra_body.image` portant les URLs
+  telles quelles dans la requête, **corps strictement inchangé sans
+  référence** (aucun `extra_body`, `response_format` et `n` intacts), et
+  retour au parcours fichier intact.
 - **architecture modulaire** : `index.html` réduit à un squelette HTML
   (~1 470 lignes au lieu de ~7 000) ; CSS en 6 fichiers `styles/`, JS en 8
   modules `scripts/` chargés dans un ordre fixe ; `window.LSV` et toute l'API
@@ -2607,7 +2656,7 @@ npm test        # 1329 assertions (6 suites, hors ORIG=… voir plus bas)
   dans les deux sens (ni réécrit, ni remplacé), résultat envoyable vers
   l'image ou la vidéo, Enhancer d'origine inchangé.
 
-**`tests/gateway.test.mjs`** (286 assertions) — passerelle
+**`tests/gateway.test.mjs`** (304 assertions) — passerelle
 
 - routage (y compris préfixe `/functions/v1/lsv-gateway`), injection de la clé
   serveur, rejet de l'authorization client ;
@@ -2624,8 +2673,16 @@ npm test        # 1329 assertions (6 suites, hors ORIG=… voir plus bas)
   téléchargée une seule fois, borne de 20 Mo, refus d'un corps non image ou
   vide, échec réseau/HTTP signalé ; `resolveVideoRefs` ne convertit que
   `first_frame` et `last_frame`, JSON illisible sans effet de bord ; dans le handler,
-  fichier d'appareil inchangé, `/v1/images/generations` non converti, URL
-  morte → 400 **avant** tout appel au fournisseur et sans fuite de détail ;
+  fichier d'appareil inchangé, URL morte → 400 **avant** tout appel au
+  fournisseur et sans fuite de détail ;
+- **image-to-image** (§2.34) : `resolveImageRefs` ne convertit que le
+  tableau `extra_body.image` (URL de bibliothèque → data-URI encodé ici,
+  data-URI d'appareil intact, mélange des deux préservé), reste du corps
+  inchangé (prompt, taille, `response_format`), tableau absent ou non
+  valide → corps strictement préservé, un champ en échec → requête
+  refusée, et à travers le handler : référence relayée encodée vers
+  l'amont, génération sans référence sans aucun champ ajouté, URL
+  injoignable → 400 avant l'amont avec quota remboursé et aucune fuite ;
 - **identifiant de requête** (§2.16) : `x-lsv-request-id` présent sur chaque
   réponse, `Access-Control-Expose-Headers` couvrant tous les en-têtes `x-lsv-*`
   (les compteurs de quota étaient auparavant invisibles du navigateur),

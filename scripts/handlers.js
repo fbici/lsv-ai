@@ -13,7 +13,8 @@ const Handlers = {
         try {
             const size = IMG_RES[UIState.imageSize][UIState.imageRatio];
             const prompt = PromptService.buildImage(UIState);
-            const url = await ImageService.generate(prompt, size);
+            const refs = UIState.imageRefs;
+            const url = await ImageService.generate(prompt, size, refs);
             const dt = (Date.now() - t0) / 1000;
             const asset = AssetService.add({
                 type: 'image', url,
@@ -21,6 +22,9 @@ const Handlers = {
                 metadata: { size: Utils.clampSize(size), ratio: UIState.imageRatio, style: UIState.imageStyle, projectId: Runtime.currentProjectId }
             });
             if (Runtime.currentProjectId) ProjectService.addAsset(Runtime.currentProjectId, asset.id);
+            /* La nouvelle création devient immédiatement disponible comme
+               référence dans l'onglet Image (grille de la bibliothèque). */
+            this.renderImageRefLibrary();
             const card = UI.createImageCard(url, size);
             grid.insertBefore(card, grid.firstChild);
             Runtime.imageCount++;
@@ -31,7 +35,8 @@ const Handlers = {
             LSVAnalytics.track('image_generated', {
                 model: CONFIG.MODEL_IMAGE, size: Utils.clampSize(size),
                 ratio: UIState.imageRatio, style: UIState.imageStyle,
-                mode: UIState.imageMode, source: 'main', duration_s: Math.round(dt)
+                mode: UIState.imageMode, source: 'main', duration_s: Math.round(dt),
+                with_reference: refs.length > 0
             });
             /* Auto-téléchargement optionnel — IMAGES. Jusqu'ici ce réglage
                n'agissait que sur les vidéos, donc il ne se passait rien du
@@ -170,6 +175,7 @@ const Handlers = {
         UI.renderUploadPreview(arr, previewId);
         UI.updateButtons();
         this.renderRefLibrary();
+        this.renderImageRefLibrary();
     },
     /* Nombre d'images de référence autorisées pour le mode courant :
        1 pour Image→Vidéo, 2 pour Keyframes. */
@@ -224,6 +230,62 @@ const Handlers = {
         '<p class="ref-limit">' + UIState.videoRefs.length + ' / ' + this.refLimit() + ' image(s) utilisée(s)</p>';
         grid.querySelectorAll('[data-ref-pick]').forEach(btn => {
             btn.addEventListener('click', () => Handlers.addRefFromLibrary(btn.dataset.refPick));
+        });
+    },
+    /* Nombre d'images de référence pour la génération d'image : le
+       fournisseur accepte la composition multi-images. */
+    imageRefLimit() { return 4; },
+    /* Ajoute une création de la bibliothèque comme image de RÉFÉRENCE pour
+       la génération d'image (même mécanisme que la vidéo). On stocke l'URL
+       telle quelle : c'est la passerelle qui la télécharge et l'encode, le
+       navigateur ne pouvant pas (CORS). */
+    addImageRefFromLibrary(assetId) {
+        const asset = AssetService.get(assetId);
+        if (!asset || asset.type !== 'image') return;
+        const max = this.imageRefLimit();
+        if (UIState.imageRefs.some(r => r.assetId === asset.id)) {
+            UI.showToast('Image déjà ajoutée', 'warn');
+            return;
+        }
+        if (UIState.imageRefs.length >= max) {
+            UI.showToast('Quatre images maximum', 'warn');
+            return;
+        }
+        UIState.imageRefs.push({
+            id: Date.now() + Math.random(),
+            assetId: asset.id,
+            source: 'library',
+            name: asset.name,
+            dataUri: asset.url,
+            preview: asset.url
+        });
+        UI.renderUploadPreview(UIState.imageRefs, 'image-ref-preview');
+        UI.updateButtons();
+        this.renderImageRefLibrary();
+    },
+    renderImageRefLibrary() {
+        const grid = document.getElementById('image-ref-library-grid');
+        if (!grid) return;
+        const items = AssetService.filter({ type: 'image' });
+        if (!items.length) {
+            grid.innerHTML = '<div class="ref-empty"><span class="ms">image_search</span>' +
+                '<p>Aucune image dans ta bibliothèque.</p>' +
+                '<p class="ref-empty-hint">Génère d\'abord une image sur l\'onglet Image : elle apparaîtra ici.</p></div>';
+            return;
+        }
+        const chosen = UIState.imageRefs.map(r => r.assetId);
+        grid.innerHTML = items.map(a => {
+            const on = chosen.indexOf(a.id) >= 0;
+            return '<button type="button" class="ref-lib-item' + (on ? ' is-selected' : '') + '"' +
+                ' data-img-ref-pick="' + a.id + '" aria-pressed="' + (on ? 'true' : 'false') + '">' +
+                '<img src="' + a.url + '" alt="" loading="lazy">' +
+                '<span class="ref-lib-mark"><span class="ms">' + (on ? 'check_circle' : 'add_circle') + '</span></span>' +
+                '<span class="ref-lib-name">' + Utils.escapeHtml(Utils.truncate(a.name, 28)) + '</span>' +
+                '</button>';
+        }).join('') +
+        '<p class="ref-limit">' + UIState.imageRefs.length + ' / ' + this.imageRefLimit() + ' image(s) utilisée(s)</p>';
+        grid.querySelectorAll('[data-img-ref-pick]').forEach(btn => {
+            btn.addEventListener('click', () => Handlers.addImageRefFromLibrary(btn.dataset.imgRefPick));
         });
     },
     _saveCounters() {
@@ -513,6 +575,27 @@ function init() {
     document.getElementById('image-ref-input').addEventListener('change', e => {
         Handlers.handleImageUpload(e.target.files, UIState.imageRefs, 'image-ref-preview', 4);
         e.target.value = '';
+    });
+    /* Bascule entre le fichier local et la bibliothèque (comme en vidéo). */
+    document.querySelectorAll('#image-ref-tabs .ref-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('#image-ref-tabs .ref-tab').forEach(x => {
+                x.classList.remove('is-selected');
+                x.setAttribute('aria-selected', 'false');
+            });
+            tab.classList.add('is-selected');
+            tab.setAttribute('aria-selected', 'true');
+            const device = document.getElementById('image-ref-zone-device');
+            const library = document.getElementById('image-ref-zone-library');
+            if (tab.dataset.refSource === 'library') {
+                device.classList.add('hidden');
+                library.classList.remove('hidden');
+                Handlers.renderImageRefLibrary();
+            } else {
+                library.classList.add('hidden');
+                device.classList.remove('hidden');
+            }
+        });
     });
     UI.renderStyleGrid('image-style-grid', UIState.imageStyle, id => { UIState.imageStyle = id; });
     document.getElementById('image-size').addEventListener('change', e => { UIState.imageSize = e.target.value; });

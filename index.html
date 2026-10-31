@@ -613,11 +613,24 @@
                 <div class="card-header">
                     <div class="card-title"><span class="ms">attach_file</span> Image de référence</div>
                 </div>
-                <div class="upload-zone">
+                <div class="ref-tabs" id="image-ref-tabs" role="tablist" aria-label="Source de l'image de référence">
+                    <button type="button" class="ref-tab is-selected" role="tab" id="image-ref-tab-device"
+                            aria-selected="true" aria-controls="image-ref-zone-device" data-ref-source="device">
+                        <span class="ms">photo_camera</span> Mon appareil
+                    </button>
+                    <button type="button" class="ref-tab" role="tab" id="image-ref-tab-library"
+                            aria-selected="false" aria-controls="image-ref-zone-library" data-ref-source="library">
+                        <span class="ms">auto_stories</span> Bibliothèque
+                    </button>
+                </div>
+                <div class="upload-zone" id="image-ref-zone-device" role="tabpanel" aria-labelledby="image-ref-tab-device">
                     <input type="file" accept="image/*" id="image-ref-input" multiple>
                     <span class="ms">cloud_upload</span>
                     <div class="up-title">Cliquer pour ajouter</div>
-                    <div class="up-hint">JPG · PNG · WebP · max 12 Mo</div>
+                    <div class="up-hint">JPG · PNG · WebP · max 12 Mo · 4 images</div>
+                </div>
+                <div class="ref-library hidden" id="image-ref-zone-library" role="tabpanel" aria-labelledby="image-ref-tab-library">
+                    <div class="ref-library-grid" id="image-ref-library-grid"></div>
                 </div>
                 <div class="upload-preview" id="image-ref-preview"></div>
             </div>

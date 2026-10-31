@@ -160,13 +160,23 @@ const PromptService = {
 };
 
 const ImageService = {
-    async generate(prompt, size) {
+    /* `refs` = images de référence de UIState.imageRefs (fichier d'appareil
+       compressé en data-URI, ou URL d'une création de la bibliothèque).
+       Image-to-image : le fournisseur attend ces images dans
+       `extra_body.image` — tableau d'URLs publiques ou de data-URIs (doc
+       Agnes Image 2.1 Flash). Sans référence, AUCUN champ n'est ajouté : le
+       corps de la génération simple reste strictement inchangé. */
+    async generate(prompt, size, refs) {
         const safeSize = Utils.clampSize(size);
         const body = {
             model: CONFIG.MODEL_IMAGE,
             prompt, n: 1, size: safeSize,
             response_format: 'url'
         };
+        const images = Array.isArray(refs)
+            ? refs.map(r => (r && r.dataUri) || '').filter(Boolean)
+            : [];
+        if (images.length) body.extra_body = { image: images };
         const res = await AgnesProvider.fetch(
             CONFIG.API_BASE + '/images/generations',
             {

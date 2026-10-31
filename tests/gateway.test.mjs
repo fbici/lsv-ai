@@ -6,7 +6,7 @@
    sanitisation des erreurs amont, clé absente.
    Usage : node tests/gateway.test.mjs
    ═══════════════════════════════════════════════════════════════════════════ */
-import { createHandler, createMemoryStore, classifyRequest, requestsMistral, subPath, imageUnits, requestUnits, tokenRole, resolveMediaRef, resolveVideoRefs, newRequestId, classifyValidation, mediaAllowed, mediaFilename } from '../supabase/functions/lsv-gateway/core.mjs';
+import { createHandler, createMemoryStore, classifyRequest, requestsMistral, subPath, imageUnits, requestUnits, tokenRole, resolveMediaRef, resolveVideoRefs, resolveImageRefs, newRequestId, classifyValidation, mediaAllowed, mediaFilename } from '../supabase/functions/lsv-gateway/core.mjs';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -745,6 +745,107 @@ async function run() {
     check('aucun détail technique ni URL de CDN dans la réponse',
         !/cdn\.test|ENOTFOUND|https?:/.test(JSON.stringify(bDead)), JSON.stringify(bDead));
     check('message lisible pour l\'utilisateur', /image/i.test(bDead.error.message), bDead.error.message);
+
+    console.log('\n=== 23bis. IMAGE-TO-IMAGE : extra_body.image RÉSOLU ===');
+    /* La génération d'image promet une référence (v3.17.6) : les images
+       voyagent dans `extra_body.image` (URLs publiques ou data-URIs, contrat
+       Agnes Image 2.1). La passerelle télécharge les URLs ici, sans jamais
+       toucher aux data-URIs ni au reste du corps. */
+    const untouched23b = '{"prompt":"un chat","model":"agnes-image-2.1-flash","response_format":"url"}';
+    const rNoop23b = await resolveImageRefs(untouched23b, imgFetch);
+    check('corps sans extra_body.image inchangé (même chaîne)',
+        rNoop23b.ok === true && rNoop23b.converted === false && rNoop23b.body === untouched23b);
+
+    const rBadJson23b = await resolveImageRefs('{pas-du-json', imgFetch);
+    check('JSON illisible : aucun effet de bord', rBadJson23b.ok === true && rBadJson23b.body === '{pas-du-json');
+
+    const rNoArray23b = await resolveImageRefs(JSON.stringify({ extra_body: { image: 'pas-un-tableau' } }), imgFetch);
+    check('extra_body.image non-tableau : corps inchangé',
+        rNoArray23b.ok === true && rNoArray23b.converted === false);
+
+    imgCalls = [];
+    const rDev23b = await resolveImageRefs(JSON.stringify({
+        model: 'agnes-image-2.1-flash', prompt: 'x', extra_body: { image: [DATA_URI], response_format: 'url' }
+    }), imgFetch);
+    check('fichier d\'appareil (data:) transmis SANS modification',
+        rDev23b.converted === false && JSON.parse(rDev23b.body).extra_body.image[0] === DATA_URI);
+    check('fichier d\'appareil : aucun téléchargement', imgCalls.length === 0, imgCalls.length);
+
+    imgCalls = [];
+    const rMix23b = await resolveImageRefs(JSON.stringify({
+        model: 'agnes-image-2.1-flash', prompt: 'compose deux images',
+        size: '1024x1024',
+        extra_body: { image: [DATA_URI, 'https://cdn.test/biblio.png'], response_format: 'url' }
+    }), imgFetch);
+    const parsed23b = JSON.parse(rMix23b.body);
+    check('URL de bibliothèque convertie en data-URI',
+        rMix23b.converted === true && /^data:image\/png;base64,/.test(parsed23b.extra_body.image[1]),
+        parsed23b.extra_body.image[1].slice(0, 24));
+    check('data-URI du mélange préservé à sa place', parsed23b.extra_body.image[0] === DATA_URI);
+    check('les autres champs sont préservés', parsed23b.prompt === 'compose deux images' && parsed23b.size === '1024x1024' && parsed23b.extra_body.response_format === 'url');
+    check('un seul téléchargement (l\'URL seulement)', imgCalls.length === 1, imgCalls.length);
+
+    const rDead23b = await resolveImageRefs(JSON.stringify({ extra_body: { image: ['https://cdn.test/mort.png'] } }),
+        () => Promise.reject(new Error('boom')));
+    check('URL injoignable → requête refusée (raison réseau)',
+        rDead23b.ok === false && rDead23b.reason === 'network');
+
+    /* — à travers le handler — */
+    const iCalls23b = [];
+    const handleImg23b = createHandler({
+        env: vEnv, store: createMemoryStore(), now: () => t, log: () => {},
+        fetchImpl: async (url, init) => {
+            iCalls23b.push({ url: url, init: init });
+            if (String(url).indexOf('https://cdn.test/') === 0) {
+                return new Response(PNG, { status: 200, headers: { 'content-type': 'image/png' } });
+            }
+            return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+    });
+    const imgReq23b = body => makeReq(GW + '/v1/images/generations', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body)
+    });
+
+    const rGenRef = await handleImg23b(imgReq23b({
+        model: 'agnes-image-2.1-flash', prompt: 'inspire-toi de ça', size: '1024x1024',
+        extra_body: { image: ['https://cdn.test/creation.png'], response_format: 'url' }
+    }));
+    const upGenRef = iCalls23b.find(c => String(c.url).indexOf(UP + '/v1/images/generations') === 0);
+    check('génération image avec référence relayée', rGenRef.status === 200 && !!upGenRef, rGenRef.status);
+    check('l\'amont reçoit extra_body.image encodé, jamais une URL',
+        !!upGenRef && /^data:image\/png;base64,/.test(JSON.parse(upGenRef.init.body).extra_body.image[0]),
+        upGenRef && JSON.parse(upGenRef.init.body).extra_body.image[0].slice(0, 24));
+    check('corps amont préservé (prompt, taille, response_format)',
+        !!upGenRef && JSON.parse(upGenRef.init.body).prompt === 'inspire-toi de ça' &&
+        JSON.parse(upGenRef.init.body).size === '1024x1024' &&
+        JSON.parse(upGenRef.init.body).extra_body.response_format === 'url');
+
+    iCalls23b.length = 0;
+    const rGenPlain = await handleImg23b(imgReq23b({ model: 'agnes-image-2.1-flash', prompt: 'sans référence', size: '1024x1024' }));
+    const upGenPlain = iCalls23b.find(c => String(c.url).indexOf(UP + '/v1/images/generations') === 0);
+    check('génération sans référence : aucun champ ajouté',
+        rGenPlain.status === 200 && upGenPlain && JSON.parse(upGenPlain.init.body).extra_body === undefined,
+        upGenPlain && JSON.stringify(JSON.parse(upGenPlain.init.body)).slice(0, 120));
+    check('sans référence : aucun téléchargement', iCalls23b.filter(c => String(c.url).indexOf('https://cdn.test/') === 0).length === 0);
+
+    iCalls23b.length = 0;
+    const handleDead23b = createHandler({
+        env: vEnv, store: createMemoryStore(), now: () => t, log: () => {},
+        fetchImpl: async url => {
+            iCalls23b.push({ url: url });
+            if (String(url).indexOf('https://cdn.test/') === 0) throw new Error('ENOTFOUND cdn.test');
+            return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+    });
+    const rDeadGen = await handleDead23b(imgReq23b({
+        model: 'agnes-image-2.1-flash', prompt: 'x', extra_body: { image: ['https://cdn.test/disparue.png'] }
+    }));
+    const bDeadGen = await rDeadGen.json();
+    check('référence injoignable → 400 avant tout appel au fournisseur',
+        rDeadGen.status === 400 && iCalls23b.filter(c => String(c.url).indexOf(UP) === 0).length === 0, rDeadGen.status);
+    check('aucun détail technique ni URL de CDN dans la réponse',
+        !/cdn\.test|ENOTFOUND|https?:/.test(JSON.stringify(bDeadGen)), JSON.stringify(bDeadGen));
+    check('message lisible pour l\'utilisateur', /image/i.test(bDeadGen.error.message), bDeadGen.error.message);
 
     console.log('\n=== 24. IDENTIFIANT DE REQUÊTE ET DIAGNOSTIC AMONT ===');
     /* Un échec affiché dans le back-office n'a aucune valeur si on ne peut pas

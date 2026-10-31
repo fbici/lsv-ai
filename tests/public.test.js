@@ -1213,6 +1213,116 @@ async function load(html, url) {
     check('aucun fetch de l\'URL côté client',
         wb.eval('JSON.stringify(UIState.videoRefs)').indexOf('fetch') === -1);
 
+    console.log('\n=== 14bis. RÉFÉRENCE DE GÉNÉRATION D\'IMAGE : BIBLIOTHÈQUE + ENVOI RÉEL ===');
+    /* L'onglet Image promet « une image de référence » : le champ était
+       collecté mais JAMAIS envoyé au fournisseur, et contrairement à la
+       vidéo aucune bibliothèque n'était proposée. (v3.17.6) */
+    const ref14b = await load(prepare());
+    const wr14 = ref14b.dom.window;
+    const dr14 = wr14.document;
+
+    check('onglet Image : deux onglets de source présents',
+        !!dr14.getElementById('image-ref-tab-device') && !!dr14.getElementById('image-ref-tab-library'));
+    check('l\'appareil est la source active au chargement',
+        dr14.getElementById('image-ref-tab-device').classList.contains('is-selected') &&
+        dr14.getElementById('image-ref-zone-library').classList.contains('hidden'));
+    check('accessibilité : aria-selected + aria-controls',
+        dr14.getElementById('image-ref-tab-device').getAttribute('aria-selected') === 'true' &&
+        dr14.getElementById('image-ref-tab-library').getAttribute('aria-controls') === 'image-ref-zone-library');
+    check('limite = 4 images (composition multi-images)',
+        wr14.eval('Handlers.imageRefLimit()') === 4);
+
+    /* La carte n'apparaît qu'en mode « Image + Prompt ». */
+    dr14.querySelector('#image-mode-grid .mode-tile[data-mode="prompt-ref"]').click();
+    check('mode Image + Prompt → carte de référence affichée',
+        !dr14.getElementById('image-ref-card').classList.contains('hidden'));
+    dr14.querySelector('#image-mode-grid .mode-tile[data-mode="prompt-only"]').click();
+    check('mode Prompt seul → carte masquée',
+        dr14.getElementById('image-ref-card').classList.contains('hidden'));
+    dr14.querySelector('#image-mode-grid .mode-tile[data-mode="prompt-ref"]').click();
+
+    /* Deux créations images + une vidéo dans la bibliothèque de test. */
+    wr14.eval('AssetService.add({type:"image", url:"https://cdn.test/alpha.png", name:"Création alpha"});' +
+        'AssetService.add({type:"image", url:"https://cdn.test/beta.png", name:"Création bêta"});' +
+        'AssetService.add({type:"video", url:"https://cdn.test/v.mp4", name:"Vidéo"});');
+    dr14.getElementById('image-ref-tab-library').click();
+    check('clic Bibliothèque → panneau montré, appareil masqué',
+        !dr14.getElementById('image-ref-zone-library').classList.contains('hidden') &&
+        dr14.getElementById('image-ref-zone-device').classList.contains('hidden'));
+    const imgLibBtns = dr14.querySelectorAll('#image-ref-library-grid [data-img-ref-pick]');
+    check('la grille ne montre que les images', imgLibBtns.length === 2, imgLibBtns.length);
+
+    imgLibBtns[0].click();
+    check('sélection → 1 référence enregistrée', wr14.eval('UIState.imageRefs.length') === 1);
+    check('la référence porte son identifiant de bibliothèque',
+        wr14.eval('UIState.imageRefs[0].source') === 'library' &&
+        !!wr14.eval('UIState.imageRefs[0].assetId'));
+    check('élément de la grille marqué sélectionné (aria-pressed)',
+        !!dr14.querySelector('#image-ref-library-grid [data-img-ref-pick].is-selected') &&
+        dr14.querySelector('#image-ref-library-grid [data-img-ref-pick].is-selected')
+            .getAttribute('aria-pressed') === 'true');
+    dr14.querySelectorAll('#image-ref-library-grid [data-img-ref-pick]')[1].click();
+    check('deuxième image acceptée (composition multi-images)',
+        wr14.eval('UIState.imageRefs.length') === 2);
+    dr14.querySelectorAll('#image-ref-library-grid [data-img-ref-pick]')[0].click();
+    check('doublon refusé', wr14.eval('UIState.imageRefs.length') === 2);
+    check('refus annoncé à l\'utilisateur',
+        dr14.getElementById('toast-text').textContent.indexOf('déjà') !== -1,
+        dr14.getElementById('toast-text').textContent);
+
+    /* Envoi réel : le corps porte extra_body.image (contrat image-to-image).
+       Les URLs de bibliothèque y voyagent telles quelles — c'est la
+       passerelle qui les télécharge et les encode, jamais le navigateur. */
+    wr14.eval('AccountService._save({access_token:"jwt-de-test", refresh_token:"refresh-de-test", ' +
+        'expires_at:' + (Math.floor(Date.now() / 1000) + 3600) + ', ' +
+        'email:"test@lsv.ai", name:"Test", id:"33333333-3333-4333-8333-333333333333"})');
+    const imgCalls14 = [];
+    wr14.fetch = function (url, options) {
+        const u = String(url);
+        imgCalls14.push({ url: u, options: options || {} });
+        if (u.indexOf('/images/generations') !== -1) {
+            return Promise.resolve({ ok: true, status: 200, json: async () => ({ data: [{ url: 'https://cdn.test/gen.png' }] }), text: async () => '' });
+        }
+        if (u.indexOf('/rest/v1/analytics_events') !== -1) return Promise.resolve({ ok: true, status: 201, json: async () => ([]) });
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}), text: async () => 'x' });
+    };
+    const gen14 = await wr14.LSV.services.image.generate('Un tigre à Tokyo', '1024x1024', wr14.eval('UIState.imageRefs'));
+    const genReq14 = imgCalls14.find(c => c.url.indexOf('/images/generations') !== -1);
+    check('génération avec référence : réponse reçue', gen14 === 'https://cdn.test/gen.png', gen14);
+    check('le corps porte extra_body.image (image-to-image)', !!genReq14 &&
+        Array.isArray(JSON.parse(genReq14.options.body).extra_body.image) &&
+        JSON.parse(genReq14.options.body).extra_body.image.length === 2,
+        genReq14 && JSON.stringify(JSON.parse(genReq14.options.body).extra_body).slice(0, 90));
+    check('les URLs de bibliothèque y voyagent telles quelles',
+        !!genReq14 && JSON.parse(genReq14.options.body).extra_body.image[0] === wr14.eval('UIState.imageRefs[0].dataUri') &&
+        /^https:\/\/cdn\.test\//.test(JSON.parse(genReq14.options.body).extra_body.image[0]),
+        genReq14 && JSON.parse(genReq14.options.body).extra_body.image[0]);
+    check('requête vers la passerelle, aucune clé',
+        !!genReq14 && genReq14.url.indexOf('/functions/v1/lsv-gateway/v1/images/generations') !== -1 &&
+        JSON.stringify(genReq14.options.headers || {}).indexOf('sk-') === -1,
+        genReq14 && genReq14.url);
+
+    /* Sans référence : strictement aucun champ ajouté (corps historique). */
+    wr14.eval('UIState.imageRefs.length = 0;');
+    imgCalls14.length = 0;
+    await wr14.LSV.services.image.generate('Un tigre à Tokyo', '1024x1024', wr14.eval('UIState.imageRefs'));
+    const plainReq14 = imgCalls14.find(c => c.url.indexOf('/images/generations') !== -1);
+    const plainBody14 = JSON.parse(plainReq14.options.body);
+    check('sans référence : aucun extra_body dans le corps',
+        plainBody14.extra_body === undefined && plainBody14.response_format === 'url' && plainBody14.n === 1,
+        JSON.stringify(plainBody14));
+
+    /* Retour appareil : parcours fichier historique intact. */
+    dr14.getElementById('image-ref-tab-device').click();
+    check('retour appareil : zone d\'upload visible, input fichier intact',
+        !dr14.getElementById('image-ref-zone-device').classList.contains('hidden') &&
+        dr14.getElementById('image-ref-zone-library').classList.contains('hidden') &&
+        !!dr14.getElementById('image-ref-input') && dr14.getElementById('image-ref-input').multiple === true);
+    check('l\'URL n\'est jamais fetchée côté client (la passerelle convertit)',
+        wr14.eval('JSON.stringify(UIState.imageRefs)').indexOf('fetch') === -1);
+    check('aucune erreur console (référence image)',
+        ref14b.errors.length === 0, ref14b.errors.join('|'));
+
     console.log('\n=== 15. MODÈLE DE CHAT : STANDARD UNIQUE ===');
     /* Le sélecteur de modèle a été RETIRÉ côté client (v3.17.5) : une option
        qui ne fonctionnait pas n'est pas présentée comme marchante. Le chat

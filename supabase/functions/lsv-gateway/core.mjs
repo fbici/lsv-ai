@@ -121,7 +121,7 @@ export async function resolveMediaRef(value, fetchImpl) {
 }
 
 /** Applique resolveMediaRef aux champs d'image d'une requête vidéo.
-    Ne touche qu'à `image` et `last_frame` ; tout le reste du corps est
+    Ne touche qu'à `first_frame` et `last_frame` ; tout le reste du corps est
     préservé à l'identique. */
 export async function resolveVideoRefs(bodyText, fetchImpl) {
     let payload;
@@ -146,6 +146,38 @@ export async function resolveVideoRefs(bodyText, fetchImpl) {
         if (!r.ok) return { ok: false, reason: r.reason, detail: r.detail || r.status || '' };
         if (r.converted) { payload[key] = r.value; touched = true; }
     }
+    return { ok: true, body: touched ? JSON.stringify(payload) : bodyText, converted: touched };
+}
+
+/** Applique resolveMediaRef aux images de référence d'une requête d'image
+    (image-to-image). Ne touche qu'au tableau `extra_body.image` (URLs
+    publiques ou data-URIs, contrat Agnes Image 2.1) ; tout le reste du
+    corps est préservé à l'identique. Un fichier choisi sur l'appareil
+    (data:) y traverse sans être touché. */
+export async function resolveImageRefs(bodyText, fetchImpl) {
+    let payload;
+    try {
+        payload = JSON.parse(bodyText || '');
+    } catch (e) {
+        return { ok: true, body: bodyText, converted: false };
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        return { ok: true, body: bodyText, converted: false };
+    }
+    const extra = payload.extra_body;
+    if (!extra || typeof extra !== 'object' || Array.isArray(extra) || !Array.isArray(extra.image)) {
+        return { ok: true, body: bodyText, converted: false };
+    }
+    let touched = false;
+    const out = [];
+    for (const value of extra.image) {
+        if (typeof value !== 'string') { out.push(value); continue; }
+        const r = await resolveMediaRef(value, fetchImpl);
+        if (!r.ok) return { ok: false, reason: r.reason, detail: r.detail || r.status || '' };
+        if (r.converted) touched = true;
+        out.push(r.value);
+    }
+    extra.image = out;
     return { ok: true, body: touched ? JSON.stringify(payload) : bodyText, converted: touched };
 }
 
@@ -1025,13 +1057,28 @@ export function createHandler(options = {}) {
             for (const key of memoryRefunds) store.refundDaily(key, t);
         };
 
-        /* ── 6. Image de référence : URL de bibliothèque → image encodée ────
+        /* ── 6. Images de référence : URL de bibliothèque → image encodée ──
+              Vidéo : champs `first_frame` / `last_frame` (§2.15).
+              Image : tableau `extra_body.image` (image-to-image, v3.17.6).
               Un fichier choisi sur l'appareil arrive déjà encodé (data:…) et
               traverse ce bloc sans y être touché. Une création reprise de la
               bibliothèque n'est qu'une URL : le navigateur ne pourrait pas la
               récupérer (CORS), donc on la télécharge ici. ───────────────── */
         if (type === 'video' && body) {
             const media = await resolveVideoRefs(body, doFetch);
+            if (!media.ok) {
+                log('media-injoignable', reqId, media.reason, String(media.detail || ''));
+                await refundQuota();
+                if (user && type && enabled) store.leave('inflight:' + user.id);
+                return json(400, MSG_MEDIA, h);
+            }
+            if (media.converted) body = media.body;
+        }
+        /* Image-to-image : mêmes garanties — URL de bibliothèque téléchargée
+           ici (le navigateur ne peut pas, CORS), fichier d'appareil (data:)
+           transmis tel quel. Seul `extra_body.image` est concerné. */
+        if (type === 'image' && body) {
+            const media = await resolveImageRefs(body, doFetch);
             if (!media.ok) {
                 log('media-injoignable', reqId, media.reason, String(media.detail || ''));
                 await refundQuota();
