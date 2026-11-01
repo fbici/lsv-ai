@@ -332,7 +332,7 @@ console.log('\n=== 9. PAGES PUBLIQUES (contact + à propos) ===');
 const contactPage = existsSync(join(PROJECT, 'contact/index.html')) ? readFileSync(join(PROJECT, 'contact/index.html'), 'utf8') : '';
 check('page contact/index.html existe', !!contactPage, contactPage.length + ' octets');
 check('page contact en français', /<html lang="fr">/.test(contactPage));
-check('canonical Contact présent', /canonical" href="https:\/\/fbici\.github\.io\/lsv-ai\/contact\/"/.test(contactPage));
+check('canonical Contact présent', /canonical" href="https:\/\/lsv-ai\.lestudioviral\.workers\.dev\/contact\/"/.test(contactPage));
 check('formulaire contact avec canal « site »', /data-contact="site"/.test(contactPage));
 check('adresse officielle affichée', /lestudioviral@gmail\.com/.test(contactPage));
 check('formulaire : champ piège anti-robot', /name="website"/.test(contactPage) && /ct-hp/.test(contactPage));
@@ -370,7 +370,7 @@ check('accueil : aucun mot interdit ajouté au footer',
     !/clé API|Agnes|Bearer|sk-/i.test(idx.match(/<footer class="w-foot">[\s\S]*?<\/footer>/)?.[0] || ''));
 
 const sm = readFileSync(join(PROJECT, 'sitemap.xml'), 'utf8');
-check('sitemap contient /contact/', /lsv-ai\/contact\//.test(sm) && !/contact\.html/.test(sm));
+check('sitemap contient /contact/', /lsv-ai\.lestudioviral\.workers\.dev\/contact\//.test(sm) && !/contact\.html/.test(sm));
 const llms = readFileSync(join(PROJECT, 'llms.txt'), 'utf8');
 check('llms.txt contient contact + e-mails', /contact\//.test(llms) && /lestudioviral@gmail\.com/.test(llms));
 
@@ -415,7 +415,7 @@ console.log('\n=== 10. RENDU RÉEL (jsdom) ===');
         vc.on('error', (...a) => errors.push('console.error: ' + a.join(' ')));
         const dom = new JSDOM(
             inlineLocalScripts(readFileSync(file, 'utf8'), dirname(file)),
-            { url: 'https://fbici.github.io/lsv-ai/' + rel, runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc }
+            { url: 'https://lsv-ai.lestudioviral.workers.dev/' + rel, runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc }
         );
         await new Promise(res => {
             if (dom.window.document.readyState === 'complete') return res();

@@ -3,4 +3,4 @@ User-agent: *
 Allow: /
 Disallow: /admin/
 
-Sitemap: https://fbici.github.io/lsv-ai/sitemap.xml
+Sitemap: https://lsv-ai.lestudioviral.workers.dev/sitemap.xml

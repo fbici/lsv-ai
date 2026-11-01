@@ -48,7 +48,7 @@ function kv(label, value) {
 }
 
 const FOOT = `<strong style="color:#52525b;">LeStudioViral</strong> — Studio de création de contenu IA.<br>
-Ce message est envoyé automatiquement via LSV.ai · <a href="https://fbici.github.io/lsv-ai/" style="color:#0d9488;">fbici.github.io/lsv-ai</a>`;
+Ce message est envoyé automatiquement via LSV.ai · <a href="https://lsv-ai.lestudioviral.workers.dev/" style="color:#0d9488;">lsv-ai.lestudioviral.workers.dev</a>`;
 
 /* ── 1. Notification à LeStudioViral ────────────────────────────────────── */
 export function notificationHtml(c) {
@@ -113,8 +113,8 @@ ${kv('Objet', esc(c.subject))}
 ${kv('Reçu le', esc(new Date(c.receivedAt).toLocaleString('fr-FR', { timeZone: 'UTC' })) + ' UTC')}
 </table>
 <p style="margin:18px 0 8px 0;font-size:14px;line-height:1.6;color:#8a8a94;">
-En attendant, découvre le studio : <a href="https://fbici.github.io/lsv-ai/" style="color:#0d9488;">ouvrir LSV.ai</a>
-· <a href="https://fbici.github.io/lsv-ai/a-propos/" style="color:#0d9488;">À propos de LeStudioViral</a></p>`,
+En attendant, découvre le studio : <a href="https://lsv-ai.lestudioviral.workers.dev/" style="color:#0d9488;">ouvrir LSV.ai</a>
+· <a href="https://lsv-ai.lestudioviral.workers.dev/a-propos/" style="color:#0d9488;">À propos de LeStudioViral</a></p>`,
         footer: FOOT
     });
 }
@@ -128,6 +128,6 @@ export function autoReplyText(c) {
         '',
         'Nous revenons vers toi sous 48 heures.',
         '',
-        'LSV.ai — https://fbici.github.io/lsv-ai/'
+        'LSV.ai — https://lsv-ai.lestudioviral.workers.dev/'
     ].join('\n');
 }

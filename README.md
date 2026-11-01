@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.17.9
+# LSV.ai — Studio Viral v3.17.10
 
 Application créative web : **Images · Vidéos · Chat IA · Scénarios IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -177,7 +177,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1, §2.30 = v3.17.2, §2.31 = v3.17.3, §2.32 = v3.17.4, §2.33 = v3.17.5, §2.34 = v3.17.6, §2.35 = v3.17.7, §2.36 = v3.17.8, §2.37 = v3.17.9.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1, §2.30 = v3.17.2, §2.31 = v3.17.3, §2.32 = v3.17.4, §2.33 = v3.17.5, §2.34 = v3.17.6, §2.35 = v3.17.7, §2.36 = v3.17.8, §2.37 = v3.17.9, §2.38 = v3.17.10.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -2210,6 +2210,41 @@ têtes de playlist v3/v4, playlist `data-carousel` + gestionnaire
 
 ---
 
+### 2.38 Domaine public unique : le Workers - v3.17.10
+
+**Constat (retour utilisateur)** : le site est en ligne publiquement sur
+**deux** hébergeurs — GitHub Pages (`fbici.github.io/lsv-ai`) **et**
+Cloudflare Workers (`lsv-ai.lestudioviral.workers.dev`) — mais sitemap,
+`canonical` et `og` pointaient tous vers Pages, alors que le lien public
+de référence est le Workers.
+
+**Ce qui change** :
+
+- **SEO basculé sur `https://lsv-ai.lestudioviral.workers.dev/`** :
+  `sitemap.xml` (les 3 `<loc>`), `Sitemap:` de `robots.txt`, `canonical` +
+  `og:url` + `og:image` + `twitter:image` + JSON-LD des 3 pages
+  (accueil, à propos, contact), lien « Ouvrir LSV.ai » d'à propos et
+  toutes les URLs de `llms.txt`. Les URL Workers n'ont pas de segment
+  `/lsv-ai/` : la racine du domaine remplace exactement ce préfixe.
+- **E-mails de contact** (`lsv-contact/templates.mjs`) : liens du pied
+  et de la réponse automatique (URL et texte du lien) vers le Workers.
+- **Côtes serveur inchangés** : les listes CORS (`ALLOWED_ORIGINS`) des
+  3 fonctions incluaient **déjà** `https://lsv-ai.lestudioviral.workers.dev`
+  — aucun impact sur la génération, le contact ni la suppression.
+- La copie GitHub Pages reste en ligne (mêmes fronts) mais le
+  `canonical` désigne désormais le Workers comme origine à indexer.
+
+**Déploiement** : fronts (GitHub Pages **et** Cloudflare Workers) +
+`npx supabase functions deploy lsv-contact --no-verify-jwt` (liens
+d'e-mails à jour).
+
+**Vérifié par** `tests/public.test.js` (sitemap/robots sans aucun reste
+`github.io`, `canonical` + `og:url` de l'accueil sur le domaine public)
+et `tests/contact.test.mjs` (canonical Contact) ·
+**totaux : interface 471 · suite 1404.**
+
+---
+
 ## 3. Installation locale
 
 ```bash
@@ -2397,9 +2432,11 @@ en ligne (et non sur `localhost`) :
    Le lien `{{ .ConfirmationURL }}` est généré par Supabase ; les modèles
    mentionnent déjà LSV.ai et le studio (images / vidéos / chat IA).
 2. **Adresse de retour** — Dashboard → **Authentication → URL Configuration** :
-   - **Site URL** → `https://fbici.github.io/lsv-ai/` ;
-   - **Redirect URLs** → ajouter `https://fbici.github.io/lsv-ai/*`
-     (et `http://localhost:4173/*` pour tester en local avec `npm run serve`).
+   - **Site URL** → `https://lsv-ai.lestudioviral.workers.dev/` (domaine
+     public de production — sitemap, `canonical` et og y pointent, §2.38) ;
+   - **Redirect URLs** → `https://lsv-ai.lestudioviral.workers.dev/*`
+     (garder aussi `https://fbici.github.io/lsv-ai/*` tant que la copie
+     Pages reste en ligne, et `http://localhost:4173/*` pour le local).
 
 Après le clic sur le lien, l'app affiche « E-mail confirmé : connecte-toi »
 (et « Lien invalide ou expiré » si le lien est expiré), puis nettoie l'URL.
@@ -2587,7 +2624,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 1402 assertions, 6 suites
+npm test                      # 1404 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -2663,7 +2700,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 1402 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 1404 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (78 assertions, **90 avec `ORIG`**) — non-régression
@@ -2679,7 +2716,7 @@ npm test        # 1402 assertions (6 suites, hors ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (469 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (471 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -2754,6 +2791,12 @@ npm test        # 1402 assertions (6 suites, hors ORIG=… voir plus bas)
   nom, barre latérale en `<img>` du logo — et cartes de résultats vidéo
   **sans cadre 9/16 imposé** (ratio de la génération en direct, ratio
   stocké à la restauration, format naturel sans métadonnée).
+- **domaine public unique** (§2.38, v3.17.10) : sitemap, `robots.txt`,
+  `canonical`, `og:url`/`og:image`, `twitter:image`, JSON-LD des 3
+  pages et URLs de `llms.txt` pointent tous vers
+  `https://lsv-ai.lestudioviral.workers.dev/` — plus aucune URL
+  `fbici.github.io` dans le SEO (la copie Pages reste en ligne mais
+  canonicalisée vers le Workers).
 - **architecture modulaire** : `index.html` réduit à un squelette HTML
   (~1 470 lignes au lieu de ~7 000) ; CSS en 6 fichiers `styles/`, JS en 8
   modules `scripts/` chargés dans un ordre fixe ; `window.LSV` et toute l'API

@@ -43,7 +43,7 @@ async function load(html, url) {
     vc.on('jsdomError', e => { if (!/Not implemented/.test(e.message)) errors.push('jsdomError: ' + e.message); });
     vc.on('error', (...a) => errors.push('console.error: ' + a.join(' ')));
     vc.on('warn', () => {});
-    const dom = new JSDOM(html, { url: url || 'https://fbici.github.io/lsv-ai/', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc });
+    const dom = new JSDOM(html, { url: url || 'https://lsv-ai.lestudioviral.workers.dev/', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc });
     await new Promise(res => {
         if (dom.window.document.readyState === 'complete') return res();
         dom.window.addEventListener('load', res);
@@ -702,7 +702,7 @@ async function load(html, url) {
     check('aucune erreur console (bloqué)', anon.errors.length === 0, anon.errors.join('|'));
 
     console.log('\n=== 8bis. RETOUR DES LIENS SUPABASE (confirmation / réinitialisation) ===');
-    const okReturn = await load(prepare(), 'https://fbici.github.io/lsv-ai/?code=test-code-123');
+    const okReturn = await load(prepare(), 'https://lsv-ai.lestudioviral.workers.dev/?code=test-code-123');
     const wo = okReturn.dom.window;
     const dox = wo.document;
     check('retour de confirmation : toast de succès', /E-mail confirmé/i.test(dox.getElementById('toast-text').textContent), dox.getElementById('toast-text').textContent);
@@ -710,7 +710,7 @@ async function load(html, url) {
     check('retour de confirmation : modale fermée', dox.getElementById('auth-modal').classList.contains('hidden'));
     check('retour de confirmation : aucune erreur console', okReturn.errors.length === 0, okReturn.errors.join('|'));
 
-    const badReturn = await load(prepare(), 'https://fbici.github.io/lsv-ai/?error_description=Email+link+is+invalid+or+has+expired');
+    const badReturn = await load(prepare(), 'https://lsv-ai.lestudioviral.workers.dev/?error_description=Email+link+is+invalid+or+has+expired');
     const wb2 = badReturn.dom.window;
     const db2 = wb2.document;
     check('lien expiré : toast d erreur clair', /Lien invalide ou expiré/i.test(db2.getElementById('toast-text').textContent), db2.getElementById('toast-text').textContent);
@@ -736,8 +736,8 @@ async function load(html, url) {
     check('fondateur nommé (Salaou Souleyman)', /Salaou Souleyman/.test(aboutSrc));
     check('marque nommée (LeStudioViral)', /LeStudioViral/.test(aboutSrc));
     check('métiers mentionnés (web + mobile + contenu)', /applications web/i.test(aboutSrc) && /mobile/i.test(aboutSrc) && /contenu/i.test(aboutSrc));
-    check('accès au studio depuis la page', /fbici\.github\.io\/lsv-ai\//.test(aboutSrc));
-    check('SEO : titre + description + canonical sur la page', /<title>[^<]*Salaou Souleyman/.test(aboutSrc) && /meta name="description"/.test(aboutSrc) && /canonical" href="https:\/\/fbici\.github\.io\/lsv-ai\/a-propos\/"/.test(aboutSrc));
+    check('accès au studio depuis la page', /lsv-ai\.lestudioviral\.workers\.dev\//.test(aboutSrc));
+    check('SEO : titre + description + canonical sur la page', /<title>[^<]*Salaou Souleyman/.test(aboutSrc) && /meta name="description"/.test(aboutSrc) && /canonical" href="https:\/\/lsv-ai\.lestudioviral\.workers\.dev\/a-propos\/"/.test(aboutSrc));
     check('SEO : JSON-LD Person + Organization', /"@type": "Person"/.test(aboutSrc) && /"@type": "Organization"/.test(aboutSrc) && /"founder"/.test(aboutSrc));
     check('emplacement prévu pour le site officiel', /SITE_OFFICIEL/.test(aboutSrc) && /lestudioviral\.com/.test(aboutSrc));
     check('logo officiel affiché (header uniquement) sur la page', (aboutSrc.match(/src="\.\.\/logo-lsv\.png"/g) || []).length === 1, (aboutSrc.match(/src="\.\.\/logo-lsv\.png"/g) || []).length);
@@ -750,7 +750,14 @@ async function load(html, url) {
     check('robots.txt présent et admin interdit', /Disallow:\s*\/admin\//.test(robotsSrc) && /Sitemap:/.test(robotsSrc), robotsSrc.slice(0, 40));
     const sitemapPath = path.join(PROJECT, 'sitemap.xml');
     const sitemapSrc = fs.existsSync(sitemapPath) ? fs.readFileSync(sitemapPath, 'utf8') : '';
-    check('sitemap.xml contient studio + à propos', /fbici\.github\.io\/lsv-ai\//.test(sitemapSrc) && /a-propos\//.test(sitemapSrc) && !/a-propos\.html/.test(sitemapSrc));
+    check('sitemap.xml contient studio + à propos', /lsv-ai\.lestudioviral\.workers\.dev\//.test(sitemapSrc) && /a-propos\//.test(sitemapSrc) && !/a-propos\.html/.test(sitemapSrc));
+    check('domaine public unique : sitemap + robots + aucun reste github.io',
+        /<loc>https:\/\/lsv-ai\.lestudioviral\.workers\.dev\//.test(sitemapSrc) &&
+        !/fbici\.github\.io/.test(sitemapSrc) &&
+        /Sitemap: https:\/\/lsv-ai\.lestudioviral\.workers\.dev\/sitemap\.xml/.test(fs.readFileSync(path.join(PROJECT, 'robots.txt'), 'utf8')));
+    check('canonical + og:url de l accueil sur le domaine public',
+        /canonical" href="https:\/\/lsv-ai\.lestudioviral\.workers\.dev\/"/.test(source) &&
+        /og:url" content="https:\/\/lsv-ai\.lestudioviral\.workers\.dev\/"/.test(source));
     check('sitemap daté (lastmod)', /<lastmod>/.test(sitemapSrc));
     const llmsPath = path.join(PROJECT, 'llms.txt');
     check('llms.txt présent (index IA)', fs.existsSync(llmsPath) && /LSV\.ai/.test(fs.readFileSync(llmsPath, 'utf8')));
@@ -1426,9 +1433,9 @@ async function load(html, url) {
     check('favicon de l\'accueil = nouveau logo en PNG',
         /<link rel="icon" type="image\/png" href="\.\/favicon\.png">/.test(source));
     check('partage social : og:image + twitter:image = logo-lsv.png',
-        /og:image" content="https:\/\/fbici\.github\.io\/lsv-ai\/logo-lsv\.png"/.test(source) &&
-        /twitter:image" content="https:\/\/fbici\.github\.io\/lsv-ai\/logo-lsv\.png"/.test(source));
-    check('JSON-LD du site = logo-lsv.png', /"url": "https:\/\/fbici\.github\.io\/lsv-ai\/logo-lsv\.png"/.test(source));
+        /og:image" content="https:\/\/lsv-ai\.lestudioviral\.workers\.dev\/logo-lsv\.png"/.test(source) &&
+        /twitter:image" content="https:\/\/lsv-ai\.lestudioviral\.workers\.dev\/logo-lsv\.png"/.test(source));
+    check('JSON-LD du site = logo-lsv.png', /"url": "https:\/\/lsv-ai\.lestudioviral\.workers\.dev\/logo-lsv\.png"/.test(source));
     const sideLogo14 = dq14.querySelector('.sidebar-logo');
     check('barre latérale : le logo est l\'image néon (pas du texte)',
         !!sideLogo14 && sideLogo14.tagName === 'IMG' && sideLogo14.getAttribute('src') === './logo-lsv.png',
