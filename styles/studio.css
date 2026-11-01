@@ -1437,7 +1437,8 @@ input:focus, textarea:focus, select:focus {
 .result-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
 .result-media { background: var(--bg-3); }
 .result-media img, .result-media video { width: 100%; display: block; object-fit: cover; }
-.result-media video { aspect-ratio: 9/16; }
+/* Les vidéos n'ont PLUS de cadre 9/16 imposé : le ratio réel arrive en
+   inline depuis la génération/restauration (metadata.ratio). */
 .result-meta { padding: 0.7rem 0.85rem; border-top: 1px solid var(--border); }
 .result-meta .res-name { font-family: var(--font-display); font-size: 0.82rem; font-weight: 600; color: var(--ink); margin-bottom: 0.15rem; }
 .result-meta .res-details { font-family: var(--font-mono); font-size: 0.65rem; color: var(--ink-3); }

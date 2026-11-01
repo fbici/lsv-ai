@@ -356,8 +356,8 @@ check('à propos : e-mail personnel affiché', /salaousouleyman@gmail\.com/.test
 check('à propos : lien vers la page contact', /href="\.\.\/contact\/"/.test(about));
 check('à propos : footer moderne (site-footer + 4 colonnes)',
     /class="site-footer"/.test(about) && /sf-grid/.test(about));
-check('à propos : 1 seul logo ../lsv.jpg (contrainte SEO)',
-    (about.match(/src="\.\.\/lsv\.jpg"/g) || []).length === 1, (about.match(/src="\.\.\/lsv\.jpg"/g) || []).length);
+check('à propos : 1 seul logo ../logo-lsv.png (contrainte SEO)',
+    (about.match(/src="\.\.\/logo-lsv\.png"/g) || []).length === 1, (about.match(/src="\.\.\/logo-lsv\.png"/g) || []).length);
 
 const idx = readFileSync(join(PROJECT, 'index.html'), 'utf8');
 check('accueil : footer professionnel (footer.w-foot + grille)',

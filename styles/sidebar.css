@@ -33,20 +33,16 @@
     padding: 0.5rem 0.3rem 0.9rem;
 }
 
+/* Logo néon 3D officiel (logo-lsv.png) : badge circulaire posé sur un
+   fond sombre — les coins transparents du PNG se fondent dedans. */
 .sidebar-logo {
     width: 40px; height: 40px;
     border-radius: var(--radius);
-    background: linear-gradient(135deg, var(--accent), var(--blue));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #ffffff;
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 0.95rem;
+    background: #0d1220;
+    display: block;
+    object-fit: cover;
     flex-shrink: 0;
     box-shadow: var(--shadow);
-    letter-spacing: -0.03em;
     transition: all 0.25s ease;
 }
 

@@ -137,7 +137,7 @@ function S_ProjectModel_addTextTrack(project) {
         !/sk-[A-Za-z0-9]{10,}|service_role/i.test(src + allJs));
     check('aucun appel réseau dans le bootstrap', !/fetch\(|XMLHttpRequest/.test(allJs));
     check('page en noindex', /noindex, nofollow/.test(src));
-    check('favicon pointe vers le logo officiel', /href="\.\.\/lsv\.jpg"/.test(src));
+    check('favicon pointe vers le nouveau logo néon (favicon.png)', /href="\.\.\/favicon\.png"/.test(src));
     check('thème appliqué avant le premier rendu',
         src.indexOf("lsv4_theme") < src.indexOf('<body'));
 

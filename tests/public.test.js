@@ -740,7 +740,7 @@ async function load(html, url) {
     check('SEO : titre + description + canonical sur la page', /<title>[^<]*Salaou Souleyman/.test(aboutSrc) && /meta name="description"/.test(aboutSrc) && /canonical" href="https:\/\/fbici\.github\.io\/lsv-ai\/a-propos\/"/.test(aboutSrc));
     check('SEO : JSON-LD Person + Organization', /"@type": "Person"/.test(aboutSrc) && /"@type": "Organization"/.test(aboutSrc) && /"founder"/.test(aboutSrc));
     check('emplacement prévu pour le site officiel', /SITE_OFFICIEL/.test(aboutSrc) && /lestudioviral\.com/.test(aboutSrc));
-    check('logo officiel affiché (header uniquement) sur la page', (aboutSrc.match(/src="\.\.\/lsv\.jpg"/g) || []).length === 1, (aboutSrc.match(/src="\.\.\/lsv\.jpg"/g) || []).length);
+    check('logo officiel affiché (header uniquement) sur la page', (aboutSrc.match(/src="\.\.\/logo-lsv\.png"/g) || []).length === 1, (aboutSrc.match(/src="\.\.\/logo-lsv\.png"/g) || []).length);
     check('deux boutiques prévues (LeStudioViral + Académie)', /SHOP_1_URL/.test(aboutSrc) && /SHOP_2_URL/.test(aboutSrc) && /Boutique LeStudioViral/.test(aboutSrc) && /Académie Digital/.test(aboutSrc));
     check('produits digitaux mentionnés (IA, TikTok, trading, ebooks)', /IA/i.test(aboutSrc) && /TikTok/.test(aboutSrc) && /trading/i.test(aboutSrc) && /ebooks/i.test(aboutSrc));
     check('aucun secret dans la page à propos', !/sk-[A-Za-z0-9]{10,}|service_role|password\s*[:=]/.test(aboutSrc));
@@ -759,7 +759,7 @@ async function load(html, url) {
     check('SEO à propos : og:image + robots', /og:image/.test(aboutSrc) && /name="robots" content="index, follow/.test(aboutSrc));
 
     console.log('\n=== 10. PAGE D\'ACCUEIL & BOUTIQUES ===');
-    check('logo officiel sur l accueil', !!doc.getElementById('welcome-logo') && doc.getElementById('welcome-logo').getAttribute('src') === './lsv.jpg');
+    check('logo officiel sur l accueil', !!doc.getElementById('welcome-logo') && doc.getElementById('welcome-logo').getAttribute('src') === './logo-lsv.png');
     check('bouton Commencer présent', !!doc.getElementById('welcome-continue'));
     check('second bouton Commencer (bas de page)', !!doc.getElementById('welcome-continue-2'));
     check('lien connexion pour comptes existants', !!doc.getElementById('welcome-login'));
@@ -1379,6 +1379,76 @@ async function load(html, url) {
         /\.lib-item\s*\{[^}]*break-inside:\s*avoid/.test(viewsCss14));
     check('aucune erreur console (bibliothèque, format réel)',
         lib14c.errors.length === 0, lib14c.errors.join('|'));
+
+    console.log('\n=== 14quater. LOGO NÉON OFFICIEL PARTOUT + VIDÉOS DANS LEUR RATIO ===');
+    /* Le nouveau logo (« Logo néon 3D LSV.ai », déposé à la racine et
+       décliné en logo-lsv.png 512², favicon.png 64², apple-touch-icon.png
+       180²) remplace l'ancien lsv.jpg sur TOUT le site : favicon,
+       apple-touch, og:image, twitter:image, JSON-LD, logo d'accueil,
+       barre latérale, marques de pied de page. Les cartes de résultats
+       vidéo n'ont plus de cadre 9/16 imposé : le ratio réel arrive en
+       inline (génération ou restauration). (v3.17.8) */
+    const lq14 = await load(prepare());
+    const wq14 = lq14.dom.window;
+    const dq14 = wq14.document;
+    const pngMagic14 = f => {
+        const p = path.join(PROJECT, f);
+        if (!fs.existsSync(p)) return false;
+        const b = fs.readFileSync(p);
+        return b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47;
+    };
+    check('logo-lsv.png existe et est un PNG valide', pngMagic14('logo-lsv.png'));
+    check('favicon.png existe et est un PNG valide', pngMagic14('favicon.png'));
+    check('apple-touch-icon.png existe et est un PNG valide', pngMagic14('apple-touch-icon.png'));
+    check('accueil : aucune référence à l\'ancien lsv.jpg', source.indexOf('lsv.jpg') === -1,
+        source.indexOf('lsv.jpg'));
+    ['admin/index.html', 'studio/index.html', 'a-propos/index.html', 'contact/index.html'].forEach(rel => {
+        const txt = fs.readFileSync(path.join(PROJECT, rel), 'utf8');
+        check(rel + ' : aucune référence à l\'ancien lsv.jpg', txt.indexOf('lsv.jpg') === -1,
+            txt.indexOf('lsv.jpg'));
+    });
+    check('favicon de l\'accueil = nouveau logo en PNG',
+        /<link rel="icon" type="image\/png" href="\.\/favicon\.png">/.test(source));
+    check('partage social : og:image + twitter:image = logo-lsv.png',
+        /og:image" content="https:\/\/fbici\.github\.io\/lsv-ai\/logo-lsv\.png"/.test(source) &&
+        /twitter:image" content="https:\/\/fbici\.github\.io\/lsv-ai\/logo-lsv\.png"/.test(source));
+    check('JSON-LD du site = logo-lsv.png', /"url": "https:\/\/fbici\.github\.io\/lsv-ai\/logo-lsv\.png"/.test(source));
+    const sideLogo14 = dq14.querySelector('.sidebar-logo');
+    check('barre latérale : le logo est l\'image néon (pas du texte)',
+        !!sideLogo14 && sideLogo14.tagName === 'IMG' && sideLogo14.getAttribute('src') === './logo-lsv.png',
+        sideLogo14 && sideLogo14.tagName + ' ' + sideLogo14.getAttribute('src'));
+    check('logo d\'accueil = logo néon dans la fenêtre de test',
+        !!dq14.getElementById('welcome-logo') &&
+        dq14.getElementById('welcome-logo').getAttribute('src') === './logo-lsv.png');
+
+    /* Résultats vidéo : le cadre 9/16 imposé a disparu du CSS. */
+    const studioCss14 = fs.readFileSync(path.join(PROJECT, 'styles/studio.css'), 'utf8');
+    check('résultats : plus de cadre 9/16 imposé aux vidéos',
+        !/\.result-media video\s*\{[^}]*aspect-ratio/.test(studioCss14));
+
+    /* Carte vidéo créée en direct : le ratio de la génération est posé
+       en inline sur la boîte média. */
+    wq14.eval('UIState.videoRatio = "16:9"');
+    const liveCard14 = wq14.eval('UI.createVideoCard(["https://cdn.test/nv.mp4"]).outerHTML');
+    check('carte vidéo en direct : ratio 16:9 en inline',
+        liveCard14.indexOf('result-media" style="aspect-ratio:16 / 9"') !== -1,
+        liveCard14.slice(0, 180));
+    wq14.eval('UIState.videoRatio = "9:16"');
+
+    /* Restauration : ratio stocké sur l'asset, sinon format naturel.
+       AssetService.unshift : le dernier ajout est le premier rendu. */
+    wq14.eval('AssetService.add({type:"video", url:"https://cdn.test/paysage.mp4", name:"Vidéo 16:9", metadata:{size:"1080P", ratio:"16:9", duration:5}});' +
+        'AssetService.add({type:"video", url:"https://cdn.test/brut.mp4", name:"Vidéo sans ratio"});' +
+        'restoreResultsFromLibrary()');
+    const vCards14 = Array.prototype.slice.call(dq14.querySelectorAll('#video-results-grid .result-media'));
+    check('restauration : les 2 vidéos rendues', vCards14.length === 2, vCards14.length);
+    check('restauration : sans ratio, aucun cadre imposé (format naturel)',
+        !vCards14[0].getAttribute('style'), vCards14[0].outerHTML.slice(0, 140));
+    check('restauration : ratio stocké posé en inline (16:9)',
+        (vCards14[1].getAttribute('style') || '').replace(/\s/g, '') === 'aspect-ratio:16/9',
+        vCards14[1].getAttribute('style'));
+    check('aucune erreur console (logo + résultats vidéo)',
+        lq14.errors.length === 0, lq14.errors.join('|'));
 
     console.log('\n=== 15. MODÈLE DE CHAT : STANDARD UNIQUE ===');
     /* Le sélecteur de modèle a été RETIRÉ côté client (v3.17.5) : une option

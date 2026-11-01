@@ -694,9 +694,9 @@ async function login(dom, email, password) {
     console.log('\n=== K2. FAVICON + MODE SOMBRE ===');
     const adminHtmlOnly = fs.readFileSync(path.join(PROJECT, 'admin/index.html'), 'utf8');
     const adminCssOnly = fs.readFileSync(path.join(PROJECT, 'admin/admin.css'), 'utf8');
-    check('favicon présent dans le back-office', /<link rel="icon"[^>]*lsv\.jpg/.test(adminHtmlOnly));
-    check('apple-touch-icon présent', /<link rel="apple-touch-icon"[^>]*lsv\.jpg/.test(adminHtmlOnly));
-    check('favicon relatif au dossier parent (../lsv.jpg)', /href="\.\.\/lsv\.jpg"/.test(adminHtmlOnly));
+    check('favicon présent dans le back-office', /<link rel="icon"[^>]*favicon\.png/.test(adminHtmlOnly));
+    check('apple-touch-icon présent', /<link rel="apple-touch-icon"[^>]*apple-touch-icon\.png/.test(adminHtmlOnly));
+    check('favicon relatif au dossier parent (../favicon.png)', /href="\.\.\/favicon\.png"/.test(adminHtmlOnly));
     check('thème appliqué avant le premier rendu (script inline en <head>)',
         /<script>[\s\S]*localStorage\.getItem\('lsv_admin_theme'\)[\s\S]*<\/script>/.test(adminHtmlOnly.split('</head>')[0]),
         adminHtmlOnly.split('</head>')[0].slice(-160));

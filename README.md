@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.17.7
+# LSV.ai — Studio Viral v3.17.8
 
 Application créative web : **Images · Vidéos · Chat IA · Scénarios IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -130,7 +130,9 @@ lsv-ai/
 ├── contact/                  # Page Contact de la marque (URL propre : /contact/)
 │   └── index.html            #   Formulaire → canal « site », footer 4 colonnes
 ├── assets/showcase/          # 1.jpg…6.jpg + V1.mp4 + V2.mp4 (créations réelles) + replis SVG
-├── lsv.jpg                   # Logo officiel de la marque
+├── logo-lsv.png              # Logo néon 3D officiel (512×512, fond transparent)
+├── favicon.png               # Favicon (64×64) — onglet du navigateur
+├── apple-touch-icon.png      # Icône iOS (180×180)
 ├── robots.txt               # SEO : robots autorisés, /admin/ interdit, sitemap
 ├── sitemap.xml              # SEO : plan du site (studio + à propos)
 │
@@ -175,7 +177,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1, §2.30 = v3.17.2, §2.31 = v3.17.3, §2.32 = v3.17.4, §2.33 = v3.17.5, §2.34 = v3.17.6, §2.35 = v3.17.7.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1, §2.30 = v3.17.2, §2.31 = v3.17.3, §2.32 = v3.17.4, §2.33 = v3.17.5, §2.34 = v3.17.6, §2.35 = v3.17.7, §2.36 = v3.17.8.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -313,7 +315,7 @@ le back-office affiche « Compte non autorisé » et le tableau de bord reste vi
 
 | Ajout | Détail |
 |---|---|
-| **Page d'accueil** | premier écran à l'ouverture de l'app (première visite), inspiré des grandes plateformes : barre de marque, héros avec logo officiel `lsv.jpg`, titre géant, double CTA (Commencer / J'ai déjà un compte) |
+| **Page d'accueil** | premier écran à l'ouverture de l'app (première visite), inspiré des grandes plateformes : barre de marque, héros avec logo officiel `logo-lsv.png`, titre géant, double CTA (Commencer / J'ai déjà un compte) |
 | **Galerie « Créé avec LSV.ai »** | 1 **vidéo** en grand (V1) + 6 images + 2ᵉ vidéo (V2) en bas de page — visuels réels `assets/showcase/1.jpg`…`6.jpg`, `V1.mp4`, `V2.mp4`, SVG de repli inclus |
 | **Sections complètes** | fonctionnalités (6 cartes), « Comment ça marche » (3 étapes), bandeau de stats, **boutiques**, CTA final, pied de marque |
 | **Première visite → compte** | « Commencer » sans compte ouvre l'inscription ; le dashboard de création n'apparaît qu'une fois le compte créé (drapeau `localStorage.lsv4_welcome`) |
@@ -324,7 +326,7 @@ le back-office affiche « Compte non autorisé » et le tableau de bord reste vi
 | **URL propres** | plus aucun lien interne vers `index.html` : accueil `…/lsv-ai/`, à propos `…/a-propos/`, back-office `…/admin/` |
 | **Page À propos épurée** | seul le logo du header reste visible ; logos héros/avatar supprimés |
 | **SEO renforcé** | `og:image` + `twitter:image` (carte large) sur les 2 pages, `robots` (index/follow, large images), `apple-touch-icon`, `preload` du logo, JSON-LD enrichi (`SoftwareApplication` + logo de l'Organization), `llms.txt` (index IA), `sitemap.xml` daté (`lastmod`), images avec `alt`, `loading="lazy"`, `width`/`height` (anti-CLS) |
-| **Onglets du navigateur** | titres de pages explicites + favicon `lsv.jpg` |
+| **Onglets du navigateur** | titres de pages explicites + favicon `favicon.png` |
 | **Texte sous les formulaires retiré** | la mention « Les mots de passe sont vérifiés… » sous la page de connexion a été supprimée |
 | **Erreurs d'inscription plus claires** | échec d'envoi de la confirmation ou limite d'inscription : messages **génériques** pour l'utilisateur (« réessaie dans quelques instants ») — aucun détail de configuration n'est jamais affiché |
 
@@ -2133,6 +2135,49 @@ entières entre colonnes, aperçu/actions/badge conservés) ·
 
 ---
 
+### 2.36 Logo néon officiel partout + vidéos de résultats dans leur ratio - v3.17.8
+
+**Constat (retour utilisateur)** : le nouveau logo « Logo néon 3D
+LSV.ai » devait devenir LE logo de LSV.ai sur tout le site, favicon
+compris ; et les cartes de résultats vidéo étaient encore recadrées
+dans un cadre unique 9/16 (`object-fit: cover`) — le même défaut que
+celui corrigé pour la bibliothèque en v3.17.7.
+
+**Ce qui change** :
+
+- **Logo** : `Logo néon 3D LSV.ai.png` (1254², 2,3 Mo) est déposé à la
+  racine sous le nom web **`logo-lsv.png`** (redimensionné 512×512,
+  fond transparent), décliné en **`favicon.png`** (64×64, 13 Ko) et
+  **`apple-touch-icon.png`** (180×180). L'ancien `lsv.jpg` (276 Ko) est
+  retiré du dépôt : plus aucune page ne le référence.
+- **Remplacements partout** : favicon + apple-touch des 5 pages
+  (accueil, à propos, contact, studio, back-office), `og:image` /
+  `twitter:image` / JSON-LD de l'accueil, `preload`, logo de la page
+  d'accueil (`#welcome-logo`), marques de pied de page (à propos,
+  contact) et **logo de la barre latérale** — le `div` « LSV » devient
+  `<img class="sidebar-logo" src="./logo-lsv.png" alt="LSV.ai">` sur
+  fond sombre `#0d1220` (les coins transparents du PNG s'y fondent).
+- **Résultats vidéo** : `.result-media video { aspect-ratio: 9/16 }`
+  disparaît de `styles/studio.css` ; `UI.createVideoCard` pose le ratio
+  de la génération (`UIState.videoRatio`) en inline et
+  `restoreResultsFromLibrary` celui de l'asset (`metadata.ratio`) — sans
+  ratio valide, la carte épouse le fichier (format réel, aucun
+  recadrage).
+
+**Déploiement** : fronts uniquement — rafraîchir GitHub Pages **et**
+Cloudflare Workers ; aucune redéploiement de Gateway (aucun fichier
+serveur modifié).
+
+**Vérifié par** `tests/public.test.js` §14quater (19 : signatures PNG
+des 3 actifs, zéro référence à `lsv.jpg` sur les 5 pages, favicon,
+`og:image`/`twitter:image`/JSON-LD au nouveau nom, barre latérale en
+image, cadre 9/16 disparu du CSS, ratio en direct et à la restauration,
+format naturel sans métadonnée) + §10 et SEO réalignés,
+`tests/admin.test.js` K2, `tests/studio.test.js`,
+`tests/contact.test.mjs` · **totaux : interface 467 · suite 1400.**
+
+---
+
 ## 3. Installation locale
 
 ```bash
@@ -2393,7 +2438,7 @@ Comportements attendus :
   `<head>`, aucun clignotement blanc) et, à la première visite, on suit la
   préférence du système (`prefers-color-scheme`). Palette alignée sur celle de
   l'application principale (`styles/base.css`).
-- **Favicon** — le logo `lsv.jpg` est désormais affiché aussi dans l'onglet du
+- **Favicon** — le logo `logo-lsv.png` est désormais affiché aussi dans l'onglet du
   back-office (il manquait le `<link rel="icon">`).
 - **Vue d'ensemble** — visiteurs, sessions, images, vidéos, chat, erreurs ;
   graphique d'activité quotidienne ; utilisation par fonctionnalité ;
@@ -2510,7 +2555,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 1381 assertions, 6 suites
+npm test                      # 1400 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -2586,7 +2631,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 1381 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 1400 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (78 assertions, **90 avec `ORIG`**) — non-régression
@@ -2602,7 +2647,7 @@ npm test        # 1381 assertions (6 suites, hors ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (448 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (467 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -2669,6 +2714,13 @@ npm test        # 1381 assertions (6 suites, hors ORIG=… voir plus bas)
   aucun recadrage), mosaïque en colonnes (`columns: 190px`,
   `break-inside: avoid`), **plus de cadre 9/16 unique**, aperçu /
   actions / badge intacts.
+- **logo néon officiel + vidéos de résultats** (§14quater, v3.17.8) :
+  signatures PNG de `logo-lsv.png` / `favicon.png` /
+  `apple-touch-icon.png`, **zéro référence à l'ancien `lsv.jpg`** sur
+  les 5 pages, favicon/`og:image`/`twitter:image`/JSON-LD au nouveau
+  nom, barre latérale en `<img>` du logo — et cartes de résultats vidéo
+  **sans cadre 9/16 imposé** (ratio de la génération en direct, ratio
+  stocké à la restauration, format naturel sans métadonnée).
 - **architecture modulaire** : `index.html` réduit à un squelette HTML
   (~1 470 lignes au lieu de ~7 000) ; CSS en 6 fichiers `styles/`, JS en 8
   modules `scripts/` chargés dans un ordre fixe ; `window.LSV` et toute l'API

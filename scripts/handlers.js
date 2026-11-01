@@ -453,8 +453,13 @@ function restoreResultsFromLibrary() {
             card.className = 'result-card';
             const style = Utils.getStyleById(asset.metadata.style) || { name: 'Vidéo' };
             const safe = Utils.escapeHtml(asset.url);
+            /* Format réel : ratio de la vidéo restaurée posé en inline ;
+               sans ratio valide, la carte épouse le fichier. (v3.17.8) */
+            const vr = asset.metadata && asset.metadata.ratio;
+            const rs = (typeof vr === 'string' && /^\d{1,3}:\d{1,3}$/.test(vr))
+                ? ' style="aspect-ratio:' + vr.replace(':', ' / ') + '"' : '';
             card.innerHTML =
-                '<div class="result-media"><video src="' + safe + '" controls playsinline preload="metadata"></video></div>' +
+                '<div class="result-media"' + rs + '><video src="' + safe + '" controls playsinline preload="metadata"></video></div>' +
                 '<div class="result-meta">' +
                     '<div class="res-name">' + Utils.escapeHtml(style.name) + '</div>' +
                     '<div class="res-details">' + Utils.escapeHtml((asset.metadata.duration || '') + 's') + '</div>' +

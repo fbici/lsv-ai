@@ -249,9 +249,15 @@ const UI = {
         card.className = 'result-card';
         const style = Utils.getStyleById(UIState.videoStyle);
         const safe0 = Utils.escapeHtml(videoUrls[0]);
+        /* Format réel : le ratio choisi pour la génération est posé en
+           inline sur la boîte média ; sans ratio valide, la carte épouse
+           le fichier (aucun recadrage 9/16 imposé). (v3.17.8) */
+        const vr = UIState.videoRatio;
+        const rs = (typeof vr === 'string' && /^\d{1,3}:\d{1,3}$/.test(vr))
+            ? ' style="aspect-ratio:' + vr.replace(':', ' / ') + '"' : '';
         if (videoUrls.length === 1) {
             card.innerHTML =
-                '<div class="result-media"><video src="' + safe0 + '" controls playsinline preload="metadata"></video></div>' +
+                '<div class="result-media"' + rs + '><video src="' + safe0 + '" controls playsinline preload="metadata"></video></div>' +
                 '<div class="result-meta"><div class="res-name">' + Utils.escapeHtml(style.name) + '</div><div class="res-details">' + UIState.videoDuration + 's</div></div>' +
                 '<div class="result-actions">' +
                     '<button type="button" class="res-action" data-preview="' + safe0 + '" data-preview-type="video"><span class="ms">zoom_in</span> Ouvrir</button>' +
@@ -260,7 +266,7 @@ const UI = {
         } else {
             const pid = 'playlist-' + Date.now();
             card.innerHTML =
-                '<div class="result-media"><video id="' + pid + '" controls playsinline preload="metadata" src="' + safe0 + '"></video></div>' +
+                '<div class="result-media"' + rs + '><video id="' + pid + '" controls playsinline preload="metadata" src="' + safe0 + '"></video></div>' +
                 '<div class="result-meta"><div class="res-name">' + Utils.escapeHtml(style.name) + '</div><div class="res-details">' + videoUrls.length + ' segments</div></div>' +
                 '<div class="result-actions">' +
                     '<button type="button" class="res-action" data-preview="' + safe0 + '" data-preview-type="video"><span class="ms">zoom_in</span> Segment 1</button>' +
