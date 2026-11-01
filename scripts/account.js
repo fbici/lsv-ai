@@ -752,6 +752,7 @@ const WelcomeView = {
             const b = this.$(id);
             if (b) b.addEventListener('click', () => this.continue());
         });
+        this.initVideoCarousels();
         const login = this.$('welcome-login');
         if (login) login.addEventListener('click', () => {
             AccountView.setMode('login');
@@ -775,6 +776,24 @@ const WelcomeView = {
                 }
             });
             img.src = img.dataset.src;
+        });
+    },
+    /* Carrousels vidéo de l'accueil : chaque emplacement garde UN seul
+       <video> et enchaîne sa playlist `data-carousel` (« a|b ») — à la
+       fin de chaque vidéo, la suivante prend le relais, en boucle
+       infinie. La première de la liste est celle montrée d'abord :
+       v3 → V1 en haut, v4 → V2 en bas. (v3.17.9) */
+    initVideoCarousels() {
+        document.querySelectorAll('video[data-carousel]').forEach(video => {
+            const list = (video.getAttribute('data-carousel') || '').split('|').filter(Boolean);
+            if (list.length < 2) return;
+            let index = 0;
+            video.addEventListener('ended', () => {
+                index = (index + 1) % list.length;
+                video.src = list[index];
+                const p = video.play();
+                if (p && p.catch) p.catch(() => {});
+            });
         });
     },
     async continue() {

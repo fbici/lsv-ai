@@ -1,4 +1,4 @@
-# LSV.ai — Studio Viral v3.17.8
+# LSV.ai — Studio Viral v3.17.9
 
 Application créative web : **Images · Vidéos · Chat IA · Scénarios IA · Motion · Projects · Library · LSV Studio (montage vidéo)**.
 
@@ -129,7 +129,7 @@ lsv-ai/
 │                             #   créateur · formulaire personnel · boutiques
 ├── contact/                  # Page Contact de la marque (URL propre : /contact/)
 │   └── index.html            #   Formulaire → canal « site », footer 4 colonnes
-├── assets/showcase/          # 1.jpg…6.jpg + V1.mp4 + V2.mp4 (créations réelles) + replis SVG
+├── assets/showcase/          # 1.jpg…6.jpg + v3.mp4, V1.mp4, v4.mp4, V2.mp4 (carrousels) + replis SVG
 ├── logo-lsv.png              # Logo néon 3D officiel (512×512, fond transparent)
 ├── favicon.png               # Favicon (64×64) — onglet du navigateur
 ├── apple-touch-icon.png      # Icône iOS (180×180)
@@ -177,7 +177,7 @@ lsv-ai/
 ## 2. Changements de version
 
 Chaque §x.y documente une vague de travail. §2.13 = v3.13.0, §2.14 = v3.14.0,
-§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1, §2.30 = v3.17.2, §2.31 = v3.17.3, §2.32 = v3.17.4, §2.33 = v3.17.5, §2.34 = v3.17.6, §2.35 = v3.17.7, §2.36 = v3.17.8.
+§2.15 = v3.15.0, §2.16 = v3.16.0 à v3.16.5, §2.17 = v3.16.6, §2.18 = v3.16.7, §2.19 = v3.16.8, §2.20 = v3.16.9, §2.21 = v3.16.10, §2.22 = v3.16.11, §2.23 = v3.16.12, §2.24 = v3.16.13, §2.25 = v3.16.14, §2.26 = v3.16.15, §2.27 = v3.16.16, §2.28 = v3.17.0, §2.29 = v3.17.1, §2.30 = v3.17.2, §2.31 = v3.17.3, §2.32 = v3.17.4, §2.33 = v3.17.5, §2.34 = v3.17.6, §2.35 = v3.17.7, §2.36 = v3.17.8, §2.37 = v3.17.9.
 
 ### 2.1 Supprimé de l'interface publique
 
@@ -316,7 +316,7 @@ le back-office affiche « Compte non autorisé » et le tableau de bord reste vi
 | Ajout | Détail |
 |---|---|
 | **Page d'accueil** | premier écran à l'ouverture de l'app (première visite), inspiré des grandes plateformes : barre de marque, héros avec logo officiel `logo-lsv.png`, titre géant, double CTA (Commencer / J'ai déjà un compte) |
-| **Galerie « Créé avec LSV.ai »** | 1 **vidéo** en grand (V1) + 6 images + 2ᵉ vidéo (V2) en bas de page — visuels réels `assets/showcase/1.jpg`…`6.jpg`, `V1.mp4`, `V2.mp4`, SVG de repli inclus |
+| **Galerie « Créé avec LSV.ai »** | 2 **carrousels vidéo** en grand (v3 → V1 en haut, v4 → V2 en bas, rotation automatique à la fin de chaque vidéo) + 6 images — visuels réels `assets/showcase/1.jpg`…`6.jpg`, `v3.mp4`, `V1.mp4`, `v4.mp4`, `V2.mp4`, SVG de repli inclus |
 | **Sections complètes** | fonctionnalités (6 cartes), « Comment ça marche » (3 étapes), bandeau de stats, **boutiques**, CTA final, pied de marque |
 | **Première visite → compte** | « Commencer » sans compte ouvre l'inscription ; le dashboard de création n'apparaît qu'une fois le compte créé (drapeau `localStorage.lsv4_welcome`) |
 | **Déconnexion → accueil** | à la déconnexion, renvoi automatique vers la page d'accueil |
@@ -2178,6 +2178,38 @@ format naturel sans métadonnée) + §10 et SEO réalignés,
 
 ---
 
+### 2.37 Carrousels vidéo de l'accueil (v3 → V1 en haut, v4 → V2 en bas) - v3.17.9
+
+**Constat (retour utilisateur)** : deux nouvelles vidéos (`v3.mp4`,
+`v4.mp4`) devaient rejoindre l'accueil **sans créer d'emplacement
+supplémentaire** — chacune des deux places vidéo existantes devient un
+carrousel : en haut, la nouvelle v3 est montrée **d'abord**, puis
+l'ancienne V1 ; en bas, v4 d'abord, puis V2.
+
+**Ce qui change** :
+
+- Les deux emplacements gardent **un seul `<video>`** (mêmes cadres,
+  mêmes posters `4.jpg` / `5.jpg`) avec une playlist dans
+  `data-carousel` (`v3.mp4|V1.mp4` en haut, `v4.mp4|V2.mp4` en bas) —
+  le premier fichier de la liste est celui affiché en premier.
+- L'attribut `loop` disparaît : `WelcomeView.initVideoCarousels()`
+  (appelé à l'init de l'accueil) écoute `ended` et bascule sur la
+  vidéo suivante, en boucle infinie, avec `play()` protégé (autoplay
+  refusé = poster inchangé, jamais d'erreur).
+- `assets/showcase/v3.mp4` (3,6 Mo) et `assets/showcase/v4.mp4`
+  (8,9 Mo) ajoutés au dépôt ; `sitemap.xml` : `lastmod` des 3 URL
+  porté au 2026-11-01.
+
+**Déploiement** : fronts uniquement — rafraîchir GitHub Pages **et**
+Cloudflare Workers ; aucune redéploiement de Gateway.
+
+**Vérifié par** `tests/public.test.js` §10 (4 nouvelles assertions :
+têtes de playlist v3/v4, playlist `data-carousel` + gestionnaire
+`ended` sans `loop`, présence des fichiers) ·
+**totaux : interface 469 · suite 1402.**
+
+---
+
 ## 3. Installation locale
 
 ```bash
@@ -2555,7 +2587,7 @@ Vérifier avant commit :
 
 ```bash
 git status                    # aucun .env, aucun node_modules
-npm test                      # 1400 assertions, 6 suites
+npm test                      # 1402 assertions, 6 suites
 git grep -n "service_role" -- scripts shared analytics admin studio *.html
                               # ne doit rien trouver : `service_role` n'existe
                               # que dans supabase/ et tests/ (SQL + Edge Functions)
@@ -2631,7 +2663,7 @@ back-office elles n'apparaissent masquées que sous forme `••••1234`.
 ## 9. Tests
 
 ```bash
-npm test        # 1400 assertions (6 suites, hors ORIG=… voir plus bas)
+npm test        # 1402 assertions (6 suites, hors ORIG=… voir plus bas)
 ```
 
 **`tests/nonreg.test.js`** (78 assertions, **90 avec `ORIG`**) — non-régression
@@ -2647,7 +2679,7 @@ npm test        # 1400 assertions (6 suites, hors ORIG=… voir plus bas)
 - Chat IA simulé (repli JSON) : conversation, réponse rendue ;
 - sanitisation Analytics, config absente, panne réseau, module absent.
 
-**`tests/public.test.js`** (467 assertions) — interface publique + sécurité
+**`tests/public.test.js`** (469 assertions) — interface publique + sécurité
 
 - éléments techniques absents (champ/statut/bouton de clé, console LSV) ;
 - scan du contenu public contre `Agnes`, `agnes-*`, `apihub`, `Bearer`, `sk-`,
@@ -2684,7 +2716,8 @@ npm test        # 1400 assertions (6 suites, hors ORIG=… voir plus bas)
   Salaou Souleyman, métiers, boutiques, JSON-LD Person/Organization), meta/canonical/OG de
   l'app, `robots.txt` (admin interdit) et `sitemap.xml` ;
 - **page d'accueil & boutiques** : accueil de première visite (héros, galerie
-  V1 + 6 images + V2 en bas de page, fonctionnalités, étapes, stats, boutiques,
+  carrousel v3 → V1 + 6 images + carrousel v4 → V2 en bas de page,
+  fonctionnalités, étapes, stats, boutiques,
   CTA), visiteur toujours renvoyé à l'accueil, déconnexion renvoyant à
   l'accueil, galerie sans badges ni légendes, liens réels des boutiques
   (`rxorzera` / `blgbiwds`), aucun lien interne `index.html`, page À propos

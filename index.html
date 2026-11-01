@@ -126,8 +126,13 @@
             <p class="w-section-sub">Des images et des vidéos générées en quelques secondes à partir d'un simple texte.</p>
             <div class="w-showcase" id="welcome-gallery">
                 <figure class="w-shot w-shot-video">
-                    <video autoplay muted loop playsinline preload="metadata" poster="./assets/showcase/4.jpg" aria-label="Exemple de vidéo générée par LSV.ai">
-                        <source src="./assets/showcase/V1.mp4" type="video/mp4">
+                    <!-- Carrousel : v3.mp4 d'abord, puis l'ancienne V1.mp4 —
+                         la rotation est pilotée par WelcomeView.initVideoCarousels()
+                         (bascule à la fin de chaque vidéo, en boucle). -->
+                    <video autoplay muted playsinline preload="metadata" poster="./assets/showcase/4.jpg"
+                           data-carousel="./assets/showcase/v3.mp4|./assets/showcase/V1.mp4"
+                           aria-label="Exemples de vidéos générées par LSV.ai">
+                        <source src="./assets/showcase/v3.mp4" type="video/mp4">
                     </video>
                 </figure>
                 <figure class="w-shot">
@@ -235,9 +240,11 @@
             </div>
         </section>
 
-        <section class="w-videoband" aria-label="Vidéo générée par LSV.ai">
-            <video autoplay muted loop playsinline preload="none" poster="./assets/showcase/5.jpg">
-                <source src="./assets/showcase/V2.mp4" type="video/mp4">
+        <section class="w-videoband" aria-label="Vidéos générées par LSV.ai">
+            <!-- Carrousel du bas : v4.mp4 d'abord, puis l'ancienne V2.mp4. -->
+            <video autoplay muted playsinline preload="none" poster="./assets/showcase/5.jpg"
+                   data-carousel="./assets/showcase/v4.mp4|./assets/showcase/V2.mp4">
+                <source src="./assets/showcase/v4.mp4" type="video/mp4">
             </video>
         </section>
 

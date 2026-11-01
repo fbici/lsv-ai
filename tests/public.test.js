@@ -765,8 +765,24 @@ async function load(html, url) {
     check('lien connexion pour comptes existants', !!doc.getElementById('welcome-login'));
     check('gallerie d exemples (6 images + 1 vidéo)', doc.querySelectorAll('#welcome-gallery .w-shot').length === 7 && doc.querySelectorAll('#welcome-gallery img[data-src^="./assets/showcase/"]').length === 6, doc.querySelectorAll('#welcome-gallery .w-shot').length);
     check('vignettes jpg + repli svg', doc.querySelectorAll('#welcome-gallery img[data-src^="./assets/showcase/"]').length === 6 && doc.querySelectorAll('#welcome-gallery img[data-fallback$=".svg"]').length === 6);
-    check('vidéo générée (V1) en tête de gallerie', !!doc.querySelector('#welcome-gallery video source[src="./assets/showcase/V1.mp4"]'));
-    check('seconde vidéo (V2) en bas de page', !!doc.querySelector('.w-videoband video source[src="./assets/showcase/V2.mp4"]'));
+    const topVid149 = doc.querySelector('#welcome-gallery video');
+    check('carrousel du haut : v3.mp4 montrée d\'abord, V1.mp4 en second',
+        !!topVid149 && topVid149.querySelector('source').getAttribute('src') === './assets/showcase/v3.mp4' &&
+        (topVid149.getAttribute('data-carousel') || '').indexOf('./assets/showcase/V1.mp4') !== -1,
+        topVid149 && topVid149.outerHTML.slice(0, 200));
+    const bandVid149 = doc.querySelector('.w-videoband video');
+    check('carrousel du bas : v4.mp4 montrée d\'abord, V2.mp4 en second',
+        !!bandVid149 && bandVid149.querySelector('source').getAttribute('src') === './assets/showcase/v4.mp4' &&
+        (bandVid149.getAttribute('data-carousel') || '').indexOf('./assets/showcase/V2.mp4') !== -1,
+        bandVid149 && bandVid149.outerHTML.slice(0, 200));
+    const accountJs149 = fs.readFileSync(path.join(PROJECT, 'scripts/account.js'), 'utf8');
+    check('rotation : playlist en data-carousel, gestionnaire ended, sans loop',
+        !!topVid149 && topVid149.hasAttribute('data-carousel') && !topVid149.hasAttribute('loop') &&
+        !bandVid149.hasAttribute('loop') && /initVideoCarousels/.test(accountJs149) &&
+        /addEventListener\('ended'/.test(accountJs149));
+    check('fichiers v3.mp4 + v4.mp4 présents dans le dépôt',
+        fs.existsSync(path.join(PROJECT, 'assets/showcase/v3.mp4')) &&
+        fs.existsSync(path.join(PROJECT, 'assets/showcase/v4.mp4')));
     check('gallerie sans badges ni légendes', doc.querySelectorAll('#welcome-gallery .w-badge, #welcome-gallery figcaption, #welcome-gallery .w-prompt, #welcome-gallery .w-tag').length === 0);
     check('aucune phrase technique de dépôt sur l accueil', !/dépose|assets\/showcase|repli|SVG/i.test(doc.getElementById('welcome-gallery').textContent));
     check('sections accueil (créations, fonctions, boutiques, final)', !!doc.getElementById('w-showcase') && !!doc.getElementById('w-features') && !!doc.getElementById('w-shops') && !!doc.querySelector('.w-final'));
